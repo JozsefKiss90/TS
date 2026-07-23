@@ -1,0 +1,263 @@
+/* Shared stylesheet for all Hermes teaching lessons.
+   Linked from every lesson as ../assets/course.css */
+
+:root {
+  --ink: #1c1c1c;
+  --ink-soft: #555;
+  --paper: #fdfdfb;
+  --accent: #0b5cad;
+  --accent-soft: #e8f0f9;
+  --ok: #1c7a3d;
+  --ok-soft: #e7f4ec;
+  --no: #b3261e;
+  --no-soft: #fbeae9;
+  --code-bg: #f4f4f0;
+  --rule: #ddd;
+  --mono: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+  --serif: Charter, Georgia, "Times New Roman", serif;
+  --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--paper); }
+
+body {
+  font-family: var(--serif);
+  color: var(--ink);
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 6rem;
+  line-height: 1.55;
+  font-size: 1.05rem;
+}
+
+/* ---------- Structure ---------- */
+
+header.lesson-head {
+  border-bottom: 3px double var(--rule);
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+}
+
+.kicker {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 0.4rem;
+}
+
+h1 {
+  font-size: 1.9rem;
+  line-height: 1.2;
+  margin: 0 0 0.5rem;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 1.35rem;
+  margin: 2.4rem 0 0.7rem;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.25rem;
+}
+
+h3 {
+  font-size: 1.1rem;
+  margin: 1.6rem 0 0.5rem;
+}
+
+p { margin: 0.7rem 0; }
+
+a { color: var(--accent); }
+
+.lede {
+  font-size: 1.12rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin: 0;
+}
+
+footer {
+  margin-top: 3.5rem;
+  border-top: 3px double var(--rule);
+  padding-top: 1rem;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- Code ---------- */
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+code {
+  font-family: var(--mono);
+}
+
+p code, li code, td code {
+  background: var(--code-bg);
+  padding: 0.08em 0.35em;
+  border-radius: 4px;
+  font-size: 0.86em;
+}
+
+/* ---------- Diagrams (Mermaid) ---------- */
+
+figure.diagram {
+  margin: 1.6rem 0;
+}
+
+figure.diagram pre.mermaid {
+  background: #fff;
+  text-align: center;
+}
+
+figure.diagram figcaption {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin-top: 0.4rem;
+}
+
+/* ---------- Callouts ---------- */
+
+.callout {
+  font-family: var(--sans);
+  font-size: 0.92rem;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 0.7rem 1rem;
+  margin: 1.2rem 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.callout.mission { border-color: #8a5a00; background: #faf3e3; }
+
+.callout strong:first-child {
+  display: block;
+  margin-bottom: 0.2rem;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Exercises: shared ---------- */
+
+.exercise {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 1rem 1.2rem 1.2rem;
+  margin: 1.5rem 0;
+  background: #fff;
+}
+
+.exercise > h3 { margin-top: 0.2rem; }
+
+.exercise .rules {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin-top: 0;
+}
+
+.score {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 0;
+}
+
+/* ---------- Multiple-choice quiz (.qz) ---------- */
+
+.qz { margin: 1.3rem 0; }
+
+.qz-prompt {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.qz-opt, .cl-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 0.92rem;
+  background: #fff;
+  border: 1.5px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.5rem 0.8rem;
+  margin: 0.35rem 0;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.qz-opt:hover:not(:disabled), .cl-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.qz-opt:disabled, .cl-btn:disabled { cursor: default; }
+
+.qz-opt.is-correct, .cl-btn.is-correct {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  font-weight: 600;
+}
+
+.qz-opt.is-wrong, .cl-btn.is-wrong {
+  border-color: var(--no);
+  background: var(--no-soft);
+}
+
+.qz-feedback, .cl-why {
+  font-family: var(--sans);
+  font-size: 0.88rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  margin: 0.5rem 0 0;
+}
+
+.qz-feedback.ok, .cl-why.ok { background: var(--ok-soft); color: var(--ok); }
+.qz-feedback.no, .cl-why.no { background: var(--no-soft); color: var(--no); }
+
+/* ---------- Classification exercise (.cl) ---------- */
+
+.cl-item {
+  border-top: 1px dashed var(--rule);
+  padding: 0.8rem 0;
+}
+
+.cl-item:first-of-type { border-top: none; }
+
+.cl-item > p:first-child {
+  margin: 0 0 0.4rem;
+}
+
+.cl-btns {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cl-btns .cl-btn {
+  width: auto;
+  flex: 0 1 auto;
+  margin: 0;
+  padding: 0.35rem 0.9rem;
+}
+
+/* ---------- Print ---------- */
+
+@media print {
+  body { max-width: none; font-size: 11pt; padding: 0; }
+  .qz-opt, .cl-btn { border-color: #999; }
+  a { color: inherit; text-decoration: underline; }
+  pre { white-space: pre-wrap; }
+}

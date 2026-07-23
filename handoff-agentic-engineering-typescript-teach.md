@@ -6,6 +6,10 @@ Use the supplied `/teach` skill to initialise and run a stateful teaching worksp
 
 The immediate next step is **Phase 0: TypeScript and SDK literacy**. The first teaching session should establish the workspace state, confirm a few unresolved constraints, and deliver one small practical lesson with a tangible result.
 
+## Update (2026-07-23, after lesson 0001) — glossary wiki and diagrams
+
+At the user's request, the glossary is now an **Obsidian wiki**, not a single `GLOSSARY.md` file: the repo root is a vault (DataView enabled), with one YAML-frontmattered note per term in `wiki/terms/`, a per-lesson map note in `wiki/lessons/`, and DataView indexes in `wiki/GLOSSARY.md`. Lessons also include **supplementary Mermaid diagrams** (vendored renderer in `assets/vendor/`). Where this handoff says "GLOSSARY.md" or "do not pre-fill the glossary", read it as: a lesson's terms are captured as wiki notes at `status: introduced` when taught, and promoted to `status: demonstrated` only on demonstrated use. Authoritative conventions: `NOTES.md` → Workspace conventions.
+
 ## Suggested skills
 
 - **`/teach` — invoke first.** Follow the provided `SKILL.md` and its linked formats. This is a multi-session learning mission, so preserve state through `MISSION.md`, `RESOURCES.md`, `learning-records/`, lessons and reference documents.
@@ -14,8 +18,6 @@ The immediate next step is **Phase 0: TypeScript and SDK literacy**. The first t
 - **Official-documentation research.** Consult current primary documentation before teaching SDK behaviour or version-specific APIs. SDK examples are unusually vulnerable to version drift and plausible hallucination.
 
 ## Source instructions and templates
-
-The user supplied copies of Matt Pocock's teaching and handoff materials from:
 
 - <https://github.com/mattpocock/skills/tree/main>
 - `SKILL.md` — `/teach`

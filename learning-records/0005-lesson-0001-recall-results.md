@@ -1,0 +1,7 @@
+# Demonstrated: type erasure and the SDK's parse-then-assert pipeline
+
+After lesson 0001, closed-book recall showed the user has the lesson's central insight: they located the exact moment the `Message` type gets attached ("after JSON.parse turned them into untyped values — TypeScript types already erased") and picked `block.type` as something TypeScript cannot guarantee at runtime. Wiki terms [[api]], [[type-erasure]], and [[type-assertion]] promoted to `demonstrated`.
+
+**Evidence:** Q3 answer "block.type"; Q4 answer correctly identifying the post-parse assertion moment and that nothing has checked the bytes. API defined acceptably ("rules and protocols that let two applications communicate").
+
+**Promoted by instruction, not evidence:** [[sdk]] — the user gave the generic dictionary definition ("tools for a specific platform, OS, or hardware"), which misses the lesson's relational core (a library that does an API's chores; nothing changes on the wire). A targeted restatement was requested; the user chose to promote the term directly instead. The definitional gap is unverified — exercise `02-model-client-sdk` is entirely about the SDK layer, so verify it there in passing rather than re-asking the retry question. General pattern to keep watching: their instinct is to reach for stock definitions under recall pressure even when mechanism-level understanding (Q3/Q4) is clearly present — pressure-test definitions separately from mechanisms.

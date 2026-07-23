@@ -1,0 +1,221 @@
+{
+  "main": {
+    "id": "bc1ee624b725ed0d",
+    "type": "split",
+    "children": [
+      {
+        "id": "f09f2dd2dc34f78b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "079b5ea3829adf26",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "wiki/GLOSSARY.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "GLOSSARY"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "c2aa953a67f69ffd",
+    "type": "split",
+    "children": [
+      {
+        "id": "ca1937a2870584d9",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f13f38d8087c035f",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "8d9ea8d33ed2baf2",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "e7d5d437281f8975",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "03ee744c3086e6b1",
+    "type": "split",
+    "children": [
+      {
+        "id": "710fbb5531483512",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "787a72a23705abc4",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "wiki/GLOSSARY.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for GLOSSARY"
+            }
+          },
+          {
+            "id": "d231280d904bfca1",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "wiki/GLOSSARY.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from GLOSSARY"
+            }
+          },
+          {
+            "id": "1585c54938e9a4f1",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "5ef064ab6e10769f",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "440fe91e946a07b6",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "wiki/GLOSSARY.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of GLOSSARY"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "079b5ea3829adf26",
+  "lastOpenFiles": [
+    "learning-records/0005-lesson-0001-recall-results.md.tmp.476368.f9ae3747bbb3",
+    "handoff-hermes-sdk-lab-01-raw-http.md",
+    "learning-records/0005-lesson-0001-recall-results.md",
+    "learning-records/0005-lesson-0001-recall-results.md.tmp.476368.74d024820ecf",
+    "wiki/terms/type-assertion.md.tmp.476368.67d8c34a90c2",
+    "wiki/terms/type-erasure.md.tmp.476368.8188a8ddc5f9",
+    "wiki/terms/api.md.tmp.476368.30c7a8937d99",
+    "wiki/terms/sdk.md",
+    "wiki/GLOSSARY.md",
+    "NOTES.md.tmp.484188.eece2f017851",
+    "NOTES.md.tmp.484188.ecc85a6c4142",
+    "wiki/terms/type-assertion.md",
+    "lessons/0001-trace-one-request-api-vs-sdk.html.tmp.484188.0c3c07ca9b02",
+    "lessons/0001-trace-one-request-api-vs-sdk.html.tmp.484188.d430585d4463",
+    "handoff-agentic-engineering-typescript-teach.md.tmp.484188.14c646c8f7cb",
+    "NOTES.md.tmp.484188.b57b9943eb06",
+    "wiki/terms/model-gateway.md",
+    "wiki/terms/runtime-validation.md",
+    "wiki/terms/discriminated-union.md",
+    "wiki/terms/narrowing.md",
+    "wiki/terms/type-erasure.md",
+    "wiki/terms/cancellation.md",
+    "wiki/terms/retry-with-backoff.md",
+    "wiki/terms/error-boundary.md",
+    "wiki/terms/stop-reason.md",
+    "wiki/terms/messages-api.md",
+    "wiki/terms/request-contract.md",
+    "wiki/terms/api-version-header.md",
+    "wiki/terms/api-key-authentication.md",
+    "wiki/terms/endpoint.md",
+    "wiki/terms/api.md",
+    "wiki/lessons/lesson-0001-trace-one-request.md"
+  ]
+}
