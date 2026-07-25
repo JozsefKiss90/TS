@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0002 — Run the Raw Request, Against a Mock</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 0 · Lesson 0002 · lab exercise 01-raw-http · ~45–60 minutes</p>
+  <h1>Run the Raw Request, Against a Mock</h1>
+  <p class="lede">Lesson 0001 traced the request on paper. Today you send it — and then break it five ways on purpose, so each of the six responsibilities fails in front of you.</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Hermes will be tested against fakes and recorded fixtures long before it makes a paid API call — that is the
+  mock-first decision from session 1, and it becomes the <code>FakeModelGateway</code> in Phase 1. This exercise is
+  your first <em>test double</em>: a local server that speaks the Messages API's wire contract without any model
+  behind it. If you can develop against a double here, you can test an agent loop offline later. (Lesson 0001's
+  footer promised you'd run both requests and diff them: the raw half is today; the SDK half — pointed at this
+  same mock — is exercise 02.)
+</div>
+
+<h2>1 · The lab you just gained</h2>
+
+<p>There is a new folder next to <code>lessons/</code>: <code>hermes-sdk-lab/</code>, the home of exercises
+01–08. Its configuration is not boilerplate — strict compiler config <em>is</em> Phase 0 material, so read it
+as content:</p>
+
+<pre><code>hermes-sdk-lab/
+├── pnpm-workspace.yaml    ← one install serves every exercise ("0*")
+├── package.json           ← shared toolchain: typescript, tsx, @types/node
+├── pnpm-lock.yaml         ← the lockfile (see below)
+├── tsconfig.base.json     ← the strict config every exercise extends
+└── 01-raw-http/
+    ├── package.json       ← "type": "module" + the scripts you'll run
+    ├── tsconfig.json      ← extends ../tsconfig.base.json
+    ├── fixtures/message-response.json   ← the canned response, real shape
+    └── src/
+        ├── mock-server.ts ← provided — read it, it's this lesson in code
+        └── client.ts      ← yours — the TODOs are the exercise</code></pre>
+
+<p>Three configuration ideas carry the whole lab:</p>
+
+<ul>
+  <li><strong>The lockfile.</strong> <code>package.json</code> says <em>what you're willing to accept</em>
+  (<code>"typescript": "^5.7.0"</code> — any 5.x from 5.7 up); <code>pnpm-lock.yaml</code> records <em>what was
+  actually resolved</em> (5.9.3, with the exact version of every transitive dependency). Commit it, and every
+  future install — yours, a teammate's, CI's — reproduces the identical tree. It is the dependency-world
+  version of a recorded fixture: pinned reality, not a range of possibilities.</li>
+  <li><strong>ES modules.</strong> <code>"type": "module"</code> in <code>package.json</code> tells Node to
+  treat <code>.js</code>/<code>.ts</code> files as ES modules — <code>import</code>/<code>export</code> with
+  strict, static semantics — rather than legacy CommonJS (<code>require</code>). The <code>tsconfig</code>
+  option <code>module: "nodenext"</code> makes TypeScript resolve imports <em>exactly the way Node will at
+  runtime</em>, so the compiler and the runtime can't disagree about what an import means.</li>
+  <li><strong>Strictness as a contract with yourself.</strong> The compiler can only police claims you let it
+  enforce. Each line below tightens what a claim is allowed to hide:</li>
+</ul>
+
+<table>
+  <tr><th>tsconfig line</th><th>What it refuses to let you hide</th></tr>
+  <tr><td><code>strict: true</code></td><td>The umbrella: no implicit <code>any</code>, and <code>null</code>/<code>undefined</code> are real types you must handle, not surprises.</td></tr>
+  <tr><td><code>noUncheckedIndexedAccess</code></td><td><code>content[0]</code> is <code>… | undefined</code> — an index can miss at runtime, so the type says so. You will meet this today when you print the first content block.</td></tr>
+  <tr><td><code>exactOptionalPropertyTypes</code></td><td>“Property omitted” and “property set to <code>undefined</code>” are different things — JSON on the wire has no <code>undefined</code>, so the types keep them apart.</td></tr>
+  <tr><td><code>verbatimModuleSyntax</code></td><td>Imports must be honest about what survives compilation: types need <code>import type</code>. This is <a href="../wiki/terms/type-erasure.md">type erasure</a> enforced at the syntax level.</td></tr>
+  <tr><td><code>noEmit: true</code></td><td>Nothing. It's an admission: we never produce JavaScript files — <code>tsx</code> executes the <code>.ts</code> directly, and <code>tsc</code> is used purely as a <em>checker</em>. Types are erased either way.</td></tr>
+</table>
+
+<h2>2 · A test double for the wire</h2>
+
+<p><code>src/mock-server.ts</code> is a <strong>test double</strong>: a stand-in that honors the same contract
+as the real dependency, so the code under test can't tell the difference — and you control both sides. It
+enforces exactly the checks lesson 0001 circled, and returns either a canned <code>Message</code> (the real
+response shape, field for field) or a realistic error envelope:</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    REQ["POST /v1/messages"] --> KEY{"② x-api-key<br/>present?"}
+    KEY -- no --> E401["401 authentication_error"]
+    KEY -- yes --> VER{"③ anthropic-version<br/>present?"}
+    VER -- no --> E400V["400 invalid_request_error"]
+    VER -- yes --> CT{"content-type:<br/>application/json?"}
+    CT -- no --> E400C["400 invalid_request_error"]
+    CT -- yes --> RL{"x-mock-scenario:<br/>rate-limit header?"}
+    RL -- yes --> E429["429 rate_limit_error<br/>+ retry-after: 5"]
+    RL -- no --> BODY{"④ model · max_tokens<br/>· messages valid?"}
+    BODY -- no --> E400B["400 invalid_request_error<br/>naming the field"]
+    BODY -- yes --> WAIT["~400 ms simulated latency<br/>= the ⑥ abort window"]
+    WAIT --> OK["200 · canned Message fixture<br/>model echoed · usage estimated"]
+</pre>
+<figcaption>Supplementary diagram — every gate a request passes through in <code>mock-server.ts</code>, in
+source order. Each red-path exit uses the real error envelope:
+<code>{"type":"error","error":{"type":…,"message":…},"request_id":…}</code>.</figcaption>
+</figure>
+
+<p>Two honesty notes about what a double can and cannot do:</p>
+
+<ul>
+  <li><strong>Presence, not authenticity.</strong> The mock checks that <code>x-api-key</code> <em>exists</em> —
+  any value passes. Whether a key is genuine only Anthropic's servers can decide. A double can enforce the
+  <em>shape</em> of the contract, never the truths behind it (real keys, real rate limits, real model ids).</li>
+  <li><strong>The base URL is the seam.</strong> The contract fixes the path (<code>/v1/messages</code>) but not
+  the host. Your client reads <code>ANTHROPIC_BASE_URL</code> and falls back to <code>localhost:8787</code> —
+  and the official SDK exposes the very same seam as its <code>baseURL</code> option. That one designed opening
+  is how exercise 02 will aim the genuine <code>@anthropic-ai/sdk</code> at this same mock, unchanged.</li>
+</ul>
+
+<h2>3 · The exercise</h2>
+
+<p>Commands live in <code>hermes-sdk-lab/01-raw-http/README.md</code>; the arc is:</p>
+
+<ol>
+  <li><strong>Install the toolchain.</strong> Get pnpm (the README gives a corepack route — admin terminal
+  needed once on this machine — and an <code>npm install -g pnpm</code> fallback), then run
+  <code>pnpm install</code> at the lab root. Open <code>pnpm-lock.yaml</code> afterwards and find
+  <code>typescript</code> in it: that's the range-to-exact resolution from §1, recorded.</li>
+  <li><strong>Start the mock</strong> — terminal 1, in <code>01-raw-http/</code>: <code>pnpm mock</code>.</li>
+  <li><strong>Write the request.</strong> Fill in <code>src/client.ts</code> — from memory first; the six
+  responsibilities are the checklist, and the mock's error responses are your feedback. Run it with
+  <code>pnpm request</code> (terminal 2) until you see a 200 with <code>stop_reason</code>, the text block,
+  and <code>usage</code>.</li>
+  <li><strong>Break it, five ways.</strong> One change at a time; watch <em>both</em> terminals each run:</li>
+</ol>
+
+<table>
+  <tr><th>Break</th><th>What you should observe</th></tr>
+  <tr><td>Delete the <code>x-api-key</code> header</td><td><code>401 authentication_error</code> — ② is a header the wire demands, not SDK décor</td></tr>
+  <tr><td>Delete the <code>anthropic-version</code> header</td><td><code>400 invalid_request_error</code> — ③ pins which revision of the contract you speak</td></tr>
+  <tr><td>Delete <code>max_tokens</code> from the body</td><td><code>400</code> naming the field — ④, and note <em>nothing</em> caught it before the server</td></tr>
+  <tr><td>Misspell <code>messages</code> in the body</td><td><code>400</code> — the same typo the SDK's types caught at <em>compile time</em> in lesson 0001</td></tr>
+  <tr><td>Add header <code>x-mock-scenario: rate-limit</code></td><td><code>429</code> with a <code>retry-after</code> header — the input your ⑤ error boundary should read</td></tr>
+  <tr><td><code>setTimeout(() =&gt; controller.abort(), 100)</code></td><td>An <code>AbortError</code> client-side and an “aborted mid-flight” log server-side — ⑥ works</td></tr>
+</table>
+
+<ol start="5">
+  <li><strong>Close the loop:</strong> run <code>pnpm typecheck</code> and ask yourself which of those six
+  failures TypeScript could have caught. (Almost none — you built the body untyped. Hold that thought; it is
+  the entire argument for exercise 02.)</li>
+</ol>
+
+<h2>4 · Exercise: who can catch it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Classify each mistake</h3>
+  <p class="rules">Answer from memory before clicking — the effort is the point. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="The mock can catch it|Only the real API can catch it">
+    <div class="cl-item" data-cat="0" data-why="required fields are part of the contract's shape, and shape is exactly what a test double can enforce.">
+      <p>The request body omits <code>max_tokens</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="the mock checks presence only — authenticity lives in Anthropic's key store, a truth no local double has.">
+      <p>The <code>x-api-key</code> value is not a genuine key.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="a missing header is a shape violation; the mock returns the same 401 envelope the real API would.">
+      <p>The <code>x-api-key</code> header is missing entirely.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="the mock validates that model is a non-empty string, but the catalog of real model ids is server-side knowledge — the real API answers 404.">
+      <p>The model id is misspelled: <code>claude-opsu-4-8</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="the server sees no messages field and rejects with a 400. In lesson 0001's SDK version this same typo was a compile error — raw HTTP demoted it to runtime.">
+      <p>You write <code>mesages</code> instead of <code>messages</code> in the body.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="real throttling depends on real load and your real quota. The mock can only simulate the 429 shape when you ask it to (x-mock-scenario).">
+      <p>Your per-minute rate limit is genuinely exhausted.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="declaring the body's media type is part of the request's shape — the mock rejects anything that isn't application/json.">
+      <p>The <code>content-type</code> header is missing.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>5 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Three questions, equal-length options, no format clues</h3>
+
+  <div class="qz" data-correct="0" data-why="The base URL is a designed seam: the SDK's baseURL option (or the ANTHROPIC_BASE_URL env var) redirects every request to localhost:8787 while the wire contract stays identical. Same seam your client.ts uses.">
+    <p class="qz-prompt">Q1. Exercise 02 will point the official SDK at this same mock. What makes that possible without touching the SDK's code?</p>
+    <button class="qz-opt" type="button">The SDK exposes a base-URL override option</button>
+    <button class="qz-opt" type="button">The SDK detects mocks on localhost by port</button>
+    <button class="qz-opt" type="button">The mock intercepts the SDK's DNS lookups</button>
+    <button class="qz-opt" type="button">The SDK ships with a built-in mock server</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="package.json states a range you'd accept; the lockfile records the exact resolution — every version of every transitive dependency. Committing it makes installs reproducible, like a recorded fixture for your dependency tree.">
+    <p class="qz-prompt">Q2. You commit <code>pnpm-lock.yaml</code>. A teammate runs <code>pnpm install</code> next month. What does the lockfile guarantee they get?</p>
+    <button class="qz-opt" type="button">They get the newest compatible versions</button>
+    <button class="qz-opt" type="button">They get the exact versions you resolved</button>
+    <button class="qz-opt" type="button">They get versions vetted by the registry</button>
+    <button class="qz-opt" type="button">They get versions cached on your machine</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="An index can miss at runtime, so the flag adds undefined to every indexed read: content[0] is a block-or-undefined until you check it. That is a compile-time claim made honest about a runtime possibility.">
+    <p class="qz-prompt">Q3. Under <code>noUncheckedIndexedAccess</code>, what is the type of <code>data.content[0]</code>?</p>
+    <button class="qz-opt" type="button">The element type, exactly as declared</button>
+    <button class="qz-opt" type="button">never, because the index may not exist</button>
+    <button class="qz-opt" type="button">The element type joined with undefined</button>
+    <button class="qz-opt" type="button">unknown, until you narrow it yourself</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Say it in your own words</h2>
+
+<p>After the lab work, close the loop with your teacher. In the chat, answer these four — no notes, no
+scrolling up:</p>
+<ol>
+  <li>In one sentence: what is a <strong>test double</strong>, and what is the one kind of thing it can never
+  verify for you?</li>
+  <li>Why does the Hermes curriculum insist on <strong>mock-first</strong> — what does it buy beyond saving
+  API costs?</li>
+  <li>What is the <strong>base-URL seam</strong>, and how will exercise 02 use it?</li>
+  <li>Name two mistakes that today's raw client only discovered <em>at runtime</em> which lesson 0001's SDK
+  version caught <em>at compile time</em> — and say what the SDK is doing that makes the difference.</li>
+</ol>
+<p>This lesson's new terms — <em>test double</em>, <em>base URL</em>, <em>lockfile</em>, <em>ES modules</em>,
+<em>strict mode</em> — have wiki notes under <code>wiki/terms/</code> at <code>status: introduced</code>. As
+always: promoted when you can use them, not when you've seen them.</p>
+
+<h2>Primary source</h2>
+
+<p><strong>Read next:</strong> the
+<a href="https://platform.claude.com/docs/en/api/messages">Messages API reference</a> — the contract your mock
+imitates. Read it <em>after</em> the exercise and check the mock against it: which required fields, headers,
+and error shapes did the double get right, and what did it leave out? For the cancellation side, skim MDN's
+<a href="https://developer.mozilla.org/en-US/docs/Web/API/AbortController">AbortController</a> page (~5 min).</p>
+
+<footer>
+  <p><strong>Stuck or curious?</strong> Ask your teacher — the agent that opened this lesson — anything: why
+  <code>retry-after</code> is a header and not a body field, what a lockfile does that a version range can't,
+  why the mock narrows <code>unknown</code> instead of asserting. That conversation <em>is</em> the course.</p>
+  <p>Next: <code>02-model-client-sdk</code> — the official <code>@anthropic-ai/sdk</code>, pointed at this very
+  mock via the base-URL seam. You'll diff its behavior against today's raw client and watch it absorb all six
+  responsibilities.</p>
+</footer>
+
+</body>
+</html>

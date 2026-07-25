@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0004 — The Response Becomes a Process</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 0 · Lesson 0004 · lab exercise 03-streaming-and-cancellation · ~45–60 minutes</p>
+  <h1>The Response Becomes a Process</h1>
+  <p class="lede">Exercise 02's request with one field added — <code>stream: true</code> — and the response stops
+  being a value you await and becomes a process you observe: typed events arriving over a held-open connection,
+  assembled piece by piece, cancellable in the middle. Same mock, same gates, same <code>Message</code> at the end.</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Phase 1's loop will run for minutes, not milliseconds — streaming is how you <em>watch</em> it work instead of
+  staring at silence. Two policy facts fall out of today's wire format: the numbers Hermes budgets on
+  (<code>stop_reason</code>, real <code>output_tokens</code>) arrive in the <strong>last</strong> events, and
+  cancellation gains a new meaning — aborting mid-stream stops the remainder from ever being generated, which
+  against the real API means <em>tokens you do not pay for</em>. Budget enforcement needs exactly that lever.
+</div>
+
+<h2>1 · The wire: one response, many events</h2>
+
+<p>Nothing changes about the request except one body field. What changes is the answer: instead of one JSON
+document, the server answers <code>200</code> with <code>content-type: text/event-stream</code> and no
+<code>content-length</code> — because it doesn't know the length yet. The connection stays open, and the body
+arrives as <strong>server-sent events</strong>: a dead-simple text format where each event is an
+<code>event:</code> line naming a type and a <code>data:</code> line of JSON, separated by blank lines
+(<a href="https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events">MDN</a>):</p>
+
+<pre><code>event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello from the mock."}}
+</code></pre>
+
+<p>The events follow a fixed grammar
+(<a href="https://platform.claude.com/docs/en/build-with-claude/streaming">streaming reference</a>), and the mock
+now speaks it — run the lab and read the same sequence in both terminals:</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    participant C as your client
+    participant M as mock :8787
+    C->>M: POST /v1/messages — params + stream: true
+    Note over M: same gates ②③④ — a 401/400 still arrives as plain JSON
+    M-->>C: 200 text/event-stream — connection stays open
+    M-->>C: message_start (a Message skeleton: content [], stop_reason null)
+    M-->>C: ping (keep-alive — your loop never sees it)
+    M-->>C: content_block_start (index 0, an empty text block)
+    loop 8 chunks, ~120 ms apart
+        M-->>C: content_block_delta (text_delta: the next words)
+    end
+    M-->>C: content_block_stop (index 0)
+    M-->>C: message_delta (stop_reason + final usage — at last)
+    M-->>C: message_stop — only NOW does the response end
+</pre>
+<figcaption>The streaming event grammar, as the mock plays it. Measured with this course's lab: 13 events
+reach the client over ~1.4 s. The <code>ping</code> is on the wire — the mock logs it — but the SDK filters
+keep-alives out before your code ever iterates them.</figcaption>
+</figure>
+
+<h2>2 · The skeleton and the deltas</h2>
+
+<p>The event types are not interchangeable packets — each carries a specific slice of the
+<code>Message</code> you already know from exercises 01–03:</p>
+
+<table>
+  <tr><th>Event</th><th>What it carries</th><th>Why there</th></tr>
+  <tr><td><code>message_start</code></td><td>a <code>Message</code> <strong>skeleton</strong>: <code>id</code>, <code>model</code>, <code>usage.input_tokens</code> — but <code>content: []</code>, <code>stop_reason: null</code></td><td>what the server knows <em>before</em> generating: what it read, who is answering</td></tr>
+  <tr><td><code>content_block_start</code></td><td>an empty block and its <code>index</code></td><td>opens a slot for deltas to patch</td></tr>
+  <tr><td><code>content_block_delta</code></td><td>a <code>text_delta</code> — the next few words</td><td>the actual generation, as it happens</td></tr>
+  <tr><td><code>content_block_stop</code></td><td>just the <code>index</code></td><td>closes the slot</td></tr>
+  <tr><td><code>message_delta</code></td><td><code>stop_reason</code> + final <code>usage.output_tokens</code></td><td>what the server can only know <em>after</em> generating</td></tr>
+  <tr><td><code>message_stop</code></td><td>nothing</td><td>the process is over; the connection closes</td></tr>
+</table>
+
+<p>Read that first column as a fold: start with the skeleton, apply every delta, retrofit
+<code>message_delta</code>'s fields — and you are holding <em>exactly</em> the <code>Message</code> the
+non-streaming path returns in one piece. The lab proves it: the assembled text is byte-for-byte exercise 02's
+fixture, same <code>usage</code>, same <code>stop_reason</code>. <strong>Streaming changes delivery, not the
+contract.</strong></p>
+
+<p>And note the order of knowledge, because Hermes will care: <code>input_tokens</code> is in the first event —
+the server counted your prompt before answering — but <code>stop_reason</code> and the real
+<code>output_tokens</code> are in the <em>last</em> ones. While a stream is in flight, nobody knows what it
+will cost or how it will end.</p>
+
+<h2>3 · Two SDK surfaces for one wire format</h2>
+
+<p>The SDK gives you the stream at two altitudes — both declared in the installed
+<code>.d.ts</code> files, which remain the real contract:</p>
+
+<pre><code>// resources/messages/messages.d.ts — the overload is picked by `stream: true`
+create(params: MessageCreateParamsNonStreaming, ...): APIPromise&lt;Message&gt;;
+create(params: MessageCreateParamsStreaming, ...):  APIPromise&lt;Stream&lt;RawMessageStreamEvent&gt;&gt;;
+
+// lib/MessageStream.d.ts — the helper
+declare class MessageStream implements AsyncIterable&lt;MessageStreamEvent&gt; {
+  on(event: "text", listener: (textDelta: string, textSnapshot: string) =&gt; void): this;
+  finalMessage(): Promise&lt;Message&gt;;   // the fold from §2, done for you
+  finalText(): Promise&lt;string&gt;;
+  get currentMessage(): Message | undefined;  // the fold's state, mid-flight
+  get request_id(): string | null | undefined;
+  abort(): void;
+}</code></pre>
+
+<ul>
+  <li><strong>Raw events:</strong> <code>create({ ...params, stream: true })</code> hands you an
+  <em>async iterator</em> of <code>RawMessageStreamEvent</code> — a discriminated union, so
+  <code>for await</code> + narrowing on <code>event.type</code> is lesson 0001's
+  <code>block.type</code> skill again, one level up. Accumulation is your job.</li>
+  <li><strong>The helper:</strong> <code>client.messages.stream(params)</code> — no <code>stream: true</code>
+  needed; the method <em>is</em> the choice — returns a <code>MessageStream</code> that runs the fold for you:
+  <code>.on("text")</code> gives you delta <em>and</em> snapshot, <code>finalMessage()</code> resolves to the
+  assembled <code>Message</code>.</li>
+</ul>
+
+<p>One trap, measured in the lab: <code>finalMessage()</code>'s result has
+<code>_request_id: undefined</code>. Nothing is broken — that object never traveled as one HTTP body; the
+helper assembled it <em>client-side</em> from events. The request id belongs to the HTTP exchange, so it lives
+on the stream object instead: <code>stream.request_id</code>. Knowing <em>which layer owns which fact</em> is
+the whole game of SDK literacy.</p>
+
+<h2>4 · What ⑥ really means now</h2>
+
+<p>In exercises 01–02, cancellation interrupted a <em>wait</em> — abort before the answer, get nothing. Today
+it interrupts a <em>process</em>. The lab aborts at 700 ms, mid-generation:</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    participant C as your code
+    participant S as MessageStream
+    participant M as mock :8787
+    C->>S: client.messages.stream(params, { signal })
+    S->>M: POST /v1/messages (stream: true)
+    M-->>S: message_start · content_block_start
+    M-->>S: delta "Hello from the mock."
+    S-->>C: on("text") — 20 chars held
+    M-->>S: delta " These bytes have the"
+    S-->>C: on("text") — 41 chars held
+    C->>S: controller.abort() — 700 ms in
+    S--xM: connection torn down
+    Note over M: 6 remaining deltas are NEVER sent
+    S-->>C: throws APIUserAbortError (1 attempt — user aborts are never retried)
+</pre>
+<figcaption>Measured against the mock: <code>APIUserAbortError</code> ~30 ms after the abort, the client left
+holding 41 of 164 characters, the mock logging <em>client aborted the request mid-flight</em> after 2 of 8
+deltas. <code>stream.currentMessage</code> still shows the partial — 2 chunks, <code>stop_reason: null</code> —
+the fold's state at the moment of death.</figcaption>
+</figure>
+
+<p>Three things to sit with:</p>
+<ul>
+  <li><strong>You keep the partial.</strong> The text that arrived is yours; what never arrived simply does not
+  exist. There is no <code>stop_reason</code> — the message did not <em>stop</em>, it was killed.</li>
+  <li><strong>The rest is never generated.</strong> Against the real API that is money: a model mid-way through
+  a 4,000-token answer stops costing you the moment the abort lands. Cancellation graduated from a hang-up
+  lever to a <em>cost</em> lever.</li>
+  <li><strong>User aborts are never retried</strong> — one attempt in the mock's log, unlike lesson 0003's
+  timeouts. The SDK distinguishes "you chose to stop" from "the network failed you".</li>
+</ul>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and the full experiment table live in
+<code>hermes-sdk-lab/03-streaming-and-cancellation/README.md</code>; the arc is:</p>
+
+<ol>
+  <li><strong>Read the contract first.</strong> Open
+  <code>node_modules/@anthropic-ai/sdk/resources/messages/messages.d.ts</code>, find the two
+  <code>create</code> overloads, and read the <code>RawMessageStreamEvent</code> union. Then skim
+  <code>lib/MessageStream.d.ts</code> — every §3 claim is on that page.</li>
+  <li><strong>Part A — raw events.</strong> Add <code>stream: true</code>, iterate, log every
+  <code>event.type</code>. Write the order down before checking §1's diagram. Find where
+  <code>stop_reason</code> hides. Notice the ping the mock logs that you never receive.</li>
+  <li><strong>Part B — the helper.</strong> <code>client.messages.stream()</code>, chunks via
+  <code>.on("text")</code>, then <code>finalMessage()</code> and exercise 02's four printouts. One of the four
+  is a trap — find the id's real home.</li>
+  <li><strong>Part C — abort mid-stream.</strong> 700 ms timer, catch <code>APIUserAbortError</code>, count
+  what you kept. Watch the mock's terminal: where did the rest of the message go?</li>
+  <li><strong>Close the loop:</strong> for each part, say which of the six responsibilities moved and which
+  stayed put. (Spoiler shape: ①–⑤ barely move. ⑥ transforms.)</li>
+</ol>
+
+<h2>6 · Exercise: when does the stream know it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each fact in the event that delivers it</h3>
+  <p class="rules">Answer from memory before clicking — the effort is the point. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="message_start — the skeleton|content_block_delta — the middle|message_delta — the end">
+    <div class="cl-item" data-cat="0" data-why="the server counted your prompt before generating a single token — input cost is knowable up front, and the skeleton carries it.">
+      <p><code>usage.input_tokens</code> — what reading your prompt cost.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="whether the answer ended naturally, hit max_tokens, or wants a tool is unknowable until generation finishes — so it rides the second-to-last event, not the first.">
+      <p><code>stop_reason</code> — how the answer ended.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="text_delta events are the generation itself, a few words at a time, patching the empty block that content_block_start opened.">
+      <p>The words of the answer.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="the skeleton is a real Message with id, role, and the echoed model — everything the server knows before generating. Only content and the end-facts are missing.">
+      <p>The <code>msg_…</code> id and the model that is answering.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="message_start carries only a placeholder output count; the real total arrives in message_delta once generation is done. Mid-stream, nobody knows the final cost.">
+      <p>The real <code>usage.output_tokens</code> — what the answer cost.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="an abort lands between deltas: the skeleton and some text have arrived, message_delta never will. That is why a killed stream has text but no stop_reason.">
+      <p>The moment a 700 ms abort actually interrupts.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions, equal-length options, no format clues</h3>
+
+  <div class="qz" data-correct="1" data-why="The gates ②③④ run before any stream starts — a missing header still fails as plain JSON. stream: true selects how a successful answer is DELIVERED: many typed events over a held-open connection instead of one JSON body. The assembled Message is identical.">
+    <p class="qz-prompt">Q1. You add <code>stream: true</code> to exercise 02's params. What did you actually change?</p>
+    <button class="qz-opt" type="button">The request contract — extra gates now guard the endpoint</button>
+    <button class="qz-opt" type="button">The delivery of the response — the content is unchanged</button>
+    <button class="qz-opt" type="button">The model's output — it now writes shorter text pieces</button>
+    <button class="qz-opt" type="button">The client construction — streaming demands its own client object</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="input_tokens is in message_start — the prompt was counted before generation. But stop_reason and the true output_tokens arrive in message_delta, the second-to-last event. Until a stream ends (or is killed), its cost and its ending are unknown — which is exactly why Hermes's budget checks must treat in-flight calls specially.">
+    <p class="qz-prompt">Q2. Mid-stream — deltas still arriving — which of these does the client already know for certain?</p>
+    <button class="qz-opt" type="button">The stop_reason, since the server decided it before starting</button>
+    <button class="qz-opt" type="button">The output_tokens, since usage arrived in the first event</button>
+    <button class="qz-opt" type="button">The input_tokens, since the prompt was counted up front</button>
+    <button class="qz-opt" type="button">The final length, since content_length was in the headers</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="finalMessage()'s object never traveled as one HTTP body — the helper folded it together client-side from events, so no response header ever touched it. The request id belongs to the HTTP exchange and lives on stream.request_id. Layers own facts; SDK literacy is knowing which layer owns which.">
+    <p class="qz-prompt">Q3. <code>finalMessage()</code> returns a message whose <code>_request_id</code> is <code>undefined</code>. Why?</p>
+    <button class="qz-opt" type="button">The object was assembled client-side; the id stays on the stream</button>
+    <button class="qz-opt" type="button">The mock omits request-id headers on all of its streaming responses</button>
+    <button class="qz-opt" type="button">The SDK strips identifiers from every message once a stream closes</button>
+    <button class="qz-opt" type="button">The id only exists on errors; success paths never carry one</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="Measured in the lab: APIUserAbortError ~30 ms after the abort, 41 of 164 characters kept, and the mock sent 2 of 8 deltas — the rest were never generated. Against the real API, ungenerated tokens are unbilled tokens: mid-stream cancellation is Hermes's mechanism for making a budget actually stop spend.">
+    <p class="qz-prompt">Q4. You abort 700 ms into the stream. What is the true outcome, per the lab's measurements?</p>
+    <button class="qz-opt" type="button">Nothing is kept — the SDK discards partial text on aborts</button>
+    <button class="qz-opt" type="button">All text arrives anyway — the server finishes what it began</button>
+    <button class="qz-opt" type="button">The SDK retries twice — aborts obey the usual retry-after policy</button>
+    <button class="qz-opt" type="button">The partial stays yours — the remainder is simply never generated</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>After the lab work, close the loop with your teacher. In the chat, answer these four — no notes, no
+scrolling up:</p>
+<ol>
+  <li>Define <strong>server-sent events</strong> in one sentence — the format, and what stays open that
+  normally closes.</li>
+  <li>Walk the event grammar from memory: which event opens, what patches what, and which two facts can only
+  arrive at the end. Why <em>can't</em> they arrive earlier?</li>
+  <li>Raw <code>for await</code> over <code>create({ stream: true })</code> versus
+  <code>client.messages.stream()</code> — what does the helper do for you, and name one place in Hermes's
+  Phase 1 loop where you'd want each.</li>
+  <li>Exercise 02's abort produced nothing; today's produced 41 characters and an unbilled remainder. Explain
+  what changed about responsibility ⑥ — and why a budget without mid-stream cancellation is only advisory.</li>
+</ol>
+<p>This lesson's new terms — <em>server-sent events</em>, <em>delta</em>, <em>async iterator</em>,
+<em>message stream</em> — have wiki notes under <code>wiki/terms/</code> at <code>status: introduced</code>.
+As always: promoted when you can use them, not when you've seen them.</p>
+
+<h2>Primary source</h2>
+
+<p><strong>Read next:</strong> the
+<a href="https://platform.claude.com/docs/en/build-with-claude/streaming">Messages API streaming reference</a>
+— check every event shape against what your terminal showed, including the ones the mock doesn't simulate yet
+(<code>thinking_delta</code>, <code>input_json_delta</code>: the tool-use stream Phase 1 will meet). Then the
+habit that keeps paying: read <code>node_modules/@anthropic-ai/sdk/lib/MessageStream.d.ts</code> top to bottom
+(~120 lines) — every helper event and method, declared in the SDK's own generated contract.</p>
+
+<footer>
+  <p><strong>Stuck or curious?</strong> Ask your teacher — the agent that opened this lesson — anything: why
+  the SDK swallows pings, what happens to a rate-limited stream, how <code>snapshot</code> differs from
+  <code>delta</code> in <code>.on("text")</code>, whether an abort can race the final event. That conversation
+  <em>is</em> the course.</p>
+  <p>Next: <code>04-validate-the-boundary</code> — lesson 0003 §3 left a debt on the books: every response type
+  so far is an <em>assertion</em> over parsed bytes. Zod turns that claim into a checked parse — the
+  runtime-validation habit Hermes applies at every JSON boundary, and the close of Phase 0.</p>
+</footer>
+
+</body>
+</html>

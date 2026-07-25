@@ -1,0 +1,13 @@
+{
+  "name": "02-model-client-sdk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mock": "tsx ../01-raw-http/src/mock-server.ts",
+    "request": "tsx src/client.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.113.0"
+  }
+}

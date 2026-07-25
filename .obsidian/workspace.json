@@ -13,12 +13,26 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "wiki/GLOSSARY.md",
+                "file": "wiki/terms/discriminated-union.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "GLOSSARY"
+              "title": "discriminated-union"
+            }
+          },
+          {
+            "id": "05c3d6a432a122fa",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "wiki/terms/api-key-authentication.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "api-key-authentication"
             }
           }
         ]
@@ -185,37 +199,41 @@
   },
   "active": "079b5ea3829adf26",
   "lastOpenFiles": [
-    "learning-records/0005-lesson-0001-recall-results.md.tmp.476368.f9ae3747bbb3",
-    "handoff-hermes-sdk-lab-01-raw-http.md",
-    "learning-records/0005-lesson-0001-recall-results.md",
-    "learning-records/0005-lesson-0001-recall-results.md.tmp.476368.74d024820ecf",
-    "wiki/terms/type-assertion.md.tmp.476368.67d8c34a90c2",
-    "wiki/terms/type-erasure.md.tmp.476368.8188a8ddc5f9",
-    "wiki/terms/api.md.tmp.476368.30c7a8937d99",
-    "wiki/terms/sdk.md",
-    "wiki/GLOSSARY.md",
-    "NOTES.md.tmp.484188.eece2f017851",
-    "NOTES.md.tmp.484188.ecc85a6c4142",
-    "wiki/terms/type-assertion.md",
-    "lessons/0001-trace-one-request-api-vs-sdk.html.tmp.484188.0c3c07ca9b02",
-    "lessons/0001-trace-one-request-api-vs-sdk.html.tmp.484188.d430585d4463",
-    "handoff-agentic-engineering-typescript-teach.md.tmp.484188.14c646c8f7cb",
-    "NOTES.md.tmp.484188.b57b9943eb06",
-    "wiki/terms/model-gateway.md",
-    "wiki/terms/runtime-validation.md",
-    "wiki/terms/discriminated-union.md",
+    "docs/hermes_os/README.md",
+    "docs/hermes_os/hermes_tool_catalogue.md",
+    "docs/hermes_os/hermes_grill_me.md",
+    "docs/hermes_os/CONTEXT.md",
+    "docs/hermes_os/CLAUDE.md",
+    "docs/hermes_os",
+    "lessons_review.md",
+    "learning-records/supplement-signature-trace-from-new-anthropic-to-message.html",
     "wiki/terms/narrowing.md",
-    "wiki/terms/type-erasure.md",
-    "wiki/terms/cancellation.md",
-    "wiki/terms/retry-with-backoff.md",
-    "wiki/terms/error-boundary.md",
+    "wiki/terms/discriminated-union.md",
     "wiki/terms/stop-reason.md",
+    "hermes-sdk-lab/02-model-client-sdk/src/cilent2.ts",
+    "wiki/terms/base-url.md",
+    "NOTES.md.tmp.564420.6b71eae053ee",
+    "ROADMAP.md",
+    "lessons/0004-the-response-becomes-a-process.html.tmp.564420.3f01683c5883",
+    "NOTES.md.tmp.564420.bd4197725483",
+    "wiki/lessons/lesson-0004-the-response-becomes-a-process.md",
+    "wiki/lessons/lesson-0004-the-response-becomes-a-process.md.tmp.564420.b7b41dbdf131",
+    "wiki/terms/message-stream.md",
+    "wiki/terms/message-stream.md.tmp.564420.43388f23d0ac",
+    "wiki/terms/async-iterator.md",
+    "wiki/terms/async-iterator.md.tmp.564420.11de811c499e",
+    "wiki/terms/delta.md",
+    "wiki/terms/server-sent-events.md",
+    "lessons/0004-the-response-becomes-a-process.html",
+    "hermes-sdk-lab/03-streaming-and-cancellation/README.md",
+    "wiki/lessons/lesson-0003-the-sdk-absorbs-the-six.md",
+    "wiki/terms/declaration-file.md",
+    "wiki/terms/typed-error.md",
+    "wiki/terms/request-options.md",
+    "wiki/terms/api-client.md",
+    "hermes-sdk-lab/02-model-client-sdk/README.md",
     "wiki/terms/messages-api.md",
-    "wiki/terms/request-contract.md",
-    "wiki/terms/api-version-header.md",
-    "wiki/terms/api-key-authentication.md",
-    "wiki/terms/endpoint.md",
-    "wiki/terms/api.md",
-    "wiki/lessons/lesson-0001-trace-one-request.md"
+    "wiki/terms/retry-with-backoff.md",
+    "wiki/terms/request-contract.md"
   ]
 }

@@ -253,6 +253,28 @@ figure.diagram figcaption {
   padding: 0.35rem 0.9rem;
 }
 
+/* ---------- Tables ---------- */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-family: var(--sans);
+  font-size: 0.88rem;
+}
+
+th, td {
+  border: 1px solid var(--rule);
+  padding: 0.45rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+
 /* ---------- Print ---------- */
 
 @media print {

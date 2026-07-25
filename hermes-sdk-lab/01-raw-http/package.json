@@ -1,0 +1,10 @@
+{
+  "name": "01-raw-http",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mock": "tsx src/mock-server.ts",
+    "request": "tsx src/client.ts",
+    "typecheck": "tsc -p ."
+  }
+}

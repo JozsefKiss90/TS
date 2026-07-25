@@ -1,0 +1,50 @@
+{
+  // Shared compiler config for every hermes-sdk-lab exercise.
+  // Baseline: the tsconfig `tsc --init` generates in TypeScript 5.9,
+  // adapted for Node.js. Each exercise extends this file.
+  "compilerOptions": {
+    // ── Environment ─────────────────────────────────────────────────────
+    // "nodenext" = resolve imports exactly the way Node itself does
+    // (package.json "type", "exports" maps, mandatory file extensions).
+    // It also implies "moduleResolution": "nodenext" and "esModuleInterop".
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext"],
+    // Only load type declarations we name — here the Node globals
+    // (process, Buffer, node:http, fetch). No accidental DOM types.
+    "types": ["node"],
+    // Treat every file as a module even before it has an import/export.
+    "moduleDetection": "force",
+
+    // ── Strictness: the actual Phase 0 material ─────────────────────────
+    // Umbrella flag: noImplicitAny, strictNullChecks, strictFunctionTypes,
+    // strictBindCallApply, strictPropertyInitialization, alwaysStrict, …
+    "strict": true,
+    // arr[0] is `T | undefined`, not `T` — indexing can miss at runtime,
+    // so the type must say so. You will meet this in client.ts.
+    "noUncheckedIndexedAccess": true,
+    // `{ a?: string }` may omit `a`, but may not set it to `undefined`
+    // explicitly — those are different things on the wire (JSON has no
+    // `undefined`), so the types keep them apart.
+    "exactOptionalPropertyTypes": true,
+    // `import "./thing"` with a typo is an error instead of silence.
+    "noUncheckedSideEffectImports": true,
+
+    // ── Module hygiene ──────────────────────────────────────────────────
+    // Your import/export syntax must be honest about what survives
+    // compilation: type-only imports need `import type`. This is type
+    // erasure (lesson 0001) enforced at the syntax level.
+    "verbatimModuleSyntax": true,
+    // Every file must be compilable on its own — required by no-build
+    // runners like tsx, which strip types one file at a time.
+    "isolatedModules": true,
+
+    // ── Output ──────────────────────────────────────────────────────────
+    // We never emit JavaScript: tsx executes the .ts files directly, and
+    // `tsc -p .` is used purely as a type CHECKER. Types are erased either
+    // way — this just makes it explicit.
+    "noEmit": true,
+    // Don't re-check the internals of libraries in node_modules.
+    "skipLibCheck": true
+  }
+}

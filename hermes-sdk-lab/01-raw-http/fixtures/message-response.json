@@ -1,0 +1,21 @@
+{
+  "id": "msg_mock_fixture_replaced_per_request",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-4-8",
+  "content": [
+    {
+      "type": "text",
+      "text": "Hello from the mock. These bytes have the exact shape of a real Messages API response — but no model produced them, and nothing has checked them against your types."
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 12,
+    "output_tokens": 42,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  }
+}

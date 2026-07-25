@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signature Trace: From new Anthropic() to Message</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  body { max-width: 980px; margin: 0 auto; padding: 2rem; color: #202124; font: 17px/1.6 system-ui, sans-serif; }
+  h1, h2, h3 { line-height: 1.2; }
+  h2 { margin-top: 3rem; border-bottom: 1px solid #d9dce1; padding-bottom: .35rem; }
+  h3 { margin-top: 2rem; }
+  pre { overflow-x: auto; padding: 1rem; border-radius: .5rem; background: #f5f6f8; }
+  code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  table { width: 100%; border-collapse: collapse; margin: 1.25rem 0; }
+  th, td { padding: .65rem; border: 1px solid #d9dce1; text-align: left; vertical-align: top; }
+  th { background: #f5f6f8; }
+  .callout { margin: 1.5rem 0; padding: 1rem 1.2rem; border-left: .3rem solid #5b6ee1; background: #f3f5ff; }
+  .callout strong { display: block; margin-bottom: .25rem; }
+  .lesson-head { margin-bottom: 2rem; }
+  .kicker { color: #596273; font-weight: 650; }
+  .lede { font-size: 1.15rem; color: #4b5361; }
+  figure { margin: 1.5rem 0; }
+  figcaption { color: #596273; font-size: .95rem; }
+  details { margin: .75rem 0; padding: .75rem 1rem; border: 1px solid #d9dce1; border-radius: .4rem; }
+  summary { cursor: pointer; font-weight: 650; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #d9dce1; }
+</style>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 0 · Supplement to Lessons 0001–0003 · ~35–45 minutes</p>
+  <h1>Signature Trace: From <code>new Anthropic()</code> to <code>Message</code></h1>
+  <p class="lede">Expand one SDK call until every object, method, parameter, return type, and runtime hand-off is
+  visible. The goal is not to memorize declarations; it is to see exactly how the SDK moves API chores out of
+  your application code.</p>
+</header>
+
+<div class="callout mission">
+  <strong>Version pin</strong>
+  Every SDK declaration and implementation excerpt in this supplement was verified against
+  <code>@anthropic-ai/sdk</code> <strong>0.113.0</strong>. Generated SDK surfaces change. To reproduce the same
+  signatures, use the exact dependency <code>"@anthropic-ai/sdk": "0.113.0"</code>, without <code>^</code> or
+  <code>~</code>. The excerpts are abridged only where marked; omitted members do not change the reasoning shown.
+</div>
+
+<h2>How to use this supplement</h2>
+
+<p>Read it after Lesson 0001, revisit the Lesson 0002 section after completing the raw client, and finish the
+Lesson 0003 section beside the SDK client. The trace starts from the expression you write:</p>
+
+<pre><code>const client = new Anthropic(options);
+const message = await client.messages.create(params, requestOptions);</code></pre>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    A["Anthropic class"] -->|"new ... (ClientOptions)"| B["client: Anthropic"]
+    B -->|"property"| C["client.messages: Messages"]
+    C -->|"create(params, options)"| D["APIPromise&lt;Message&gt;"]
+    D -->|"await"| E["Message + optional _request_id"]
+</pre>
+<figcaption>The static trace. TypeScript declarations describe each arrow; JavaScript implementations perform
+the runtime work behind them.</figcaption>
+</figure>
+
+<div class="callout">
+  <strong>The distinction to preserve throughout</strong>
+  A <em>signature</em> tells TypeScript what may be called and what type comes back. It does not authenticate,
+  serialize, send, retry, parse, or validate anything. The installed JavaScript implementation performs those
+  runtime operations. The SDK abstracts responsibilities away from <em>your application code</em>, not away from
+  TypeScript.
+</div>
+
+<h2>Lesson 0001 supplement · Read the call as an object path</h2>
+
+<h3>1. Import the class</h3>
+
+<pre><code>import Anthropic from "@anthropic-ai/sdk";</code></pre>
+
+<p>The default import gives the local name <code>Anthropic</code> to the SDK's exported class. A class describes
+what its instances contain and can do. At this point no client exists and no HTTP request has been sent.</p>
+
+<h3>2. Call the constructor</h3>
+
+<p>The relevant declaration in <code>client.d.ts</code> is:</p>
+
+<pre><code>export declare class Anthropic extends BaseAnthropic {
+  messages: API.Messages;
+  // other resources omitted
+}
+
+// Inherited construction signature, abridged:
+constructor(options?: ClientOptions);</code></pre>
+
+<p>Now read the expression:</p>
+
+<pre><code>const client = new Anthropic({
+  apiKey: "mock-key",
+  baseURL: "http://localhost:8787",
+});</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>What exists at runtime?</th></tr>
+  <tr><td><code>Anthropic</code></td><td>The class imported from the package</td><td>A constructor function</td></tr>
+  <tr><td><code>new Anthropic(...)</code></td><td>Invoke its constructor</td><td>A new client object</td></tr>
+  <tr><td><code>{ apiKey, baseURL }</code></td><td>One argument shaped as <code>ClientOptions</code></td><td>A plain object read by the constructor</td></tr>
+  <tr><td><code>client</code></td><td>A variable inferred as type <code>Anthropic</code></td><td>A reference to the client instance</td></tr>
+</table>
+
+<p>Construction configures durable defaults. It still does not create a model response. In 0.113.0 the
+implementation stores defaults such as <code>timeout</code> and <code>maxRetries</code>, resolves how
+authentication will work, and creates resource objects including:</p>
+
+<pre><code>// Runtime implementation, simplified from client.mjs:
+this.messages = new API.Messages(this);</code></pre>
+
+<p>The parent client is passed into the <code>Messages</code> resource. That retained reference is why
+<code>messages.create()</code> can later use the client's base URL, authentication, timeout, retry policy, and
+transport without receiving them all again.</p>
+
+<h3>3. Follow the resource property</h3>
+
+<pre><code>client.messages</code></pre>
+
+<p>This is property access, not a network call. Its declared type is <code>API.Messages</code>, the SDK resource
+corresponding to the Messages API. The next dot selects a method on that object:</p>
+
+<pre><code>client.messages.create</code></pre>
+
+<p>Only the parentheses invoke the method:</p>
+
+<pre><code>client.messages.create(params, requestOptions)</code></pre>
+
+<h3>4. Read a method signature from left to right</h3>
+
+<p>For a non-streaming request, 0.113.0 declares:</p>
+
+<pre><code>create(
+  params: MessageCreateParamsNonStreaming,
+  options?: RequestOptions,
+): APIPromise&lt;Message&gt;;</code></pre>
+
+<table>
+  <tr><th>Signature fragment</th><th>Question it answers</th></tr>
+  <tr><td><code>create</code></td><td>Which method am I calling?</td></tr>
+  <tr><td><code>params:</code></td><td>What is the first argument called?</td></tr>
+  <tr><td><code>MessageCreateParamsNonStreaming</code></td><td>Which shapes may the first argument have?</td></tr>
+  <tr><td><code>options?:</code></td><td>Is the second argument optional?</td></tr>
+  <tr><td><code>RequestOptions</code></td><td>Which shapes may the second argument have?</td></tr>
+  <tr><td><code>APIPromise&lt;Message&gt;</code></td><td>What value is returned immediately?</td></tr>
+</table>
+
+<p>The two arguments have different jobs:</p>
+
+<pre><code>client.messages.create(
+  {
+    model: "claude-opus-4-8",
+    max_tokens: 100,
+    messages: [{ role: "user", content: "Hello" }],
+  },                                      // params: what the API should generate
+  {
+    maxRetries: 0,
+    timeout: 2_000,
+    signal: controller.signal,
+  },                                      // options: how this HTTP operation should run
+);</code></pre>
+
+<p><code>APIPromise&lt;Message&gt;</code> says that the operation is asynchronous and that parsing it normally
+produces a <code>Message</code>. It does not mean a <code>Message</code> already exists at the moment
+<code>create()</code> returns.</p>
+
+<h3>5. Let <code>await</code> unwrap the operation</h3>
+
+<pre><code>const operation = client.messages.create(params);
+// operation: APIPromise&lt;Message&gt;
+
+const message = await operation;
+// message: Message &amp; { _request_id?: string | null }</code></pre>
+
+<p>In this release, <code>APIPromise&lt;T&gt;</code> is declared as a specialized subclass of
+<code>Promise&lt;WithRequestID&lt;T&gt;&gt;</code>. Because <code>Message</code> is an object,
+<code>WithRequestID&lt;Message&gt;</code> adds an optional SDK property:</p>
+
+<pre><code>type WithRequestID&lt;T&gt; =
+  T extends Record&lt;string, any&gt;
+    ? T &amp; { _request_id?: string | null }
+    : T;</code></pre>
+
+<p>This is why <code>await</code> gives your code the parsed message, not the promise wrapper. The optional
+<code>_request_id</code> does not belong to Anthropic's JSON message document; the SDK derives it from the HTTP
+<code>request-id</code> response header.</p>
+
+<h3>Lesson 0001 checkpoint</h3>
+
+<ol>
+  <li><code>Anthropic</code> is the class; <code>client</code> is one configured instance.</li>
+  <li><code>client.messages</code> is a resource property, not the returned model message.</li>
+  <li><code>.create(...)</code> begins an asynchronous API operation.</li>
+  <li>The signature describes the call; the implementation performs it.</li>
+  <li><code>await</code> converts your view from “operation in progress” to “parsed result.”</li>
+</ol>
+
+<h2>Lesson 0002 supplement · What raw <code>fetch</code> leaves to you</h2>
+
+<h3>1. Start with the generic transport signature</h3>
+
+<p>The built-in <code>fetch</code> API is deliberately unaware of Anthropic:</p>
+
+<pre><code>fetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise&lt;Response&gt;;</code></pre>
+
+<p>Its return type says only that an HTTP response will eventually exist. It cannot infer from the URL that the
+body should be an Anthropic <code>Message</code>. Consequently, the raw client must own every Anthropic-specific
+decision:</p>
+
+<pre><code>const response = await fetch(`${BASE_URL}/v1/messages`, {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    "x-api-key": API_KEY,
+    "anthropic-version": "2023-06-01",
+  },
+  body: JSON.stringify(params),
+  signal: controller.signal,
+});</code></pre>
+
+<h3>2. Parsing JSON does not discover an Anthropic type</h3>
+
+<p>The relevant conceptual pipeline is:</p>
+
+<pre><code>const value = await response.json();</code></pre>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    A["UTF-8 response bytes"] --> B["response.json()"]
+    B --> C["plain JavaScript value"]
+    C -->|"as MessageResponse"| D["compiler treats value as MessageResponse"]
+</pre>
+<figcaption><code>response.json()</code> parses JSON syntax at runtime. The type assertion changes only
+TypeScript's view of the resulting value.</figcaption>
+</figure>
+
+<p>In the raw exercise you supplied the missing Anthropic knowledge yourself:</p>
+
+<pre><code>interface MessageResponse {
+  id: string;
+  type: "message";
+  role: "assistant";
+  content: Array&lt;{
+    type: string;
+    text?: string;
+  }&gt;;
+  stop_reason: string | null;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+}
+
+const body = (await response.json()) as MessageResponse;</code></pre>
+
+<p>The assertion <code>as MessageResponse</code> does not:</p>
+
+<ul>
+  <li>parse the response—<code>response.json()</code> already did that;</li>
+  <li>check that <code>id</code>, <code>content</code>, or <code>usage</code> exists;</li>
+  <li>check the value of <code>type</code>;</li>
+  <li>change the runtime object;</li>
+  <li>add authentication, retries, timeouts, or cancellation.</li>
+</ul>
+
+<p>It tells the compiler to trust your claim. Valid JSON with the wrong shape can therefore pass parsing:</p>
+
+<pre><code>{ "banana": 42 }</code></pre>
+
+<p>and fail later when the application trusts <code>body.content</code>.</p>
+
+<h3>3. The handwritten interface and the SDK type have equal runtime force</h3>
+
+<table>
+  <tr><th>Question</th><th>Your <code>MessageResponse</code></th><th>SDK <code>Message</code></th></tr>
+  <tr><td>Who owns it?</td><td>You</td><td>The SDK vendor and its generator</td></tr>
+  <tr><td>How complete is it?</td><td>Only what you wrote</td><td>Much closer to the complete API contract</td></tr>
+  <tr><td>Who maintains API changes?</td><td>You</td><td>The SDK release</td></tr>
+  <tr><td>Compile-time checking?</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Runtime shape validation merely because the type exists?</td><td>No</td><td>No</td></tr>
+</table>
+
+<p>The real difference is provenance, completeness, and maintenance—not stronger runtime proof.</p>
+
+<h3>4. Map the six responsibilities to raw code</h3>
+
+<table>
+  <tr><th>Responsibility</th><th>Raw client owner</th></tr>
+  <tr><td>① Endpoint</td><td>Your URL construction and HTTP method</td></tr>
+  <tr><td>② Authentication</td><td>Your credential lookup and <code>x-api-key</code> header</td></tr>
+  <tr><td>③ API version</td><td>Your <code>anthropic-version</code> header</td></tr>
+  <tr><td>④ Contract</td><td>Your params object, serialization, parsing, and interfaces</td></tr>
+  <tr><td>⑤ Errors and retries</td><td>Your <code>response.ok</code> branch, error parsing, waiting, and retry loop</td></tr>
+  <tr><td>⑥ Cancellation and timeout</td><td>Your <code>AbortController</code>, timer, and abort handling</td></tr>
+</table>
+
+<h3>5. Editor diagnostic, type-check, and execution are three different events</h3>
+
+<p>The lesson experiment with <code>mesages</code> needs one precise qualification:</p>
+
+<pre><code>client.messages.create({
+  model,
+  max_tokens: 100,
+  mesages: [{ role: "user", content: "Hello" }],
+});</code></pre>
+
+<ul>
+  <li>VS Code's TypeScript language service can underline the typo immediately.</li>
+  <li><code>pnpm typecheck</code> can report it through <code>tsc</code> and exit unsuccessfully.</li>
+  <li><code>tsx src/client.ts</code> transpiles and runs without performing a complete type-check.</li>
+</ul>
+
+<p>Therefore the typo is prevented from reaching the mock only when type-checking is an enforced gate, for
+example:</p>
+
+<pre><code>{
+  "scripts": {
+    "request": "tsc --noEmit &amp;&amp; tsx src/client.ts"
+  }
+}</code></pre>
+
+<p>If you run only <code>tsx</code>, the erased TypeScript types cannot stop JavaScript from sending the malformed
+body. The mock may then answer with the runtime <code>400</code> that the editor already predicted.</p>
+
+<h3>Lesson 0002 checkpoint</h3>
+
+<ol>
+  <li><code>fetch()</code> knows HTTP, not the Messages API.</li>
+  <li><code>response.json()</code> checks JSON syntax, not the <code>MessageResponse</code> shape.</li>
+  <li>A TypeScript interface constrains your code only while type-checking runs.</li>
+  <li>The raw client owns the six responsibilities explicitly.</li>
+</ol>
+
+<h2>Lesson 0003 supplement · Expand the SDK abstraction</h2>
+
+<h3>1. Constructor signature: client-wide defaults</h3>
+
+<p>The actual <code>ClientOptions</code> interface in 0.113.0 is larger. These are the members that account for
+the Lesson 0003 client:</p>
+
+<pre><code>interface ClientOptions {
+  apiKey?: string | ApiKeySetter | null | undefined;
+  authToken?: string | null | undefined;
+  baseURL?: string | null | undefined;
+  timeout?: number | undefined;
+  maxRetries?: number | undefined;
+  defaultHeaders?: HeadersLike | undefined;
+  fetch?: Fetch | undefined;
+  // additional members omitted
+}
+
+constructor(options?: ClientOptions);</code></pre>
+
+<table>
+  <tr><th>Option</th><th>Compile-time contribution</th><th>Runtime contribution</th></tr>
+  <tr><td><code>apiKey</code></td><td>Accepts the declared credential forms</td><td>Supplies authentication; defaults can be resolved from configuration/environment</td></tr>
+  <tr><td><code>baseURL</code></td><td>Must be a compatible string/nullish value</td><td>Selects the API host or local mock seam</td></tr>
+  <tr><td><code>timeout</code></td><td>Must be a number when supplied</td><td>Limits one request attempt in milliseconds</td></tr>
+  <tr><td><code>maxRetries</code></td><td>Must be a number when supplied</td><td>Sets the client-wide retry count; default is 2</td></tr>
+  <tr><td><code>fetch</code></td><td>Must match the expected fetch signature</td><td>Replaces the underlying transport implementation</td></tr>
+</table>
+
+<p>The interface does not read an environment variable or arm a timer. The constructor implementation does that
+runtime work.</p>
+
+<h3>2. Resource signature: the endpoint becomes a method</h3>
+
+<p>The class exposes:</p>
+
+<pre><code>messages: API.Messages;</code></pre>
+
+<p>and the runtime <code>Messages.create()</code> implementation eventually delegates to:</p>
+
+<pre><code>// Simplified from resources/messages/messages.mjs:
+return this._client.post("/v1/messages", {
+  body,
+  timeout: timeout ?? 600_000,
+  ...options,
+  headers: buildHeaders(/* SDK and per-request headers */),
+  stream: params.stream ?? false,
+});</code></pre>
+
+<p>This implementation is where the apparently absent endpoint reappears. The method name does not replace
+<code>POST /v1/messages</code>; it hides that repeated construction behind a resource method.</p>
+
+<h3>3. Params signature: the request body becomes a checked shape</h3>
+
+<p>The non-streaming params type is formed in two layers:</p>
+
+<pre><code>// Abridged from resources/messages/messages.d.ts:
+interface MessageCreateParamsBase {
+  max_tokens: number;
+  messages: Array&lt;MessageParam&gt;;
+  model: Model;
+  // optional request-body fields omitted
+}
+
+interface MessageCreateParamsNonStreaming
+  extends MessageCreateParamsBase {
+  stream?: false;
+}</code></pre>
+
+<p>These declarations explain the editor and <code>tsc</code> diagnostics:</p>
+
+<ul>
+  <li><code>max_tokens</code>, <code>messages</code>, and <code>model</code> are required;</li>
+  <li><code>mesages</code> is not a known property;</li>
+  <li><code>stream?: false</code> selects the non-streaming overload;</li>
+  <li>nested <code>MessageParam</code> values also have declared <code>role</code> and <code>content</code> shapes.</li>
+</ul>
+
+<p>This is compile-time representation of responsibility ④. At runtime the SDK still has to turn the params
+object into a JSON request body.</p>
+
+<h3>4. Options signature: transport behavior stays outside the body</h3>
+
+<p>The second argument uses <code>RequestOptions</code>. Relevant members in 0.113.0 are:</p>
+
+<pre><code>interface RequestOptions {
+  headers?: HeadersLike;
+  maxRetries?: number;
+  timeout?: number;
+  signal?: AbortSignal | undefined | null;
+  fetchOptions?: MergedRequestInit;
+  // internal and advanced members omitted
+}</code></pre>
+
+<p>Keeping this object separate prevents transport mechanics from leaking into the Messages API JSON contract:</p>
+
+<pre><code>await client.messages.create(
+  {
+    model,
+    max_tokens: 100,
+    messages,
+  },                         // serialized into the request body
+  {
+    maxRetries: 0,
+    timeout: 200,
+    signal,
+  },                         // controls the SDK operation; not model input
+);</code></pre>
+
+<p>The same option at two scopes establishes override precedence:</p>
+
+<pre><code>const client = new Anthropic({ maxRetries: 2 }); // default for this client
+
+await client.messages.create(params, {
+  maxRetries: 0,                                  // override for this call
+});</code></pre>
+
+<h3>5. Overloads: arguments select the return type</h3>
+
+<p>Version 0.113.0 declares three <code>create()</code> signatures:</p>
+
+<pre><code>create(
+  params: MessageCreateParamsNonStreaming,
+  options?: RequestOptions,
+): APIPromise&lt;Message&gt;;
+
+create(
+  params: MessageCreateParamsStreaming,
+  options?: RequestOptions,
+): APIPromise&lt;Stream&lt;RawMessageStreamEvent&gt;&gt;;
+
+create(
+  params: MessageCreateParamsBase,
+  options?: RequestOptions,
+): APIPromise&lt;Stream&lt;RawMessageStreamEvent&gt; | Message&gt;;</code></pre>
+
+<p>An overload is not three runtime methods with the same name. It is one implementation described by multiple
+call signatures. TypeScript selects the most specific description it can from the argument:</p>
+
+<table>
+  <tr><th>Params</th><th>Selected compile-time return type</th></tr>
+  <tr><td>No <code>stream</code>, or <code>stream: false</code></td><td><code>APIPromise&lt;Message&gt;</code></td></tr>
+  <tr><td>Literal <code>stream: true</code></td><td><code>APIPromise&lt;Stream&lt;RawMessageStreamEvent&gt;&gt;</code></td></tr>
+  <tr><td>A boolean not known to be true or false</td><td>The union of both possible results</td></tr>
+</table>
+
+<div class="callout">
+  <strong>Boundary with Lesson 0004</strong>
+  Lessons 0001–0003 follow the first overload only. The second overload is shown here so Lesson 0004 begins from a
+familiar method rather than an unexplained new message type. <code>stream: true</code> changes the successful
+response representation and lifecycle; it does not define a second final <code>Message</code> shape.
+</div>
+
+<h3>6. <code>APIPromise&lt;Message&gt;</code>: the operation and parsing boundary</h3>
+
+<p>The declaration is:</p>
+
+<pre><code>class APIPromise&lt;T&gt; extends Promise&lt;WithRequestID&lt;T&gt;&gt; {
+  asResponse(): Promise&lt;Response&gt;;
+
+  withResponse(): Promise&lt;{
+    data: T;
+    response: Response;
+    request_id: string | null | undefined;
+  }&gt;;
+
+  // other members omitted
+}</code></pre>
+
+<p>This gives you three alternative views of an operation:</p>
+
+<pre><code>const message = await client.messages.create(params);
+// parsed Message + optional _request_id
+
+const raw = await client.messages.create(params).asResponse();
+// raw Fetch Response
+
+const both = await client.messages.create(params).withResponse();
+// parsed data + Response + request_id</code></pre>
+
+<p>The runtime parser in 0.113.0 effectively does:</p>
+
+<pre><code>const contentType = response.headers.get("content-type");
+
+if (contentType indicates JSON) {
+  const json = await response.json();
+  return addRequestID(json, response);
+}</code></pre>
+
+<p><code>addRequestID()</code> defines <code>_request_id</code> as a non-enumerable property using the
+<code>request-id</code> header. The generic return type tells TypeScript to treat the parsed value as
+<code>T</code>; ordinary non-streaming parsing does not perform field-by-field validation against
+<code>Message</code>.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    participant App as your code
+    participant Msg as Messages resource
+    participant Core as BaseAnthropic/APIPromise
+    participant API as mock or Anthropic API
+    App->>Msg: create(params, options)
+    Msg->>Core: post("/v1/messages", body + options)
+    Core->>API: HTTP POST + headers + JSON bytes
+    API-->>Core: status + headers + JSON bytes
+    Core->>Core: response.json()
+    Core->>Core: add _request_id
+    Core-->>App: await resolves to typed Message
+</pre>
+<figcaption>The runtime trace for the non-streaming overload. Declarations constrain the two ends; implementation
+code performs everything between them.</figcaption>
+</figure>
+
+<h3>7. <code>Message</code>: the returned contract</h3>
+
+<p>The response interface in 0.113.0 is larger than the mock fixture. Its central shape is:</p>
+
+<pre><code>// Abridged from resources/messages/messages.d.ts:
+interface Message {
+  id: string;
+  container: Container | null;
+  content: Array&lt;ContentBlock&gt;;
+  model: Model;
+  role: "assistant";
+  stop_details: RefusalStopDetails | null;
+  stop_reason: StopReason | null;
+  stop_sequence: string | null;
+  type: "message";
+  usage: Usage;
+}</code></pre>
+
+<p>This is the complete assistant-response object—not one input turn and not one stream event. Notice that
+<code>content</code> is an array of a union type:</p>
+
+<pre><code>type ContentBlock =
+  | TextBlock
+  | ThinkingBlock
+  | RedactedThinkingBlock
+  | ToolUseBlock
+  | ServerToolUseBlock
+  | WebSearchToolResultBlock
+  | WebFetchToolResultBlock
+  | CodeExecutionToolResultBlock
+  | BashCodeExecutionToolResultBlock
+  | TextEditorCodeExecutionToolResultBlock
+  | ToolSearchToolResultBlock
+  | ContainerUploadBlock;</code></pre>
+
+<p>The literal <code>type</code> property discriminates among these shapes. That is why access to
+<code>.text</code> requires narrowing:</p>
+
+<pre><code>for (const block of message.content) {
+  if (block.type === "text") {
+    console.log(block.text);
+  }
+}</code></pre>
+
+<p>Before the check, <code>block</code> might be any <code>ContentBlock</code>. Inside the branch,
+TypeScript knows it is a <code>TextBlock</code>. Lesson 0004 reuses exactly this idea for unions of stream
+events.</p>
+
+<h3>8. Typed errors: runtime classes not shown in the success return type</h3>
+
+<p>TypeScript has no checked-exception syntax, so <code>APIPromise&lt;Message&gt;</code> does not list every error
+that may be thrown. The SDK supplies a runtime class hierarchy instead:</p>
+
+<pre><code>AnthropicError
+└── APIError
+    ├── APIUserAbortError
+    ├── APIConnectionError
+    │   └── APIConnectionTimeoutError
+    ├── BadRequestError            // status 400
+    ├── AuthenticationError        // status 401
+    ├── PermissionDeniedError      // status 403
+    ├── NotFoundError              // status 404
+    ├── ConflictError              // status 409
+    ├── UnprocessableEntityError   // status 422
+    ├── RateLimitError             // status 429
+    └── InternalServerError</code></pre>
+
+<p>These classes allow runtime narrowing:</p>
+
+<pre><code>try {
+  const message = await client.messages.create(params);
+} catch (error: unknown) {
+  if (error instanceof Anthropic.RateLimitError) {
+    console.error(error.status);                       // typed as 429
+    console.error(error.requestID);
+    console.error(error.headers.get("retry-after"));
+  } else if (error instanceof Anthropic.APIUserAbortError) {
+    console.error("Cancelled by the caller");
+  } else if (error instanceof Anthropic.APIConnectionTimeoutError) {
+    console.error("One or more attempts timed out");
+  } else if (error instanceof Anthropic.APIError) {
+    console.error(error.status, error.type, error.requestID);
+  } else {
+    throw error;
+  }
+}</code></pre>
+
+<p>The declaration exposes properties such as <code>status</code>, <code>headers</code>, <code>error</code>,
+<code>requestID</code>, and <code>type</code>. The implementation decides when to construct and throw each class.</p>
+
+<h3>9. Retry behavior: mechanics behind two small signatures</h3>
+
+<p>The retry behavior is controlled by the same property at two levels:</p>
+
+<pre><code>new Anthropic({ maxRetries: 2 })                    // client default
+
+client.messages.create(params, { maxRetries: 0 })  // per-call override</code></pre>
+
+<p>In 0.113.0, the runtime implementation retries eligible connection failures and HTTP statuses including 408,
+409, 429, and 5xx while attempts remain. If a response supplies <code>retry-after-ms</code> or
+<code>retry-after</code>, the implementation derives the delay from that header; otherwise it calculates
+exponential backoff with jitter.</p>
+
+<p>The raw client could read and print <code>retry-after</code>. The SDK's implementation can obey it, wait, issue
+the next attempt, and expose only the eventual success or final typed error to your application. With
+<code>maxRetries: 2</code>, the maximum is three attempts: one initial request plus two retries.</p>
+
+<h3>10. Responsibility map: declaration versus implementation</h3>
+
+<table>
+  <tr><th>Responsibility</th><th>Where the signature exposes it</th><th>What runtime code actually does</th></tr>
+  <tr><td>① Endpoint</td><td><code>client.messages: Messages</code></td><td><code>create()</code> posts to <code>/v1/messages</code> and joins it to <code>baseURL</code></td></tr>
+  <tr><td>② Authentication</td><td><code>ClientOptions.apiKey</code> and related credential members</td><td>Resolves credentials and constructs the auth header</td></tr>
+  <tr><td>③ API version</td><td>Mostly absent from ordinary call signatures</td><td>Adds the SDK-pinned version header</td></tr>
+  <tr><td>④ Contract</td><td><code>MessageCreateParamsNonStreaming</code> and <code>Message</code></td><td>Serializes params, parses JSON, and attaches compile-time trust</td></tr>
+  <tr><td>⑤ Errors and retries</td><td><code>maxRetries</code> options and exported error classes</td><td>Classifies eligible failures, obeys retry delays, retries, then throws typed errors</td></tr>
+  <tr><td>⑥ Cancellation and timeout</td><td><code>RequestOptions.signal</code> and <code>timeout</code></td><td>Passes abort signals to fetch, arms timers, aborts attempts, and classifies the result</td></tr>
+</table>
+
+<h3>11. What the future <code>ModelGateway</code> must still own</h3>
+
+<p>The SDK provides mechanisms, not Hermes policy. A gateway must still decide matters such as:</p>
+
+<ul>
+  <li>which model is allowed for a task and when fallback is permitted;</li>
+  <li>token and monetary budgets;</li>
+  <li>application-specific retry limits and idempotency rules;</li>
+  <li>approval requirements before consequential actions;</li>
+  <li>runtime validation of model-generated structured output before Hermes trusts it;</li>
+  <li>logging, evidence capture, redaction, and failure reporting required by the Spec-to-Evidence Loop.</li>
+</ul>
+
+<p><code>maxRetries</code> is a mechanism. “This class of Hermes operation may retry once within its remaining
+budget” is policy. <code>Message</code> is an API response type. “This generated object satisfies the task schema
+and is safe to use” requires a separate runtime validation policy.</p>
+
+<h3>Lesson 0003 checkpoint</h3>
+
+<ol>
+  <li><code>ClientOptions</code> types client-wide defaults; the constructor stores and applies them.</li>
+  <li><code>Messages.create()</code> hides the endpoint and delegates to the shared HTTP client.</li>
+  <li>The first argument is API input; the second controls the individual operation.</li>
+  <li>The non-streaming overload returns <code>APIPromise&lt;Message&gt;</code>.</li>
+  <li><code>await</code> triggers the normal parsed view and yields a typed object with an optional request ID.</li>
+  <li>The SDK's <code>Message</code> is better maintained than your interface, but not runtime proof of the bytes.</li>
+  <li>Error classes and retry implementation supply mechanics; Hermes still owns policy.</li>
+</ol>
+
+<h2>Complete trace · One line, expanded</h2>
+
+<pre><code>const message = await client.messages.create(params, options);</code></pre>
+
+<ol>
+  <li><strong>Compile time:</strong> TypeScript confirms that <code>client</code> has a
+  <code>messages</code> property.</li>
+  <li><strong>Compile time:</strong> It selects the non-streaming <code>create()</code> overload because the
+  params omit <code>stream</code> or use <code>stream: false</code>.</li>
+  <li><strong>Compile time:</strong> It checks required params and the separate request-options shape.</li>
+  <li><strong>Runtime:</strong> <code>create()</code> delegates to the parent client's
+  <code>POST /v1/messages</code> implementation.</li>
+  <li><strong>Runtime:</strong> The client resolves its URL, authentication, version and other headers.</li>
+  <li><strong>Runtime:</strong> It serializes the body and begins the HTTP attempt with timeout and abort plumbing.</li>
+  <li><strong>Runtime:</strong> Eligible failures are retried according to per-call or client defaults, honoring
+  retry headers when present.</li>
+  <li><strong>Runtime:</strong> A successful JSON response is parsed into a plain JavaScript value.</li>
+  <li><strong>Runtime:</strong> The SDK adds the non-enumerable <code>_request_id</code> from the response header.</li>
+  <li><strong>Compile-time view of the runtime value:</strong> the generic operation labels the result as
+  <code>Message</code>; it does not field-validate ordinary response JSON against that interface.</li>
+  <li><strong>Runtime:</strong> <code>await</code> resumes your function with the parsed result.</li>
+  <li><strong>Your code:</strong> discriminated-union narrowing determines which content-block fields may safely
+  be accessed.</li>
+</ol>
+
+<h2>Self-check</h2>
+
+<details>
+  <summary>1. Which part sends the request: the <code>create()</code> signature or its implementation?</summary>
+  <p>The JavaScript implementation. The signature only describes the legal call and its inferred return type.</p>
+</details>
+
+<details>
+  <summary>2. Why is <code>client.messages</code> not the <code>Message</code> response?</summary>
+  <p><code>client.messages</code> is a long-lived <code>Messages</code> resource object containing methods such as
+  <code>create()</code>. A response <code>Message</code> is the result of one completed create operation.</p>
+</details>
+
+<details>
+  <summary>3. Why can VS Code show a typo while <code>tsx</code> still sends it?</summary>
+  <p>The editor runs TypeScript analysis, while <code>tsx</code> can transpile and execute without enforcing a full
+  type-check. Only an enforced <code>tsc</code> gate prevents execution.</p>
+</details>
+
+<details>
+  <summary>4. What does <code>APIPromise&lt;Message&gt;</code> add beyond a plain
+  <code>Promise&lt;Message&gt;</code>?</summary>
+  <p>In 0.113.0 it adds SDK response helpers such as <code>asResponse()</code> and
+  <code>withResponse()</code>, and its normal parsed result uses <code>WithRequestID&lt;Message&gt;</code>.</p>
+</details>
+
+<details>
+  <summary>5. Does <code>Message</code> validate the incoming JSON at runtime?</summary>
+  <p>No. Normal non-streaming parsing validates JSON syntax, then the SDK's generic return type supplies the
+  compile-time contract. The type itself is erased at runtime.</p>
+</details>
+
+<details>
+  <summary>6. What changes when <code>stream: true</code> is added?</summary>
+  <p>A different overload is selected:
+  <code>APIPromise&lt;Stream&lt;RawMessageStreamEvent&gt;&gt;</code>. Lesson 0004 explains the corresponding SSE
+  response lifecycle and reconstruction of a final <code>Message</code>.</p>
+</details>
+
+<h2>Source map for version 0.113.0</h2>
+
+<p>These installed package files contain the declarations and implementations traced above:</p>
+
+<table>
+  <tr><th>Question</th><th>Package file</th></tr>
+  <tr><td>What can configure the client?</td><td><code>client.d.ts</code></td></tr>
+  <tr><td>How are resources installed on the client?</td><td><code>client.mjs</code></td></tr>
+  <tr><td>What are the <code>create()</code> overloads and message types?</td><td><code>resources/messages/messages.d.ts</code></td></tr>
+  <tr><td>How does <code>create()</code> delegate to <code>POST /v1/messages</code>?</td><td><code>resources/messages/messages.mjs</code></td></tr>
+  <tr><td>Which per-request options exist?</td><td><code>internal/request-options.d.ts</code></td></tr>
+  <tr><td>What does <code>APIPromise</code> expose?</td><td><code>core/api-promise.d.ts</code> and <code>core/api-promise.mjs</code></td></tr>
+  <tr><td>How is JSON parsed and the request ID added?</td><td><code>internal/parse.mjs</code></td></tr>
+  <tr><td>Which error classes exist?</td><td><code>core/error.d.ts</code></td></tr>
+  <tr><td>Which statuses retry and how is <code>retry-after</code> used?</td><td><code>client.mjs</code></td></tr>
+</table>
+
+<footer>
+  <p><strong>Next:</strong> return to Lesson 0004 with two ideas already established:
+  <code>ContentBlock</code> is a discriminated union, and <code>messages.create()</code> has a second overload.
+  Streaming is therefore not a mysterious new message object. It is a different asynchronous response mode whose
+  events can be narrowed and folded into the same final <code>Message</code> contract.</p>
+</footer>
+
+</body>
+</html>
