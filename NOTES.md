@@ -205,6 +205,78 @@ monotonic drift across all eight shipped lessons: mean sentence length 15.6 → 
 - **Stray file, untouched:** an untracked duplicate of the old lesson sits at the repo root
   (`0006-the-model-gateway.html`). It is now stale. Delete it when convenient.
 
+## Update 2026-08-08 — lesson 0007 shipped, the first lesson authored under the regime
+
+- **0007 *The TaskSpec Is a Contract* + lab `06-taskspec`.** 1,893 words, 0 errors, 0 warnings from
+  `tools/lesson-lint.mjs`. Its map note and all three term notes pass too. This is the first lesson
+  written to Article VIII rather than retrofitted to it, and the budget was not the binding constraint —
+  it landed 107 words under without cutting scope.
+- **The user's `help_for_claude.md` was the brief.** Read it before authoring. Three new Technical Names
+  only (`task-spec`, `admissibility-check`, `schema-refinement`), each with a `<dfn>` of 20 words or
+  fewer at first use, against a budget of six. Zero em-dashes in prose. No coinages.
+- **What the lesson teaches:** a schema for the *work* rather than for bytes off a wire; the parse as a
+  dispatch gate; `.default()` splitting one schema into `z.input` and `z.output` types; and a refinement
+  as the rule no single field can carry.
+- **Every number in the lesson is measured, not asserted** (Article IV.2), against zod 4.4.3 and SDK
+  0.113.0. The valid file's 5 keys become 7 after defaults fill. The job lands at 65 tokens. One bad file
+  yields 3 rejections from one parse. `over-ceiling.json` is refused by the refinement at path
+  `maxTokens` with code `custom`.
+- **The strongest measurement was found by probing, not by design.** "Costs zero tokens" is easy to
+  assert. The evidence is two independent facts: `fake.calls.length === 0`, and the mock's request
+  counter not advancing across a whole Part B (Part A takes `req_mock_0001`, the next Part A takes
+  `req_mock_0002`). Worth reusing whenever a lesson claims something did not happen.
+- **A measured Zod fact that surprised me and is now taught:** a refinement does not run when any field's
+  type fails. A spec missing `owner` *and* breaking the ceiling rule reports the `owner` issue alone, so
+  one bad file can be refused in two rounds. Verified with a throwaway probe against 4.4.3.
+- **Three files were carried into `06-taskspec` from `05-model-gateway` unchanged** (`gateway.ts`,
+  `anthropic-gateway.ts`, `fake-gateway.ts`). That is the lesson's own claim about layering, so it had to
+  be literally true, and the layer table cites it.
+- **The linter's sentence splitter needs a capital after a full stop.** Two false-looking failures were
+  real: a sentence beginning `<code>allowedTools</code>` and a compression sentence beginning
+  `<code>.default()</code>` each glued onto the previous sentence and blew the word limit. Start a
+  sentence with an ordinary word when the next token is a lowercase identifier.
+- **Markdown list items lint as one block.** Six two-sentence bullets in the map note read as a 10
+  sentence paragraph and failed PARA-1. One sentence per bullet is the safe shape.
+- **Pre-existing debt paid, not deferred:** `wiki/course/course-module-graph.md` failed the profile with
+  5 em-dashes and an over-length sentence. The write hook caught it on a routine status flip. It now
+  passes. The hook is doing what it was built for.
+- **Judged rather than measured, and recorded as required by VIII.6:** SENT-3 (passive voice) is not
+  implemented in the linter, so I read for it. SENT-2, PARA-2, PARA-4, PARA-6, BAN-6, BAN-10 to BAN-14
+  and BAN-18 were judged by eye. PARA-6's one status table sits at the end of section 4.
+- **No test framework exists in `hermes-sdk-lab`, so `/tdd` had no seam to work at.** Verification is
+  `pnpm typecheck` plus live runs of all three parts against the exercise 01 mock, which is the lab's
+  established form. Introducing a test runner would have been a scope change, so I did not.
+- **The two-axis review caught one factual error the linter never could.** "Part B refuses three files"
+  appeared in the layer table and in quiz Q2. Part B refuses **two** (the third file is Part C's). A
+  graded question carried a false premise. Fixed. This is the argument for running `/code-review` even
+  when the lint is clean: the linter grades prose, not truth.
+- **Two more accuracy fixes from the same pass.** "Three files arrive from exercise 05 unchanged" was not
+  literally true, because header comments changed and the adapter's TODO banner was removed. The claim is
+  now "no code changed in `gateway.ts` or in either implementation", which is verifiable. The lab README
+  said "four files" where its own table said three.
+- **Article III.1 (wire truth) was genuinely missing and is now paid.** The lesson claimed the spec's
+  `maxTokens` reaches the wire without showing the exchange. I captured the real request with a throwaway
+  logging server in the scratchpad, and §2 now carries it: `"max_tokens":1024` from a file that names no
+  `maxTokens`. Code blocks do not count against the word budget, so wire truth is nearly free. Worth
+  remembering when a budget feels tight.
+- **An unresolved rule conflict, flagged rather than silently broken.** TERM-3 reserves Article III.5's
+  collision table for words an *external* system overloads. "Contract" is overloaded three ways inside
+  this course (responsibility ④, the port, the TaskSpec), and the lesson's own title uses it. The
+  collision table stands, and the honest alternative is renaming two of the three. **User decision
+  needed.**
+- **`seeded` is banned by TERM-6 and required by Article III.9.** The status table uses it, because the
+  constitution wins. Recorded so the next amendment can settle it.
+- **The lab's TODO convention is inherited and questionable.** `task-spec.ts` carries a `TODO (Part B)`
+  banner directly above the finished implementation, exactly as `05-model-gateway/src/anthropic-gateway.ts`
+  does. Both reviewers read 05 as leaving its TODO open; it does not. Either the solutions belong in a
+  separate branch or file, or the labels should stop saying TODO. **User decision needed.**
+- **Still to rewrite:** lessons 0001 to 0005, and 0006b. 0006b remains slated for demotion to a reference
+  page.
+- **Blocking the lab's recursive typecheck:** `hermes-sdk-lab/02-model-client-sdk/src/cilent2.ts`
+  (misspelled filename) has a syntax error at line 43 and was committed in `359dcc9`. It fails
+  `pnpm --recursive typecheck` for the whole workspace. All six other exercises pass individually. Left
+  untouched, because it is the user's file.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

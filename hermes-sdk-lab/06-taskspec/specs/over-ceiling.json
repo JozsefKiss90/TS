@@ -1,0 +1,9 @@
+{
+  "title": "Audit the atlas graph",
+  "owner": "themis",
+  "instruction": "Summarize the atlas graph health check in three bullet points.",
+  "maxTokens": 4000,
+  "costCeilingTokens": 1000,
+  "allowedTools": ["graph.read"],
+  "outputPath": "vault/audits/atlas-2026-08-08.md"
+}

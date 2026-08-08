@@ -10,7 +10,7 @@ tags:
 
 # Module graphs
 
-Graph form of [ROADMAP.md](../../ROADMAP.md) — the phases, their gates, and the lesson modules inside the open phase. **Sync duty:** when a lesson ships or a phase opens, update ROADMAP.md *and* this note in the same session. The roadmap's firmness gradient applies here too: shipped = history, next lesson = firm, everything further = provisional.
+Graph form of [ROADMAP.md](../../ROADMAP.md): the phases, their gates, and the lesson modules inside the open phase. **Sync duty:** when a lesson ships or a phase opens, update ROADMAP.md *and* this note in the same session. The roadmap's firmness gradient applies here too: shipped = history, next lesson = firm, everything further = provisional.
 
 ## The phase graph (gates are edges)
 
@@ -31,7 +31,7 @@ flowchart TD
     P5 -->|"⛔ HARD GATE: benchmark shows single-agent CEILING, not tuning"| P6
 ```
 
-## Phase 0 — module detail
+## Phase 0, module detail
 
 ```mermaid
 flowchart TD
@@ -49,13 +49,13 @@ flowchart TD
 
 Lesson maps: [[lesson-0001-trace-one-request]] · [[lesson-0002-raw-http-against-a-mock]] · [[lesson-0003-the-sdk-absorbs-the-six]] · [[lesson-0004-the-response-becomes-a-process]] · [[lesson-0005-validate-the-boundary]]
 
-## Phase 1 — module detail
+## Phase 1, module detail
 
 ```mermaid
 flowchart TD
     M6["0006 The Model Gateway ✅<br/>lab 05-model-gateway · port + adapter + fake<br/>provider decision: neutral port, one live adapter"]
-    M7["0007 The TaskSpec Is a Contract ▶<br/>lab 06-taskspec (prov.)"]
-    M8["0008 Tool Use — the Loop's Heartbeat ○"]
+    M7["0007 The TaskSpec Is a Contract ✅<br/>lab 06-taskspec · schema for the work<br/>admissibility check: no spec, no dispatch"]
+    M8["0008 Tool Use — the Loop's Heartbeat ▶<br/>lab 07-tool-loop (prov.)"]
     M9["0009 Bounds and Termination ○"]
     M10["0010 Approval Gates and Permissions ○"]
     M11["0011 The Trace Is What Happened ○"]
@@ -66,11 +66,13 @@ flowchart TD
     M6 -.->|"FakeModelGateway seeds the offline toolkit"| M12
 ```
 
-Lesson maps: [[lesson-0006-the-model-gateway]] · supplements: 0006a (primer; no map note — see [[course-architecture]]) · [[lesson-0006b-the-hermes-control-plane]] (the Hermes OS control plane from the governance record; reading order 0006 §1 → 0006b → 0006a → rest)
+Lesson maps: [[lesson-0006-the-model-gateway]] · [[lesson-0007-the-taskspec-is-a-contract]].
+
+Supplements: 0006a has no map note, so see [[course-architecture]]. [[lesson-0006b-the-hermes-control-plane]] covers the Hermes OS control plane from the governance record. Read 0006 §1 first, then 0006b, then 0006a, then the rest.
 
 ## What accumulates (artifacts → the loop)
 
-Each module leaves an artifact that a later module consumes — the spine made concrete:
+Each module leaves an artifact that a later module consumes.
 
 ```mermaid
 flowchart LR
@@ -81,7 +83,7 @@ flowchart LR
     end
     subgraph PH1["Phase 1 — the loop"]
         GWY["ModelGateway ✅ 0006"]
-        SPEC["TaskSpec"]
+        SPEC["TaskSpec ✅ 0007"]
         TLOOP["tool loop + bounds + gates"]
         TR["trace"]
     end

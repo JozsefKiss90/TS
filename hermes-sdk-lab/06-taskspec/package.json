@@ -1,0 +1,14 @@
+{
+  "name": "06-taskspec",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mock": "tsx ../01-raw-http/src/mock-server.ts",
+    "job": "tsx src/main.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.113.0",
+    "zod": "4.4.3"
+  }
+}

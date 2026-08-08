@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0007 — The TaskSpec Is a Contract</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 1 · Lesson 0007 · lab exercise 06-taskspec · ~45–60 min</p>
+  <h1>The TaskSpec Is a Contract</h1>
+  <p class="lede">Exercise 05 called the model with a loose string and a hardcoded token limit. Who
+  decided that job was worth running?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step <strong>S1</strong> parses the job before anything else happens, so Hermes rejects
+  invalid work before it spends a token. Lesson 0005 built that parse and aimed it at a provider's
+  reply. Today the same parse guards the operator's request. The boundary rule now covers both
+  directions into the loop.
+</div>
+
+<h2>1 · The request nobody checked</h2>
+
+<p>Open exercise 05's <code>main.ts</code> and find where the job was decided. The prompt is the literal
+<code>"Hello, Claude!"</code>. The size of the call is <code>maxTokens: 100</code>, written inside
+<code>supervisor.ts</code>. No file records who asked, what the budget was, or where the answer should
+land.</p>
+
+<p>A running Hermes takes those decisions from an operator, over a command line or a job file. Bytes
+from an operator are untrusted in the way a provider's reply is untrusted. Nothing in exercise 05 checks
+them.</p>
+
+<table>
+  <tr><th>Layer</th><th>Changed?</th><th>Evidence</th></tr>
+  <tr><td>the wire</td><td>no</td><td>Part A sends exercise 05's request, with a larger <code>max_tokens</code></td></tr>
+  <tr><td>the six responsibilities ①–⑥</td><td>no</td><td>the SDK still runs all six, below the port</td></tr>
+  <tr><td>the port and both gateways</td><td>no</td><td>no code changed in <code>gateway.ts</code> or in either implementation</td></tr>
+  <tr><td>where a call's size is decided</td><td>yes</td><td>the spec file supplies it, not <code>supervisor.ts</code></td></tr>
+  <tr><td>what a bad request costs</td><td>yes</td><td>Part B refuses two spec files and issues zero requests</td></tr>
+  <tr><td>what a report can name</td><td>yes</td><td>the task, its declared budget, and its tool list</td></tr>
+</table>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>A schema can describe work, not only bytes from a wire.</li>
+    <li>A parse can decide whether work runs at all.</li>
+    <li><code>.default()</code> gives one schema two static types.</li>
+    <li>A rule can span two fields, so no single field can carry it.</li>
+  </ul>
+  <p>Reprise: <code>safeParse</code>, path-addressed issues, <code>z.infer</code>, narrowing a union on
+  its tag, and the fake's <code>calls</code> array.</p>
+</div>
+
+<h2>2 · A schema for the work</h2>
+
+<p>A <dfn>TaskSpec</dfn> is Hermes's schema for one unit of work, written before any model call. It
+guards a boundary in the same sense lesson 0005's schema did. The bytes reaching it come from an
+operator instead of a provider. Hermes constrains three different things, and calls each one a
+contract.</p>
+
+<table>
+  <tr><th>The phrase</th><th>What it constrains</th><th>Where you met it</th></tr>
+  <tr><td>request contract, responsibility ④</td><td>the fields one HTTP request must carry</td><td>lesson 0001, and the mock's gate ④</td></tr>
+  <tr><td>the port's contract</td><td>which calls the domain may make on a gateway</td><td>lesson 0006, <code>gateway.ts</code></td></tr>
+  <tr><td>the TaskSpec</td><td>which work Hermes may run at all</td><td><code>task-spec.ts</code>, built today</td></tr>
+</table>
+
+<pre><code>export const TaskSpecSchema = z.object({
+  title:             z.string().min(1),
+  owner:             z.string().min(1),
+  instruction:       z.string().min(1),        // becomes ModelCall.prompt
+  maxTokens:         z.number().int().positive().max(4096).default(1024),
+  costCeilingTokens: z.number().int().positive(),
+  allowedTools:      z.array(z.string()).default([]),
+  outputPath:        z.string().min(1),
+}).refine((spec) =&gt; spec.maxTokens &lt;= spec.costCeilingTokens, {
+  error: "maxTokens may not exceed the job's costCeilingTokens",
+  path: ["maxTokens"],
+});
+
+export type TaskSpec      = z.output&lt;typeof TaskSpecSchema&gt;;
+export type TaskSpecInput = z.input&lt;typeof TaskSpecSchema&gt;;</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At runtime?</th></tr>
+  <tr><td><code>.default(1024)</code></td><td>the field may be absent on the way in</td><td>a value the parse writes when the key is missing</td></tr>
+  <tr><td><code>z.input&lt;…&gt;</code></td><td>the type a spec file may have</td><td>nothing. TypeScript erases it</td></tr>
+  <tr><td><code>z.output&lt;…&gt;</code></td><td>the type an admitted spec has</td><td>nothing. The parsed value carries the guarantee</td></tr>
+  <tr><td><code>.refine(fn, …)</code></td><td>a rule over the whole object</td><td>a function the parse calls after the fields pass</td></tr>
+</table>
+
+<p>A signature tells TypeScript what may be called. The implementation does the runtime work. One
+declaration here produces two signatures and one implementation. Lesson 0005 needed only
+<code>z.infer</code>, because that schema had no defaults, and its two types were identical.</p>
+
+<p>Part A measures what the parse added. The file carries five keys and the admitted spec has seven.</p>
+
+<pre><code>// audit-atlas.json, 5 keys           // the admitted spec, 7 keys
+{                                     {
+  title: "Audit the atlas graph",       title: "Audit the atlas graph",
+  owner: "themis",                      owner: "themis",
+  instruction: "Summarize the …",       instruction: "Summarize the …",
+  costCeilingTokens: 2000,              maxTokens: 1024,          // filled
+  outputPath: "vault/audits/…",         costCeilingTokens: 2000,
+}                                       allowedTools: [],         // filled
+                                        outputPath: "vault/audits/…",
+                                      }</code></pre>
+
+<p>Lesson 0005 counted what a parse stripped, and this parse adds. Both counts say the same thing. The
+contract is the parsed value, never the file. The <code>allowedTools</code> default is an empty array. A
+permission list that grants nothing is the one you can ship before lesson 0010 enforces it.</p>
+
+<p>A default that no file mentions still reaches the network. Part A's request, captured off the
+wire:</p>
+
+<pre><code>POST /v1/messages
+anthropic-version: 2023-06-01 · x-api-key: … · content-type: application/json
+user-agent: Anthropic/JS 0.113.0
+
+{"model":"claude-opus-4-8","max_tokens":1024,
+ "messages":[{"role":"user",
+              "content":"Summarize the atlas graph health check in three bullet points."}]}</code></pre>
+
+<p>The file named no <code>maxTokens</code>, and <code>max_tokens</code> on the wire reads 1024. The
+adapter read it from the spec, and exercise 05 read 100 from a literal.</p>
+
+<h2>3 · The refusal costs nothing</h2>
+
+<p>An <dfn>admissibility check</dfn> is the parse that decides whether Hermes may dispatch a job.
+<code>admitTaskSpec</code> is that check. It returns the union shape you narrowed in lesson 0005 for
+<code>safeParse</code>, and again in lesson 0006 for <code>GatewayResult</code>.</p>
+
+<pre><code>export type Admission =
+  | { admitted: true;  spec: TaskSpec }
+  | { admitted: false; rejections: string[] };</code></pre>
+
+<p><code>runTask</code> asks for a <code>TaskSpec</code>, and a successful parse is the only way to
+obtain one. A caller that skips the check fails to compile. S1's rule therefore holds at build time and
+at runtime, by two different mechanisms.</p>
+
+<pre><code>no-owner.json → REFUSED, 3 reason(s):
+  · title: [too_small] Too small: expected string to have &gt;=1 characters
+  · owner: [invalid_type] Invalid input: expected string, received undefined
+  · costCeilingTokens: [invalid_type] Invalid input: expected number, received string
+
+not-a-spec.json → REFUSED, 1 reason(s):
+  · (root): [invalid_type] Invalid input: expected object, received array
+
+model calls made: 0 — tokens spent: 0</code></pre>
+
+<p>One parse reported every disagreement in the file, which is lesson 0005's behaviour aimed at a new
+boundary. The mock's counter proves the cost. Against a fresh mock, Part A takes
+<code>req_mock_0001</code>, a full Part B follows, and the next Part A takes <code>req_mock_0002</code>.
+No request reached the server while the check refused those files.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    F["specs/*.json<br/>bytes from an operator"] --> JP["JSON.parse<br/>syntax only"]
+    JP --> U["unknown"]
+    U --> GATE{"admitTaskSpec<br/>THE ADMISSIBILITY CHECK"}
+    GATE -->|"admitted: false"| REJ["rejections: string[]<br/>0 requests, 0 tokens"]
+    GATE -->|"admitted: true"| SPEC["TaskSpec<br/>defaults filled"]
+    SPEC --> SUP["runTask — policy"]
+    SUP --> PORT["gateway.ts — the port"]
+    PORT --> AD["adapter + WireReplySchema<br/>the boundary parse of lesson 0005"]
+    AD --> W["the wire"]
+</pre>
+<figcaption>Diagram 1. Two boundaries, two parses, one loop. The spec is checked on the way in, and the
+reply is checked on the way back.</figcaption>
+</figure>
+
+<h2>4 · The rule no single field can carry</h2>
+
+<p>A <dfn>refinement</dfn> is a schema rule that runs after every field's type passes.
+<code>over-ceiling.json</code> sets <code>maxTokens</code> to 4000 against a
+<code>costCeilingTokens</code> of 1000. Both are positive integers, and both sit inside their declared
+bounds. The file is still wrong, and <code>z.object</code> cannot say so, because it checks one field at
+a time.</p>
+
+<pre><code>over-ceiling.json → REFUSED:
+  · maxTokens: [custom] maxTokens may not exceed the job's costCeilingTokens</code></pre>
+
+<p>The issue code reads <code>custom</code>, because you wrote the rule rather than declaring a type. The
+path reads <code>maxTokens</code>, because you chose it. Drop the <code>path</code> option and the issue
+lands at the root of the object, which names no field an operator can edit.</p>
+
+<p>Order matters here, and it is measurable. A file that omits <code>owner</code> and also breaks the
+ceiling rule reports the <code>owner</code> issue alone. The refinement never runs, so one bad file can
+be refused twice, in two rounds.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    IN["the parsed JSON value"] --> R1{"round 1: every field's type"}
+    R1 -->|"any field fails"| OUT1["rejections, one per field<br/>the refinement never runs"]
+    R1 -->|"all fields pass"| R2{"round 2: the refinement<br/>maxTokens &lt;= costCeilingTokens"}
+    R2 -->|"fails"| OUT2["one rejection, path maxTokens<br/>code: custom"]
+    R2 -->|"passes"| OK["TaskSpec — admitted"]
+</pre>
+<figcaption>Diagram 2. The two rounds, measured in Part C. A spec that is wrong in both rounds is
+rejected twice, and reports round 1 first.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>A parsed spec describes the work</td><td>implemented</td><td><code>task-spec.ts</code>, Parts A to C</td></tr>
+  <tr><td>Invalid work costs zero requests</td><td>implemented</td><td>Part B, the fake's <code>calls</code> and the mock's counter</td></tr>
+  <tr><td>A token budget per job</td><td>seeded</td><td><code>costCeilingTokens</code> is carried and reported. Lesson 0009 enforces it</td></tr>
+  <tr><td>A tool permission list</td><td>seeded</td><td><code>allowedTools</code> is carried and defaults to empty. Lesson 0010 enforces it</td></tr>
+  <tr><td>The artifact lands at <code>outputPath</code></td><td>planned</td><td>No <code>ROADMAP.md</code> row writes a file yet. That is step S8</td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and the measured table live in <code>06-taskspec/README.md</code>. The arc:</p>
+
+<ol>
+  <li>Read <code>task-spec.ts</code> against <code>gateway.ts</code>. Say what each file constrains, and
+  which one the model ever sees.</li>
+  <li>Run Part A. Compare the file's key list with the admitted spec's key list.</li>
+  <li>Uncomment the marked line in Part A. Read the error, then say which of the two types produced
+  it.</li>
+  <li>Implement <code>admitTaskSpec</code>, formatting issues the way the adapter formats its own. Run
+  Part B and read all four rejections.</li>
+  <li>Run Part B, then Part A, and check the request id the mock hands out. That number is the
+  measurement.</li>
+</ol>
+
+<h2>6 · Exercise: which boundary refuses it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each failure with the check that catches it</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the admissibility check, before dispatch|the adapter's boundary parse, after the reply|the compiler, before the run|nothing refuses it today">
+    <div class="cl-item" data-cat="0" data-why="Measured in Part B. The field is declared z.number(), the file holds a string, and the parse reports invalid_type at that path.">
+      <p>A spec file whose <code>costCeilingTokens</code> reads <code>"2000"</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="Exercise 05's B3, unchanged. WireReplySchema guards the reply, and the spec never sees a provider's bytes.">
+      <p>A reply whose <code>output_tokens</code> arrives as <code>"42"</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="runTask asks for a TaskSpec, and only a successful parse yields that type. The value read off disk is unknown.">
+      <p>Code that hands <code>runTask</code> the object it read straight off disk.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="Measured in Part C. Both fields hold valid positive integers, so the refinement is the only rule that can object.">
+      <p>A spec whose <code>maxTokens</code> is 4000 against a ceiling of 1000.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="The ceiling is carried and reported, not enforced. Lesson 0009 gives the supervisor an AbortController that acts on it.">
+      <p>A job that runs on and spends more tokens than its declared ceiling.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="allowedTools is an array of strings, so any spelling passes. Lesson 0010 checks names against the tools that exist.">
+      <p>A spec listing <code>"graph.delete"</code>, a tool the loop has never implemented.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="A default makes the key optional on the way in and guaranteed on the way out. Part A measured it: five keys entered and seven came back. z.infer is an alias for z.output.">
+    <p class="qz-prompt">Q1. What does <code>.default(1024)</code> change about the schema's two static types?</p>
+    <button class="qz-opt" type="button">Nothing at all, because a default is a runtime value with no type</button>
+    <button class="qz-opt" type="button">It makes the field optional on both sides, so the loop must check</button>
+    <button class="qz-opt" type="button">The input type may omit the field, and the output type may not</button>
+    <button class="qz-opt" type="button">It widens the field to a union of number and undefined everywhere</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="Two measurements agree. The fake recorded no calls, and the mock's request id moved from req_mock_0001 to req_mock_0002 across a whole Part B.">
+    <p class="qz-prompt">Q2. Part B refused two spec files. What is the evidence that nothing was spent?</p>
+    <button class="qz-opt" type="button">The reports each carried an outcome of gave_up and a token count of zero</button>
+    <button class="qz-opt" type="button">The fake recorded no calls, and the mock's request counter did not advance</button>
+    <button class="qz-opt" type="button">The adapter returned a malformed_reply failure before the request was sent</button>
+    <button class="qz-opt" type="button">The supervisor caught each error and rolled the job's ledger back to zero</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="Measured in Part C. maxTokens 4000 and costCeilingTokens 1000 are both valid positive integers. Only a rule that reads both fields can object, and z.object reads one at a time.">
+    <p class="qz-prompt">Q3. Every field in <code>over-ceiling.json</code> has a valid type. Why is the file refused?</p>
+    <button class="qz-opt" type="button">A refinement runs after the fields, and this rule reads two of them</button>
+    <button class="qz-opt" type="button">The declared maximum of 4096 rejects any value above the job's ceiling</button>
+    <button class="qz-opt" type="button">The schema strips unknown keys, and the extra tool entry is one of them</button>
+    <button class="qz-opt" type="button">A default cannot be written once the file already supplies that same key</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The parameter type is the enforcement. TaskSpec is z.output of the schema, and the only value of that type comes from a successful parse. A raw value read off disk is unknown.">
+    <p class="qz-prompt">Q4. <code>runTask</code> takes a <code>TaskSpec</code>. What stops a caller from passing an unparsed object?</p>
+    <button class="qz-opt" type="button">A runtime guard at the top of runTask re-parses whatever it was given</button>
+    <button class="qz-opt" type="button">Nothing does, so the convention is documented in the exercise's README</button>
+    <button class="qz-opt" type="button">The port refuses the call, because gateway.ts imports the spec's schema</button>
+    <button class="qz-opt" type="button">Only a successful parse yields that type, so the call fails to compile</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Name the two boundaries this exercise parses. Say which direction each one guards, and what
+  arrives at it.</li>
+  <li>A reviewer says the ceiling rule belongs in <code>runTask</code>, not in the schema. Answer in two
+  sentences.</li>
+  <li>Explain why <code>admitTaskSpec</code> takes <code>unknown</code> rather than
+  <code>TaskSpecInput</code>.</li>
+</ol>
+
+<p>If you keep only five sentences from this lesson, keep these. A TaskSpec is a schema for the work, and
+Hermes parses it before the loop calls any model. The admissibility check returns proof or reasons as
+data, and it refuses without throwing. A refused spec costs zero requests, and Part B measured that
+against the mock's
+counter. A default value splits one schema into an input type a file may hold and an output type the
+loop requires.</p>
+
+<h2>Primary source</h2>
+
+<p>Read Alexis King's <a href="https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/">Parse,
+don't validate</a>, the essay this lesson's gate comes from. Its central move is the one
+<code>runTask</code> makes: put the guarantee in the type, so the unchecked value cannot travel. Then
+read Zod's <a href="https://zod.dev/api">API reference</a> on defaults and refinements.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and number here was verified against
+  <code>zod</code> 4.4.3 and <code>@anthropic-ai/sdk</code> 0.113.0, by live runs against the exercise 01
+  mock. The three new terms have notes under <code>wiki/terms/</code>.</p>
+  <p><strong>Next.</strong> Lesson 0008, <em>Tool Use, the Loop's Heartbeat</em>, with lab
+  <code>07-tool-loop</code>. The spec's <code>allowedTools</code> field gets its first reader there, and
+  one call becomes a loop.</p>
+</footer>
+
+</body>
+</html>
