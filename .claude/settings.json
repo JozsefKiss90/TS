@@ -1,3 +1,18 @@
 {
-  "outputStyle": "Lesson prose"
+  "outputStyle": "Lesson prose",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/tools/lesson-lint-hook.mjs\"",
+            "timeout": 60,
+            "statusMessage": "Linting course material"
+          }
+        ]
+      }
+    ]
+  }
 }
