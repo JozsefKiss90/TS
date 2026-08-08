@@ -63,15 +63,12 @@ them.</p>
 
 <p>A <dfn>TaskSpec</dfn> is Hermes's schema for one unit of work, written before any model call. It
 guards a boundary in the same sense lesson 0005's schema did. The bytes reaching it come from an
-operator instead of a provider. Hermes constrains three different things, and calls each one a
-contract.</p>
+operator instead of a provider.</p>
 
-<table>
-  <tr><th>The phrase</th><th>What it constrains</th><th>Where you met it</th></tr>
-  <tr><td>request contract, responsibility ④</td><td>the fields one HTTP request must carry</td><td>lesson 0001, and the mock's gate ④</td></tr>
-  <tr><td>the port's contract</td><td>which calls the domain may make on a gateway</td><td>lesson 0006, <code>gateway.ts</code></td></tr>
-  <tr><td>the TaskSpec</td><td>which work Hermes may run at all</td><td><code>task-spec.ts</code>, built today</td></tr>
-</table>
+<p>The course used to call three different things a contract. It now calls one thing a contract. The
+TaskSpec constrains which work Hermes may run at all. Responsibility ④ is the request and response
+<em>shape</em>, and <code>gateway.ts</code> is <em>the port</em>. Lessons 0001 to 0005 still carry the
+older wording until they are rewritten.</p>
 
 <pre><code>export const TaskSpecSchema = z.object({
   title:             z.string().min(1),
@@ -214,8 +211,8 @@ rejected twice, and reports round 1 first.</figcaption>
   <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
   <tr><td>A parsed spec describes the work</td><td>implemented</td><td><code>task-spec.ts</code>, Parts A to C</td></tr>
   <tr><td>Invalid work costs zero requests</td><td>implemented</td><td>Part B, the fake's <code>calls</code> and the mock's counter</td></tr>
-  <tr><td>A token budget per job</td><td>seeded</td><td><code>costCeilingTokens</code> is carried and reported. Lesson 0009 enforces it</td></tr>
-  <tr><td>A tool permission list</td><td>seeded</td><td><code>allowedTools</code> is carried and defaults to empty. Lesson 0010 enforces it</td></tr>
+  <tr><td>A token budget per job</td><td>prepared</td><td><code>costCeilingTokens</code> is carried and reported. Lesson 0009 enforces it</td></tr>
+  <tr><td>A tool permission list</td><td>prepared</td><td><code>allowedTools</code> is carried and defaults to empty. Lesson 0010 enforces it</td></tr>
   <tr><td>The artifact lands at <code>outputPath</code></td><td>planned</td><td>No <code>ROADMAP.md</code> row writes a file yet. That is step S8</td></tr>
 </table>
 

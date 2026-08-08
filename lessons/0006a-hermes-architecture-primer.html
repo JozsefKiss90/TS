@@ -43,8 +43,8 @@ four and decides nothing at all.</p>
 <table>
   <tr><th>The work</th><th>What it does</th><th>In exercise 05</th><th>Policy?</th></tr>
   <tr>
-    <td>port contract</td>
-    <td>Names the facts allowed to cross the port.</td>
+    <td>the port</td>
+    <td>Names the facts allowed to cross it.</td>
     <td><code>gateway.ts</code>: <code>ModelCall</code>, <code>ModelReply</code>, <code>GatewayResult</code></td>
     <td>No. It decides nothing. It says what decisions can be about.</td>
   </tr>
@@ -131,7 +131,7 @@ no roadmap row schedules one.</p>
 <h2>3 · What exists today</h2>
 
 <p>Three labels appear in the table below. <em>Implemented</em> runs in exercise 05 today.
-<em>Seeded</em> means a field or seam exists, so a later subsystem has somewhere to attach.
+<em>Prepared</em> means a field or seam exists, so a later subsystem has somewhere to attach.
 <em>Planned</em> rests on <code>ROADMAP.md</code>, where Phase 1 numbers above 0007 stay provisional.</p>
 
 <table>
@@ -140,8 +140,8 @@ no roadmap row schedules one.</p>
   <tr><td>Failures arrive as data, not exceptions</td><td>implemented</td><td>Part B. Measured: <code>retry-after: 5</code> became <code>retryAfterMs: 5000</code></td></tr>
   <tr><td>One call's result becomes a job outcome</td><td>implemented</td><td><code>supervisor.ts</code>. Five decisions, one per result kind</td></tr>
   <tr><td>The same policy runs with no server</td><td>implemented</td><td>Part C. Measured at 0.6 ms with the mock stopped</td></tr>
-  <tr><td>The provider's request id survives</td><td>seeded</td><td>The adapter keeps it. The trace subsystem is lesson 0011</td></tr>
-  <tr><td>An abort signal crosses the port</td><td>seeded</td><td>Part B proves it. Budget rules arrive in lesson 0009</td></tr>
+  <tr><td>The provider's request id survives</td><td>prepared</td><td>The adapter keeps it. The trace subsystem is lesson 0011</td></tr>
+  <tr><td>An abort signal crosses the port</td><td>prepared</td><td>Part B proves it. Budget rules arrive in lesson 0009</td></tr>
   <tr><td>A validated TaskSpec rejects invalid work</td><td>planned</td><td>Lesson 0007, the next firm step</td></tr>
   <tr><td>A rule picks the model for a task</td><td>planned</td><td>No roadmap row names it yet</td></tr>
   <tr><td>Budgets, approval gates, durable trace</td><td>planned</td><td>Lessons 0009, 0010 and 0011, all provisional</td></tr>

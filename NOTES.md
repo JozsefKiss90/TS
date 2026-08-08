@@ -277,6 +277,32 @@ monotonic drift across all eight shipped lessons: mean sentence length 15.6 → 
   `pnpm --recursive typecheck` for the whole workspace. All six other exercises pass individually. Left
   untouched, because it is the user's file.
 
+## Update 2026-08-08 — two rule conflicts resolved (user decision)
+
+Lesson 0007's session reported two places where the rules contradict each other, rather than silently
+picking a side. Both were defects in the rules, not the lesson. The user chose to fix both.
+
+- **The status label was a banned metaphor.** TERM-6 bans metaphors for mechanisms and names *seeded*
+  as a failing example; Article III.9 required *seeded* as a label. The constitution wins conflicts, so
+  0007 used it and flagged it. **The label is now `prepared`.** First attempt was `reserved`, rejected
+  because lesson 0006a already uses "reserved" for the model choice, and TERM-3 forbids the second
+  meaning. Renamed in CLAUDE.md III.9, the profile's PARA-6, lessons 0006/0006a/0007, `COURSE.md` and
+  `course-architecture.md`. TERM-6 keeps *seeded* as a banned example and records why the label moved.
+- **"Contract" was overloaded three ways by the course itself.** TERM-3 reserves Article III.5's
+  collision table for words an *external* system overloads; a word the course overloads by itself must
+  be renamed. 0007 kept the collision table and said so. **Now: *contract* names one thing, the
+  TaskSpec.** Responsibility (4) is the *request and response shape*; `gateway.ts` is *the port*.
+  0007's three-row collision table is gone, replaced by four sentences. TERM-3 records the ruling.
+- `wiki/terms/request-contract.md` keeps its slug so `[[request-contract]]` links survive; its `term:`
+  is now *Request and response shape*, with the old name as an alias. Rename the slug when 0001 is
+  rewritten.
+- **Pending:** lessons 0001 to 0005 and 0006b still carry the old wording for both words. They are due
+  for rewrite anyway, so the renames ride along at no extra cost. 0007 says so in the text.
+- Verified after the change: 0006, 0006a and 0007 still lint clean, as do both lesson-map notes.
+  `request-contract.md` fails with 2 errors, which are pre-existing and identical at HEAD.
+- Older dated entries above, and `course-pedagogy.md` row 13, keep the word *seeded* as written. They
+  are records of what was decided at the time, not current instructions.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

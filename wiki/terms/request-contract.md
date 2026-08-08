@@ -1,6 +1,7 @@
 ---
-term: Request contract
+term: Request and response shape
 aliases:
+  - request contract
   - request body contract
 type: glossary-term
 lesson: "0001"

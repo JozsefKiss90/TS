@@ -13,7 +13,7 @@ tags:
 
 A compact, durable record of the Hermes architecture the course is building, created alongside supplement [0006a — Hermes Architecture Primer](../../lessons/0006a-hermes-architecture-primer.html) so later lessons can link here instead of re-explaining. **This note is a reference mirror, not a source of truth:** the loop and guiding principle live in [MISSION.md](../../MISSION.md), the plan and its firmness gradient in [ROADMAP.md](../../ROADMAP.md), and the Hermes OS integration (two roles, S1–S9 scenario, three graphs) in [[hermes-integration]]. On any conflict, those win — fix this note.
 
-Status labels used throughout, as of **2026-07-29** (after lesson 0006): **implemented** (runs in a shipped lab) · **seeded** (a field or seam exists; the subsystem does not) · **planned** (grounded in MISSION/ROADMAP; Phase 1 lesson ids ≥ 0008 are provisional).
+Status labels used throughout, as of **2026-07-29** (after lesson 0006): **implemented** (runs in a shipped lab) · **prepared** (a field or seam exists; the subsystem does not) · **planned** (grounded in MISSION/ROADMAP; Phase 1 lesson ids ≥ 0008 are provisional).
 
 > **Two views, two records (added 2026-07-30).** This note is the *course-side* view: the model boundary as the shipped labs build it, graded implemented/seeded/planned against lab code. The *system-of-record* view — the Claude-Assisted Hermes OS itself: the Hermes job (envelope · Context Pack · lifecycle), the fourteen control-plane components, policy families, capability routing, the gateway map, and the Model Gateway's placement rule, graded **accepted / scaffolded / planned / proposed clarification / open decision** against PDR-001 and ADR-0001..0021 — lives in supplement [0006b](../../lessons/0006b-the-hermes-control-plane.html) and its durable reference `docs/hermes_os/architecture/hermes-job-control-plane.md` (mirror; canonical in the `hermes-os` governance repo). Neither view re-explains the other.
 
@@ -34,7 +34,7 @@ Its four neighbours, which are *not* policy:
 
 | Concept | What it is | Exercise 05 example |
 |---|---|---|
-| **port contract** | the vocabulary and operations permitted to cross a seam | `gateway.ts`: `ModelCall` · `ModelReply` · `GatewayFailure` · `GatewayResult` |
+| **the port** | the vocabulary and operations permitted to cross a seam | `gateway.ts`: `ModelCall` · `ModelReply` · `GatewayFailure` · `GatewayResult` |
 | **composition / wiring** | constructing concrete clients and adapters at the composition root | `main.ts`: `new Anthropic(...)`, `new AnthropicModelGateway(client, MODEL)` |
 | **provider adaptation** | translating between Hermes and provider vocabularies, incl. the boundary parse and failure classification | `anthropic-gateway.ts`: `end_turn → completed`, `RateLimitError → { kind: "throttled" }` |
 | **SDK / transport mechanics** | serialization, HTTP, auth, internal retries, timeouts, cancellation plumbing — the six responsibilities | `@anthropic-ai/sdk 0.113.0` honoring `retry-after` |
@@ -69,7 +69,7 @@ Runtime call direction shown; the *import* arrows point at the port from both si
 | task validation (TaskSpec) | planned | — | lesson 0007 (firm) |
 | iteration/token/deadline bounds | planned | — | lesson 0009 (provisional) — S6 |
 | tool permission & approval | planned | — | lesson 0010 (provisional) |
-| durable trace | seeded (`requestId` kept in the report's notes) | adapter + supervisor | lesson 0011 (provisional) — S7 |
+| durable trace | prepared (`requestId` kept in the report's notes) | adapter + supervisor | lesson 0011 (provisional) — S7 |
 | fully offline loop | partial (fake covers one-call policy) | `FakeModelGateway` | lesson 0012 (provisional) — Phase 1 capstone |
 
 The load-bearing sentence: **lesson 0006 reserves model selection for policy; it does not yet implement model-selection policy.**

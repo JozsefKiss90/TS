@@ -109,7 +109,13 @@ a job envelope, and a whole rule set drawn as a graph. Pick one meaning for the 
 two.
 
 Where a word is genuinely overloaded by an external system and cannot be renamed, `CLAUDE.md` Article
-III.5 already requires a collision table. Keep it, and keep it to one table.
+III.5 already requires a collision table. Keep it, and keep it to one table. A word the course overloads
+by itself does not qualify. Rename it.
+
+**Applied 2026-08-08 — "contract".** The course overloaded it three ways, so the collision table did not
+apply. *Contract* now names one thing: **the TaskSpec**, an agreement about which work Hermes may run.
+Responsibility ④ is the **request and response shape**. `gateway.ts` is **the port**. Lessons 0001 to
+0005 still carry the old wording until they are rewritten.
 
 ### TERM-4 · No definition chains
 
@@ -127,6 +133,10 @@ grow*, *the wire cannot see the architecture*, and *the ledger lies* all fail th
 
 An exception: a metaphor that is the established industry name for the thing, such as **port** or
 **adapter**, is a Technical Name and passes TERM-1.
+
+**Applied 2026-08-08.** Article III.9's middle status label was *seeded*, which this rule bans. It is now
+**prepared**. *Reserved* was tried first and rejected, because lesson 0006a already uses "reserved" for
+the model choice, and TERM-3 forbids the second meaning.
 
 ## 4 · Sentences
 
@@ -193,7 +203,7 @@ A table cell states the answer and its reason. Do not put the answer in the tabl
 paragraph below it.
 
 ### PARA-6 · One status table
-Where `CLAUDE.md` Article III.9 requires implemented, seeded, or planned labels, they go in **one table**,
+Where `CLAUDE.md` Article III.9 requires implemented, prepared, or planned labels, they go in **one table**,
 once, near the end of the lesson. They do not appear inline in prose. Article III.9 is amended
 accordingly.
 

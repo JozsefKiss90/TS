@@ -17,7 +17,7 @@ This folder holds the course's **meaning and rules** in Obsidian-navigable form.
 1. [[course-spine]] — what the course builds, the terminal skills, and where each one is used. Read before authoring anything.
 2. [[hermes-integration]] — the use case: how TypeScript and the SDKs become integral parts of Hermes OS, and the one-job scenario every lesson anchors to.
 3. [[course-module-graph]] — the phases and lesson modules as graphs; mirror of [ROADMAP.md](../../ROADMAP.md).
-4. [[course-architecture]] — the control-plane architecture reference: layers and ownership at the model boundary, "policy" defined operationally, the implemented/seeded/planned ledger. Link lessons here instead of re-explaining architecture (Article III.9).
+4. [[course-architecture]] — the control-plane architecture reference: layers and ownership at the model boundary, "policy" defined operationally, the implemented/prepared/planned ledger. Link lessons here instead of re-explaining architecture (Article III.9).
 5. [[course-pedagogy]] — the founding defect record behind the constitution's explanation standards. Read when amending the constitution, not before every lesson.
 
 ## Notes in this folder
