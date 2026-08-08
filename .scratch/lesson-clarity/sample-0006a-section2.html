@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Style sample — 0006a §2 rewritten to the STE-derived profile</title>
+<link rel="stylesheet" href="../../assets/course.css">
+<style>
+  .sample-head { border-bottom: 2px solid currentColor; padding-bottom: .5rem; }
+  .before { opacity: .85; }
+  .metrics td, .metrics th { text-align: left; }
+  hr.split { margin: 3rem 0; }
+</style>
+</head>
+<body>
+
+<header class="lesson-head sample-head">
+  <p class="kicker">Style proposal · not a lesson · sample of one section</p>
+  <h1>Sample rewrite: lesson 0006a, section 2</h1>
+  <p class="lede">The same section, written twice. The first version is what shipped. The second version
+  follows the proposed ASD-STE100-derived profile. Read both, then tell me whether the second version is
+  the voice you want for the course.</p>
+</header>
+
+<div class="callout mission">
+  <strong>What the profile asks for</strong>
+  Sentences of 25 words or fewer. Paragraphs of 6 sentences or fewer. Active voice. One idea per sentence.
+  No invented vocabulary. Every technical name defined at first use in 20 words or fewer. No em-dash chains.
+  No colon reveals. No sentence about the document itself.
+</div>
+
+<h2 class="before">Before — as shipped (about 700 words)</h2>
+
+<p class="before">Lesson 0006 leaned on the word "policy" in nearly every section; here is the definition it
+deserves:</p>
+
+<div class="callout before">
+  <strong>A Hermes policy is a deterministic rule that converts validated facts — about a task, the loop's
+  state, or an external result — into a permitted next action or a terminal outcome.</strong>
+  Deterministic: same facts, same decision, every time. Validated facts: nothing crosses into a policy rule
+  without a runtime check (lesson 0005) or a compile-time contract (lesson 0006). Permitted: the output is
+  always an action Hermes is allowed to take, or a terminal state — never "whatever the exception unwound to."
+</div>
+
+<p class="before">The word earns its keep only if it <em>excludes</em> things. Four neighbours get mistaken for
+policy, plus the wire beneath them all — learn to tell the five apart and lesson 0006's "mechanics below,
+policy above" becomes a precise sentence instead of a slogan.</p>
+
+<p class="before">[The shipped section continues with a five-row table, a "Deconfusion" callout on the words
+"above" and "below", a paragraph on the policy that exists in exercise 05, and a second three-row collision
+table. Full text: <code>lessons/0006a-hermes-architecture-primer.html</code> §2.]</p>
+
+<hr class="split">
+
+<h2>After — the proposed profile (about 330 words)</h2>
+
+<h3>2 · What "policy" means here</h3>
+
+<p>Lesson 0006 uses the word <dfn>policy</dfn> in almost every section. This is what it means.</p>
+
+<div class="callout">
+  <strong>A policy is a rule that turns checked facts into a decision.</strong>
+  The facts describe the task, the loop, or a result that came back.
+  The decision is an action Hermes may take, or a final outcome.
+  The same facts always give the same decision.
+  A fact counts as checked if Zod parsed it at run time, or if the port's types guarantee it at build time.
+</div>
+
+<p>The word is only useful if it rules things out. Four other kinds of work look like policy but are not.
+The wire protocol sits underneath all four. Learn to tell the five apart.</p>
+
+<table>
+  <tr><th>The work</th><th>What it does</th><th>Example in exercise 05</th><th>Policy?</th></tr>
+  <tr>
+    <td><strong>port contract</strong></td>
+    <td>Names the facts that may cross the seam. It decides nothing.</td>
+    <td><code>gateway.ts</code>: <code>ModelCall</code>, <code>ModelReply</code>, <code>GatewayResult</code></td>
+    <td>No. It says what decisions can be about.</td>
+  </tr>
+  <tr>
+    <td><strong>wiring</strong></td>
+    <td>Builds the objects and hands them to the code that uses them.</td>
+    <td><code>main.ts</code>: <code>new AnthropicModelGateway(client, MODEL)</code></td>
+    <td>No. Choosing which object exists is not deciding what a result means.</td>
+  </tr>
+  <tr>
+    <td><strong>adaptation</strong></td>
+    <td>Translates between Hermes words and provider words, both ways.</td>
+    <td><code>anthropic-gateway.ts</code>: <code>end_turn</code> becomes <code>completed</code>; 5 s becomes 5000 ms</td>
+    <td>No. Translation keeps the meaning and chooses nothing.</td>
+  </tr>
+  <tr>
+    <td><strong>SDK mechanics</strong></td>
+    <td>Sends the request, retries it, times it out, and throws typed errors.</td>
+    <td>The SDK obeys <code>retry-after</code> twice, then throws <code>RateLimitError</code></td>
+    <td>No. It runs an operation. It holds no view about the job.</td>
+  </tr>
+  <tr>
+    <td><strong>wire protocol</strong></td>
+    <td>Carries the bytes.</td>
+    <td><code>POST /v1/messages</code> to the mock on port 8787</td>
+    <td>No. The wire cannot see the architecture above it.</td>
+  </tr>
+</table>
+
+<p>Exercise 05 holds two policies. First: a throttled call means the job waits and runs later.
+Second: a bad reply means the job stops and counts zero tokens.
+Each one turns a checked fact into a job outcome. Both live in <code>supervisor.ts</code>.</p>
+
+<div class="callout">
+  <strong>"Above" and "below" describe imports and duties. They describe nothing else.</strong>
+  Code above the port imports only <code>gateway.ts</code>, and uses Hermes words only.
+  Code below the port implements <code>gateway.ts</code>. It may use provider words, but it must translate
+  them before they cross.
+  The two words do not describe security, because nothing is hidden.
+  They do not describe folders, because every file sits in the same <code>src/</code>.
+  They do not describe the call stack, because at run time the supervisor waits below the adapter.
+</div>
+
+<p>Three phrases in this course contain the word <em>policy</em>. They name different things.</p>
+
+<table>
+  <tr><th>Phrase</th><th>What it names</th><th>Where you meet it</th></tr>
+  <tr><td><strong>Hermes policy</strong></td><td>A rule. Facts go in, a decision comes out.</td><td><code>supervisor.ts</code>, today</td></tr>
+  <tr><td>model policy, tool policy</td><td>Data that a rule reads.</td><td>Hermes OS documents. It reaches the course in lesson 0007.</td></tr>
+  <tr><td>the workflow graph</td><td>A whole set of rules, drawn as a graph.</td><td>Phase 3. Planned.</td></tr>
+</table>
+
+<hr class="split">
+
+<h2>What changed, and why</h2>
+
+<table class="metrics">
+  <tr><th>Measure</th><th>Before</th><th>After</th></tr>
+  <tr><td>Words</td><td>~700</td><td>~330</td></tr>
+  <tr><td>Longest sentence</td><td>44 words</td><td>21 words</td></tr>
+  <tr><td>Em-dashes</td><td>9</td><td>0</td></tr>
+  <tr><td>Undefined invented terms</td><td>4 (<em>deconfusion</em>, <em>neighbours</em>, <em>earns its keep</em>, <em>slogan</em>)</td><td>0</td></tr>
+</table>
+
+<ul>
+  <li><strong>The definition became one short sentence.</strong> The three qualifiers that followed it
+  (deterministic, validated, permitted) became three plain sentences instead of three colon clauses inside
+  one 44-word sentence.</li>
+  <li><strong>"Deconfusion" is gone.</strong> It was an invented word used without a definition. The callout
+  now states the rule, then states three things the rule does not mean.</li>
+  <li><strong>The table answers its own question.</strong> Before, the "Is it policy?" column said "no" and
+  then argued. Now the reason sits in the cell in one sentence.</li>
+  <li><strong>No sentence talks about the lesson.</strong> "The word earns its keep only if it excludes
+  things" and "becomes a precise sentence instead of a slogan" are commentary on the writing, not teaching.
+  Both are cut.</li>
+  <li><strong>Nothing was dropped.</strong> All five categories, both exercise-05 policies, the three
+  denials about "above" and "below", and the three-way collision table survive. Only the words went.</li>
+</ul>
+
+</body>
+</html>
