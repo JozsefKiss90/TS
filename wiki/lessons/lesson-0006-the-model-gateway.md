@@ -4,6 +4,7 @@ title: The Model Gateway
 lesson: "0006"
 phase: 1
 date: 2026-07-29
+updated: 2026-08-08
 material: lessons/0006-the-model-gateway.html
 lab: hermes-sdk-lab/05-model-gateway
 tags:
@@ -12,13 +13,17 @@ tags:
 
 # Lesson 0006 — The Model Gateway
 
-Phase 1 opens by drawing the line S4 requires: **mechanics below, policy above**. The [[sdk]] goes behind a [[port]] owned by Hermes (`gateway.ts` — `ModelCall`, `ModelReply`, `GatewayResult`, `ModelGateway`); the [[adapter]] (`AnthropicModelGateway`) translates calls down, replies up through the permanent [[safe-parse|boundary parse]], and [[typed-error]] exceptions into failure *data*; the [[fake]] (`FakeModelGateway`) makes the same supervisor run offline in 0.6 ms. The provider-neutrality decision, open since session 1, lands: **neutral port, one live adapter** — neutrality is a property of the seam, not a count of adapters. Material: [open the lesson](../../lessons/0006-the-model-gateway.html) · lab: `hermes-sdk-lab/05-model-gateway/`.
+Phase 1 opens by drawing the line S4 requires: mechanics below, policy above. The [[sdk]] goes behind a [[port]] that Hermes owns, `gateway.ts`. The [[adapter]] `AnthropicModelGateway` translates calls down, replies up through the [[safe-parse|boundary parse]], and [[typed-error]] exceptions into failure data. The [[fake]] `FakeModelGateway` runs the same supervisor offline in 0.6 ms.
 
-> **Supplement 0006a (2026-07-29):** [Hermes Architecture Primer — Where the Model Gateway Fits](../../lessons/0006a-hermes-architecture-primer.html) supplies the architecture context this lesson assumed: the Spec-to-Evidence Loop drawn end to end, an operational definition of [[hermes-policy]] (vs. [[composition-root|wiring]], adaptation, validation, mechanics), and an implemented/seeded/planned ledger for exercise 05 — today's supervisor is a one-call policy *seed*; routing ([[routing-policy]]), budgets, permissions, and the trace do not exist yet. Read after §1 or right after the lesson. Durable reference: [[course-architecture]].
+The provider question, open since session 1, landed here. Hermes gets a provider-neutral port with exactly one live adapter. Neutrality is a property of the interface, not a count of adapters.
 
-> **Supplement 0006b (2026-07-30):** [The Hermes Control Plane — From Job to Evidence](../../lessons/0006b-the-hermes-control-plane.html) answers the question prior to both: what the Claude-Assisted Hermes OS *is*, from the governance record — the [[hermes-job|Hermes job]] as the unit of work ([[job-envelope]] · [[context-pack]] · lifecycle), the [[job-supervisor]], [[capability-routing]] before model routing, the [[capability-gateway|gateway map]], and the placement rule: the [[model-gateway]] enters only at the first step that genuinely needs probabilistic reasoning. Reading order: 0006 §1 → 0006b → 0006a → the rest. Map note: [[lesson-0006b-the-hermes-control-plane]].
+Material: [open the lesson](../../lessons/0006-the-model-gateway.html) · lab: `hermes-sdk-lab/05-model-gateway/`.
 
-## The arrow turns around (measured in import statements)
+> **Supplement 0006a:** [What Counts as Policy](../../lessons/0006a-hermes-architecture-primer.html) defines [[hermes-policy]] and separates it from [[composition-root|wiring]], adaptation, validation and mechanics. It labels what exercise 05 contains. No [[routing-policy]], budget, permission or trace system exists yet.
+
+> **Supplement 0006b:** [The Hermes Control Plane](../../lessons/0006b-the-hermes-control-plane.html) answers the prior question from the governance record. It defines the [[hermes-job|Hermes job]] as the unit of work ([[job-envelope]], [[context-pack]], lifecycle), the [[job-supervisor]], [[capability-routing]] before model routing, and the [[capability-gateway|gateway map]]. Read lesson 0006 section 1 first, then 0006b, then 0006a. Map note: [[lesson-0006b-the-hermes-control-plane]].
+
+## The arrow turns around, counted in import statements
 
 ```mermaid
 flowchart LR
@@ -33,7 +38,7 @@ flowchart LR
     end
 ```
 
-The check is one command: `grep -r "@anthropic-ai/sdk" src/` hits exactly the adapter and `main.ts` (wiring) — never a domain file. That grep *is* [[dependency-inversion]], verifiable in a terminal.
+One command checks it. `grep -r "@anthropic-ai/sdk" src/` hits the adapter and `main.ts`, never a domain file. That grep is [[dependency-inversion]], verifiable in a terminal.
 
 ## One drifted reply, two lessons apart
 
@@ -47,16 +52,31 @@ sequenceDiagram
     M-->>A: 200 OK — body drifted: output_tokens "42", stop_reason "end-turn"
     A->>A: WireReplySchema.safeParse → 2 issues
     A-->>S: { ok: false, failure: { kind: "malformed_reply", issues } }
-    Note over S: outcome 'gave_up', ledger 0 — exercise 04 booked "1142" here.<br/>No exception crossed the port — the supervisor classified a value.
+    Note over S: outcome 'gave_up', ledger 0. Exercise 04 booked "1142" here.<br/>No exception crossed. The supervisor classified a value.
 ```
 
-- Measured (SDK 0.113.0, zod 4.4.3): clean call → `{ outcome: 'landed', tokensSpent: 53 }` with the wire's `end_turn` translated to Hermes's `completed`; 429 with `maxRetries: 0` → `{ kind: 'throttled', retryAfterMs: 5000 }` (wire seconds → port milliseconds); abort at 100 ms → `{ kind: 'aborted' }`; drift → refused with both issues, **zero** tokens booked.
-- The wire is untouched: the port is compile-time architecture; the network cannot see it.
-- With the mock **stopped**, the fake ran the same supervisor — including the retry-later policy branch — in 0.6 ms.
+Measured against SDK 0.113.0 and zod 4.4.3:
+
+- A clean call returned `{ outcome: 'landed', tokensSpent: 53 }`, with the wire's `end_turn` translated to `completed`.
+- A 429 with `maxRetries: 0` returned `{ kind: 'throttled', retryAfterMs: 5000 }`. The wire spoke seconds and the port speaks milliseconds.
+- An abort at 100 ms returned `{ kind: 'aborted' }`. Drifted bytes were refused with both issues, and zero tokens were booked.
+- With the mock stopped, the fake ran the same supervisor, including the retry-later branch, in 0.6 ms.
+
+The wire itself is untouched. A port is build-time architecture, and the network cannot see it.
 
 ## Hermes anchoring
 
-Scenario step **S4** verbatim (model calls through the ModelGateway; typed failures the supervisor classifies), seeding **S6** (the supervisor's `AbortSignal` crosses the port) and **S7** (`requestId` kept for the trace). Decision recorded in NOTES.md 2026-07-29: provider-neutral port, exactly one live adapter, the [[fake]] as the second implementation that keeps the contract honest.
+Scenario step **S4**: model calls go through the ModelGateway, and the supervisor classifies typed failures. The port seeds **S6**, because the supervisor's `AbortSignal` crosses it. It seeds **S7**, because the adapter keeps the provider's `requestId`. The decision recorded in `NOTES.md` on 2026-07-29 stands: neutral port, one live adapter, the [[fake]] as the second implementation.
+
+## What the 2026-08-08 rewrite cut
+
+The lesson went from 3,860 words and 60 linter errors to 1,992 words and none. The budget forced real losses, listed here so they are not lost silently.
+
+- The two supplement callouts, 355 words before the first teaching sentence, became three footer lines.
+- The explanation of "above" and "below" as claims about the import graph. Supplement 0006a owns that material now.
+- The five-row mock-versus-fake table lost two rows, and the layer table lost its longer evidence cells.
+- The say-it section went from four questions to three, and the classification exercise from seven items to six.
+- Four coined phrases went, each of them named in the banned list of `docs/style/ste-profile.md`.
 
 ## Terms introduced
 

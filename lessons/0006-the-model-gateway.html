@@ -12,113 +12,72 @@
 <body>
 
 <header class="lesson-head">
-  <p class="kicker">Hermes · Phase 1 · Lesson 0006 · lab exercise 05-model-gateway · ~45–60 minutes</p>
+  <p class="kicker">Hermes · Phase 1 · Lesson 0006 · lab exercise 05-model-gateway · ~45–60 min</p>
   <h1>The Model Gateway</h1>
-  <p class="lede">Phase 0 ended with every SDK mechanic understood and every boundary checked — yet exercise 04's
-  client still imports the SDK's types, catches the SDK's exceptions, and speaks the wire's vocabulary in the same
-  file that keeps the ledger. Phase 1 opens with the main question: <strong>where exactly does the line between
-  the SDK's mechanics and Hermes's policy go — and who owns the types on each side of it?</strong></p>
+  <p class="lede">Exercise 04's client imports the SDK, catches its errors, and keeps the job's ledger in
+  one file. Where does the line between the SDK and Hermes go?</p>
 </header>
 
 <div class="callout mission">
   <strong>Why this matters for Hermes</strong>
-  Scenario step <strong>S4</strong> is this lesson verbatim: model calls go through the ModelGateway — <em>below
-  the port: the client SDK's mechanics; above it: Hermes policy — routing, provider, model choice</em> — and
-  failures arrive as <em>typed errors the supervisor can classify</em>. The port you build today also seeds
-  <strong>S6</strong> (the supervisor's <code>AbortSignal</code> crosses it) and <strong>S7</strong> (the
-  <code>requestId</code> it keeps is the trace's first field). Two spine threads advance: the <em>six
-  responsibilities</em> all move below the line without changing, and the <em>boundary rule</em>'s parse
-  (lesson 0005) finds its permanent home inside the adapter. The still-open provider-neutrality decision
-  lands here. <strong>Phase 1 opens.</strong>
+  Scenario step <strong>S4</strong> puts every model call behind the ModelGateway. The SDK's mechanics run
+  below it, and Hermes policy sits above it. Failures reach the supervisor as data it can classify. The
+  same interface carries the supervisor's abort signal (S6) and the request id the trace needs (S7). Two
+  threads advance. The six responsibilities move below the line, and lesson 0005's parse finds its home.
 </div>
 
-<div class="callout">
-  <strong>Architecture context — supplement 0006a (added 2026-07-29).</strong> This lesson quotes S4's "above
-  it: Hermes policy — routing, provider, model choice" without drawing the system that sentence lives in. If
-  "Hermes policy" is a phrase rather than a picture by the end of §1, pause and read the
-  <a href="0006a-hermes-architecture-primer.html">Hermes Architecture Primer: Where the Model Gateway
-  Fits</a> (~20–30 min): it maps the whole Spec-to-Evidence Loop, defines <em>policy</em> operationally, and
-  labels exactly what exercise 05 implements versus what later Phase 1 lessons add — in particular, that
-  today's supervisor is a one-call policy <em>seed</em> and that no routing, budget, permission, or trace
-  system exists yet. Otherwise read it right after this lesson, before lesson 0007. Compact reference form:
-  <code>wiki/course/course-architecture.md</code>.
-  <br><br>
-  <strong>System context — supplement 0006b (added 2026-07-30).</strong> 0006a maps the <em>course's</em>
-  architecture from this code seam outward. The prior question — what the Claude-Assisted Hermes OS actually
-  is, what a Hermes <em>job</em> is, and at what moment in a real job this gateway becomes necessary — is
-  answered from the governance record in
-  <a href="0006b-the-hermes-control-plane.html">The Hermes Control Plane: From Job to Evidence</a>
-  (~35–50 min, no TypeScript). Recommended order: this lesson's §1 → 0006b → 0006a → the rest of this lesson
-  and exercise 05. Durable reference: <code>docs/hermes_os/architecture/hermes-job-control-plane.md</code>.
-</div>
+<h2>1 · The cost of copying the client</h2>
 
-<h2>1 · The client you would have to copy</h2>
-
-<p>Open exercise 02's <code>client.ts</code> and read it as the Phase 1 supervisor would: one file that imports
-<code>Anthropic</code>, constructs it with endpoint and key, catches <code>RateLimitError</code> /
-<code>APIUserAbortError</code> / <code>APIError</code> in a chain, and reads <code>message.usage</code> into a
-ledger. Now imagine the loop of lessons 0008–0011 built the same way — every file that wants a model call
-repeats the imports, the catch chain, and (since lesson 0005) the boundary parse. Three costs, all measured in
-this lab:</p>
+<p>Open exercise 02's <code>client.ts</code> and read it as a supervisor would. One file builds the
+client, catches three error classes, and reads <code>message.usage</code> into a ledger. Lessons 0008 to
+0011 would repeat all of it in every file that wants a model call.</p>
 
 <ul>
-  <li><strong>Failure is an exception, everywhere.</strong> A 429 unwinds the caller's stack unless every caller
-  writes the same <code>instanceof</code> chain. Lesson 0005 §3 already named what a supervisor wants instead:
-  an expected outcome to <em>classify</em>, riding as data.</li>
-  <li><strong>Tests need a server.</strong> The mock is a faithful double, but it is a <em>process</em> — a port
-  to hold, a stale instance to hunt (it has bitten three sessions running). The loop's policy — "on throttle,
-  park and retry later" — deserves a test that runs in a millisecond with no wire at all.</li>
-  <li><strong>The SDK's vocabulary is load-bearing.</strong> Domain code that types its variables as
-  <code>Anthropic.Message</code> and switches on <code>"end_turn"</code> re-couples to the provider at every
-  call site. An SDK upgrade — or a provider decision — becomes a domain rewrite.</li>
+  <li>A 429 unwinds the caller's stack. Every caller writes the same <code>instanceof</code> chain to
+  survive one.</li>
+  <li>Policy tests need the mock process running, and a stale one has cost three sessions.</li>
+  <li>Code that names <code>Anthropic.Message</code> couples to the provider at every call site.</li>
 </ul>
 
-<p>The fix is one deliberate seam. Before building it, account for the layers — a claim that "the gateway
-changes everything" has to say <em>which</em> everything:</p>
+<p>One seam fixes all three. It changes less than that claim suggests, so read the layers first.</p>
 
 <table>
-  <tr><th>Layer</th><th>Does the gateway change it?</th><th>Evidence</th></tr>
-  <tr><td>the wire — method, headers, body</td><td><strong>no</strong> — byte-for-byte exercise 02's exchange</td><td>watch the mock's terminal during Part A: same <code>POST /v1/messages</code>, same gates ②③④</td></tr>
-  <tr><td>the six responsibilities ①–⑥</td><td><strong>no</strong> — the SDK still does all six</td><td>B1's 429 honors <code>retry-after</code> exactly as measured in exercise 02; they now run <em>below the port</em></td></tr>
-  <tr><td>types the domain sees</td><td><strong>yes</strong> — Hermes-owned vocabulary</td><td><code>supervisor.ts</code> imports only <code>gateway.ts</code>; grep it for <code>@anthropic-ai/sdk</code> and find nothing</td></tr>
-  <tr><td>the failure surface</td><td><strong>yes</strong> — exceptions become data at the port</td><td>the supervisor has no <code>try/catch</code>; it switches on <code>failure.kind</code></td></tr>
-  <tr><td>testability</td><td><strong>yes</strong> — an in-process fake joins the wire-level mock</td><td>Part C, measured: the whole supervisor runs in 0.6 ms with the mock <em>stopped</em></td></tr>
-  <tr><td>compile-time dependency direction</td><td><strong>yes</strong> — the arrow turns around</td><td>the adapter imports the domain's port; the domain imports no adapter (§2)</td></tr>
+  <tr><th>Layer</th><th>Changed?</th><th>Evidence</th></tr>
+  <tr><td>the wire</td><td>no</td><td>Part A sends exercise 02's request unchanged</td></tr>
+  <tr><td>the six responsibilities ①–⑥</td><td>no</td><td>the SDK still runs all six, below the port</td></tr>
+  <tr><td>the types the domain sees</td><td>yes</td><td><code>supervisor.ts</code> imports <code>gateway.ts</code>, nothing else</td></tr>
+  <tr><td>the failure surface</td><td>yes</td><td>the supervisor switches on <code>failure.kind</code>, no <code>try/catch</code></td></tr>
+  <tr><td>testability</td><td>yes</td><td>Part C runs the supervisor in 0.6 ms, mock stopped</td></tr>
+  <tr><td>the import direction</td><td>yes</td><td>the adapter imports the port, the domain no adapter</td></tr>
 </table>
 
 <div class="callout">
-  <strong>New today vs. reprise.</strong> Genuinely new ideas — five: ⑴ a <em>port</em> is an interface the
-  caller owns — dependency inversion turns the import arrow around; ⑵ an <em>adapter</em> translates three
-  currencies (calls down, replies up, exceptions into data) and is the boundary parse's permanent home;
-  ⑶ at the port, <em>every</em> outcome of a call is a value — exceptions stop below the line;
-  ⑷ a <em>fake</em> is a real, in-process implementation of the port — a different altitude of test double than
-  the wire mock; ⑸ provider neutrality is a property of the <em>seam</em>, not a count of adapters — today's
-  decision. Everything else is reprise: the six responsibilities (0001–0003, unmoved), typed error classes
-  (0003), the abort signal (0004), <code>safeParse</code> and rejection-as-data (0005), narrowing a
-  discriminated union (0001/0004/0005), the mock as test double and the base-URL seam (0002).
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>A port is an interface the domain owns.</li>
+    <li>An adapter translates calls down, replies up, and exceptions into data.</li>
+    <li>Above the port, every outcome of a call is a value.</li>
+    <li>A fake is a working implementation of the port, running in memory.</li>
+    <li>Provider neutrality is a property of the interface, not a count of adapters.</li>
+  </ul>
+  <p>Reprise: the six responsibilities, typed error classes, the abort signal,
+  <code>safeParse</code>, and narrowing a union on its tag.</p>
 </div>
 
 <h2>2 · The port: an interface the domain owns</h2>
 
-<div class="callout">
-  <strong>Version pin.</strong> Everything below was verified against <code>@anthropic-ai/sdk 0.113.0</code>
-  and <code>zod 4.4.3</code> exactly (no <code>^</code>/<code>~</code> in any claim), by live runs against the
-  exercise 01 mock. All numbers in this lesson are those measurements.
-</div>
-
-<p>You have met this seam before, one level down. Lesson 0002's <em>base-URL seam</em> swapped the real API for
-the mock <em>at the wire</em> — a configuration value chose where the bytes went, and no code changed. The port
-is the same move lifted <em>to the type level</em>: an interface chooses which implementation runs, and no
-domain code changes. One word, two prior meanings — pin them before they collide:</p>
+<p>You have met this move at the wire. Lesson 0002's base URL swapped the real API for the mock. A
+<dfn>port</dfn> is an interface the caller owns, written in the caller's own words. It swaps
+implementations at build time instead. One word now carries two meanings.</p>
 
 <table>
-  <tr><th>The phrase</th><th>What it names</th><th>Where you met it</th></tr>
-  <tr><td>port <code>8787</code></td><td>a TCP address — where a <em>process</em> listens for bytes</td><td>the mock, since exercise 01 (and the <code>PORT</code> env override)</td></tr>
-  <tr><td>the <em>port</em> in ports-and-adapters</td><td>an interface the domain owns — where <em>implementations</em> plug in</td><td>today: <code>gateway.ts</code>, the seam this whole lesson builds</td></tr>
+  <tr><th>The word</th><th>What it names</th><th>Where you met it</th></tr>
+  <tr><td>port <code>8787</code></td><td>a TCP address, where a process listens for bytes</td><td>the mock, since exercise 01</td></tr>
+  <tr><td>the port in ports and adapters</td><td>an interface the domain owns, where implementations plug in</td><td><code>gateway.ts</code>, built today</td></tr>
 </table>
 
-<p>Read the port's file the way lesson 0003 read the SDK's entry point — declaration first, and honest about
-what survives compilation (<code>hermes-sdk-lab/05-model-gateway/src/gateway.ts</code>, abridged):</p>
+<p>Read the declaration first, as lesson 0003 read the SDK's entry point
+(<code>05-model-gateway/src/gateway.ts</code>, abridged).</p>
 
 <pre><code>export interface ModelCall  { prompt: string; maxTokens: number }
 export interface ModelReply { text: string; stop: StopCause;
@@ -134,23 +93,19 @@ export interface ModelGateway {
 }</code></pre>
 
 <table>
-  <tr><th>Syntax</th><th>Meaning</th><th>What exists at runtime?</th></tr>
-  <tr><td><code>interface ModelGateway</code></td><td>a contract declaration in the domain's vocabulary</td><td><strong>nothing</strong> — erased, like every interface since lesson 0001. Contrast lesson 0005's <code>z</code>: a schema is a runtime value; a port is not</td></tr>
-  <tr><td><code>implements ModelGateway</code></td><td>a compile-time claim on a class, checked structurally</td><td>nothing of the claim — but the <em>class</em> survives as a real constructor</td></tr>
-  <tr><td><code>new AnthropicModelGateway(client, model)</code></td><td>construct one adapter, configured from outside</td><td>an object holding the SDK client — mechanics, packaged</td></tr>
-  <tr><td><code>gateway.complete(call)</code></td><td>invoke through the port's signature</td><td>whichever implementation the wiring chose does its runtime work</td></tr>
-  <tr><td><code>options?.signal</code></td><td>the supervisor's kill switch crosses the port</td><td>a real <code>AbortSignal</code> — allowed across because it is a web platform standard, not an SDK type</td></tr>
+  <tr><th>Syntax</th><th>Meaning</th><th>At runtime?</th></tr>
+  <tr><td><code>interface ModelGateway</code></td><td>a contract in the domain's words</td><td>nothing. TypeScript erases every interface</td></tr>
+  <tr><td><code>implements ModelGateway</code></td><td>a build-time claim on a class</td><td>nothing of the claim. The class survives</td></tr>
+  <tr><td><code>gateway.complete(call)</code></td><td>a call through the port's signature</td><td>whichever implementation the wiring chose</td></tr>
+  <tr><td><code>options?.signal</code></td><td>the supervisor's kill switch crosses</td><td>a real <code>AbortSignal</code>, owned by the web platform</td></tr>
 </table>
 
-<p>The standing distinction, fourth lesson running, with a twist: <em>a signature tells TypeScript what may be
-called; the implementation does the runtime work.</em> Today one signature has <strong>two</strong>
-implementations — <code>AnthropicModelGateway</code> and <code>FakeModelGateway</code> — and the domain cannot
-tell which one it holds, because all it ever imported was the signature. That ignorance is the product. And
-since the interface is erased, ask what enforces the seam at all: the type-checker at every
-<code>implements</code> and every import, at build time. A port is not a runtime guard — it is <em>discipline
-made checkable</em>. The runtime guard is a different artifact, and it lives in §3.</p>
+<p>A signature tells TypeScript what may be called. The implementation does the runtime work. One
+signature has two implementations today, and the domain cannot tell which one it holds.</p>
 
-<p>Beside the declaration, the two runtime values Part A and Part B1 actually produced — one per arm:</p>
+<p><dfn>Dependency inversion</dfn> names the arrow that just turned around. The concrete code imports the
+domain's interface, and the domain imports no concrete class. One command checks it. Run
+<code>grep -r "@anthropic-ai/sdk" src/</code> and you get the adapter and the wiring.</p>
 
 <pre><code>// Part A — the proof arm                  // Part B1 — the refusal arm
 {                                          {
@@ -160,14 +115,13 @@ made checkable</em>. The runtime guard is a different artifact, and it lives in 
     stop: "completed",                         retryAfterMs: 5000,
     usage: { inputTokens: 11,                },
              outputTokens: 42 },           }
-    requestId: "req_mock_0001",            // the wire said `retry-after: 5` (seconds);
-  },                                       // the port speaks milliseconds — translation,
+    requestId: "req_mock_0001",            // the wire said `retry-after: 5` (seconds).
+  },                                       // the port speaks milliseconds: translation,
 }                                          // not passthrough</code></pre>
 
-<p>Note what the vocabulary did: <code>end_turn</code> became <code>completed</code>, <code>input_tokens</code>
-became <code>inputTokens</code>, an exception became <code>{ kind: "throttled" }</code>. None of this is
-cosmetic. Every word in <code>gateway.ts</code> is one Hermes chose, so no provider spelling is load-bearing
-above the line — that single fact is what §4's decision stands on.</p>
+<p>Read what the vocabulary did. <code>end_turn</code> became <code>completed</code>, and
+<code>input_tokens</code> became <code>inputTokens</code>. A <code>RateLimitError</code> became
+<code>{ kind: "throttled" }</code>. No provider spelling survives above the line.</p>
 
 <figure class="diagram">
 <pre class="mermaid">
@@ -182,15 +136,13 @@ flowchart LR
         AD -->|imports| S2["@anthropic-ai/sdk"]
     end
 </pre>
-<figcaption>Dependency inversion, measured in import statements: the domain depends on its own interface; both
-implementations depend on it too. The SDK is imported in exactly two files — the adapter (translation) and
-<code>main.ts</code> (wiring) — and in zero domain files.</figcaption>
+<figcaption>Diagram 1. Dependency inversion, counted in import statements. Both implementations depend on
+the domain's own interface.</figcaption>
 </figure>
 
-<h2>3 · The adapter: three translations, zero new bytes</h2>
+<h2>3 · The adapter: three translations, no new bytes</h2>
 
-<p>First, the wire truth, because an architecture lesson can hide a wire lie: during Part A the mock's terminal
-shows <em>exactly</em> the exchange exercise 02 produced —</p>
+<p>During Part A the mock's terminal prints the exchange exercise 02 produced.</p>
 
 <pre><code>POST /v1/messages  (req_mock_0001)
 x-api-key: … · anthropic-version: 2023-06-01 · content-type: application/json
@@ -198,32 +150,22 @@ x-api-key: … · anthropic-version: 2023-06-01 · content-type: application/jso
 
 HTTP/1.1 200 OK · request-id: req_mock_0001 · stop_reason=end_turn input_tokens=11</code></pre>
 
-<p>The port added <strong>nothing</strong> to this. No header, no envelope, no proxy hop. A gateway is
-compile-time architecture; the network cannot see it. What changed is who gets to speak which language — the
-adapter (<code>anthropic-gateway.ts</code>, the file where the SDK import lives) performs three translations:</p>
+<p>The port added nothing to it. No header, no envelope, no extra hop. The network cannot see build-time
+architecture. An <dfn>adapter</dfn> is a class that implements a port by translating one concrete
+dependency into the port's words. This one translates three things.</p>
 
 <ol>
-  <li><strong>The call, downward.</strong> <code>ModelCall</code> → the SDK's params object. The model id is not
-  hardcoded here: routing is policy (S4), so the id enters the adapter as constructor configuration, decided
-  above.</li>
-  <li><strong>The reply, upward — through the boundary parse.</strong> The SDK returns a value <em>typed</em> as
-  <code>Message</code>; lesson 0005 established at length that this is an erased claim, not a check. So the
-  adapter runs <code>WireReplySchema.safeParse</code> on it — a schema deliberately narrower than
-  <code>Message</code>, covering exactly what <code>ModelReply</code> consumes (text, stop word, the ledger's
-  two numbers; <code>stop_reason</code> non-nullable, because <code>null</code> belongs to lesson 0004's
-  streaming skeleton and a <em>finished</em> reply must commit). The parse you installed at the client's edge
-  last lesson has found its permanent address: inside the adapter, below the port, run once for every reply
-  forever.</li>
-  <li><strong>The failures, upward — from classes to data.</strong> Exercise 02's catch chain
-  (<code>instanceof RateLimitError → APIUserAbortError → APIConnectionError → APIError</code>) is written one
-  final time, in one place, and its output is no longer control flow but a value:
-  <code>GatewayFailure</code>. Note the asymmetry with the port: SDK error classes are <em>runtime values</em>
-  (that is why <code>instanceof</code> works on them — lesson 0003), while the port's interfaces are erased.
-  The adapter spends the runtime artifact to produce data; anything it cannot recognize is a bug in our own
-  process and is <em>rethrown</em> — classifying bugs as gateway failures would hide them.</li>
+  <li>The call goes down. <code>ModelCall</code> becomes the SDK's params object, and the model id arrives
+  as constructor configuration.</li>
+  <li>The reply comes up through the boundary parse. <code>WireReplySchema.safeParse</code> checks the
+  fields <code>ModelReply</code> consumes.</li>
+  <li>The failures come up as data. The adapter writes exercise 02's <code>instanceof</code> chain one
+  last time, and returns a <code>GatewayFailure</code> value.</li>
 </ol>
 
-<p>Part B, measured — three failures crossing the port as data, no <code>try/catch</code> anywhere above it:</p>
+<p>SDK error classes are runtime values, which is why <code>instanceof</code> works on them. The port's
+interfaces are erased. The adapter rethrows any error it cannot classify, because a bug must stay
+loud.</p>
 
 <pre><code>B1 throttled → { outcome: 'retry_later', tokensSpent: 0,
                  notes: ['provider asked for 5000 ms of backoff'] }
@@ -233,12 +175,9 @@ B3 malformed → { outcome: 'gave_up',     tokensSpent: 0, notes: [
                  'stop_reason: [invalid_value] Invalid option: expected one of …',
                  'usage.output_tokens: [invalid_type] Invalid input: expected number, received string' ] }</code></pre>
 
-<p>B3 deserves a slow look. These are exercise 04's exact drifted bytes — the ones whose ledger printed
-<code>"1142"</code> against a real spend of 53. Through the gateway, the same bytes never reach a ledger at
-all: the adapter refuses them with both issues attached, and the supervisor books <strong>zero</strong> tokens
-and gives up loudly. You argued for precisely this in your lesson-0005 recall: <em>a plausible silent error is
-more dangerous than a conspicuous false alarm</em> — which is why the gateway validates <code>usage</code> at
-the boundary instead of trusting arithmetic on wire values. That argument is now load-bearing code.</p>
+<p>B3 sends exercise 04's drifted bytes. They once produced a ledger of <code>"1142"</code> against a
+real spend of 53. Here they never reach a ledger. Your lesson 0005 recall made the argument: a plausible
+silent error is more dangerous than a conspicuous false alarm.</p>
 
 <figure class="diagram">
 <pre class="mermaid">
@@ -249,106 +188,87 @@ sequenceDiagram
     S->>A: complete({ prompt, maxTokens }) — the port's signature, erased at runtime
     A->>M: POST /v1/messages — byte-for-byte exercise 02's wire
     M-->>A: 200 OK — body drifted: output_tokens "42", stop_reason "end-turn"
-    A->>A: WireReplySchema.safeParse → 2 issues (translation 2 refuses)
+    A->>A: WireReplySchema.safeParse → 2 issues, so translation 2 refuses
     A-->>S: { ok: false, failure: { kind: "malformed_reply", issues } }
-    Note over S: outcome 'gave_up', ledger 0 — exercise 04 booked "1142" here.<br/>No exception crossed — the supervisor classified a value.
+    Note over S: outcome 'gave_up', ledger 0. Exercise 04 booked "1142" here.<br/>No exception crossed. The supervisor classified a value.
 </pre>
-<figcaption>Part B3, measured: the drifted 200 travels the unchanged wire, is refused inside the adapter, and
-reaches policy as data. The three translations are invisible to both the network and the supervisor.</figcaption>
+<figcaption>Diagram 2. Part B3, measured. The drifted 200 travels the unchanged wire, the adapter refuses
+it, and policy receives data.</figcaption>
 </figure>
 
-<h2>4 · The fake, and the decision that was waiting for it</h2>
+<h2>4 · The fake, and the provider decision</h2>
 
-<p>"Mechanics below, policy above" needs its deconfusion before the fake makes sense: <em>below</em> does not
-mean hidden, private, or wrapped in secrecy — the adapter imports the SDK in plain sight, and <code>main.ts</code>
-constructs the client openly. Below/above describe the <strong>import graph</strong>, nothing else: files above
-the port may not name the SDK; files below may not be named by the domain. And "the port has two
-implementations" does not mean two <em>providers</em> — the second implementation is a test artifact:</p>
+<p>A <dfn>fake</dfn> is a working implementation of a port that answers from a script.
+<code>FakeModelGateway</code> is the port's second implementation, and a test artifact rather than a
+second provider.</p>
 
 <table>
-  <tr><th></th><th>exercise 01's mock server</th><th><code>FakeModelGateway</code></th></tr>
-  <tr><td>doubles the API at…</td><td>the <strong>wire</strong> — real HTTP, port 8787</td><td>the <strong>port</strong> — a method call, in-process</td></tr>
-  <tr><td>exists as</td><td>a separate process you start, stop, and (three sessions running) hunt when stale</td><td>an object your test constructs in the line above the assertion</td></tr>
-  <tr><td>what it exercises</td><td>the six responsibilities, the SDK's transport, the parse — <em>mechanics</em></td><td>the supervisor's decisions — <em>policy</em>, with mechanics assumed correct</td></tr>
-  <tr><td>speed, measured</td><td>~400 ms per call (deliberate latency)</td><td><strong>0.6 ms for a whole two-call scenario</strong>, mock stopped</td></tr>
-  <tr><td>keeps living because</td><td>adapter changes need a wire to prove against</td><td>the loop's tests must not need a network — Phase 1's exit criterion</td></tr>
+  <tr><th></th><th>the mock server</th><th><code>FakeModelGateway</code></th></tr>
+  <tr><td>doubles the API at</td><td>the wire: real HTTP on port 8787</td><td>the port: a method call, in memory</td></tr>
+  <tr><td>exercises</td><td>transport, the six responsibilities, the parse</td><td>the supervisor's decisions alone</td></tr>
+  <tr><td>costs, measured</td><td>~400 ms per call, latency on purpose</td><td>0.6 ms for two calls, mock stopped</td></tr>
 </table>
 
-<p>Part C is the demonstration: stop the mock — actually stop it — and run the <em>same supervisor</em> against
-a fake scripted in the port's vocabulary. Measured: the landed report is byte-identical to Part A's except
-<code>request: (none)</code>; the scripted throttle drives the <em>same</em> <code>retry_later</code> branch B1
-drove over the wire; and <code>fake.calls</code> hands the test a record of what the domain actually asked.
-Policy became testable at memory speed because policy's only dependency is a signature.</p>
+<p>Part C stops the mock and runs the same supervisor against the fake. The landed report matches Part
+A's, except that <code>request</code> reads <code>(none)</code>. The scripted throttle drives the
+<code>retry_later</code> branch B1 drove over the wire.</p>
 
-<p>Which brings the open decision due since session 1 — <strong>provider neutrality vs. Claude-only</strong> —
-to the only place it could land. Decided: <strong>a provider-neutral port, exactly one live adapter.</strong></p>
+<p>One question has stood open since session 1. Decided: a provider-neutral port with exactly one live
+adapter. The port's words name text, a stop cause, two usage numbers and a failure kind, so neutrality
+cost nothing. No benchmark asks for a second live adapter, and MISSION rules out speculative work.
+Provider choice arrives later, above the port, as a routing decision.</p>
 
-<ul>
-  <li><strong>The port is neutral by construction, not by ambition.</strong> Look at what §2's vocabulary
-  actually names: text, a stop cause, two usage numbers, a failure taxonomy. Nothing Anthropic-shaped crossed
-  the line — not because we abstracted hard, but because the loop's needs (S4–S6) simply do not include
-  provider concepts. Neutrality costs nothing when the interface is derived from the caller's needs instead of
-  the callee's shape.</li>
-  <li><strong>A second live adapter is not built.</strong> No mission requirement names a second provider, and
-  no Phase 4 benchmark exists to justify one — building it now would be exactly the speculative work MISSION
-  rules out. Provider <em>choice</em> is policy: when it arrives, it arrives as data above the port (a routing
-  decision constructing a different adapter), not as a rewrite.</li>
-  <li><strong>The honest-port risk is real, and the fake answers it.</strong> A port designed against one
-  provider can quietly grow that provider's shape. The classic mitigation is a second implementation — and we
-  have one from day one. Every time <code>FakeModelGateway</code> implements the contract trivially, it
-  re-proves that nothing in the signature requires Anthropic. The fake is the second <em>implementation</em>,
-  for free — a test double, not a second provider, and not proof of interoperability with any real one.</li>
-</ul>
+<p>A port built against one provider can grow that provider's shape. The fake answers that risk from day
+one, and proves nothing about a real second provider.</p>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>Model calls cross a port</td><td>implemented</td><td><code>gateway.ts</code>, <code>anthropic-gateway.ts</code>, Part A</td></tr>
+  <tr><td>An abort signal crosses it</td><td>seeded</td><td>Part B2 proves it. Budget rules arrive in lesson 0009</td></tr>
+  <tr><td>The request id survives</td><td>seeded</td><td>The adapter keeps it. The trace is lesson 0011</td></tr>
+  <tr><td>A rule picks the model</td><td>planned</td><td>No <code>ROADMAP.md</code> row names one yet</td></tr>
+</table>
 
 <h2>5 · The exercise</h2>
 
-<p>Commands and the full measured table live in <code>hermes-sdk-lab/05-model-gateway/README.md</code>; the arc:</p>
+<p>Commands and the measured table live in <code>05-model-gateway/README.md</code>. The arc:</p>
 
 <ol>
-  <li><strong>Read the files in dependency order</strong> — <code>gateway.ts</code>, <code>supervisor.ts</code>,
-  then <code>anthropic-gateway.ts</code>. At each import line, say which side of the port you are on before
-  reading further.</li>
-  <li><strong>Part A is given — run it and watch both terminals.</strong> The supervisor's report on one side;
-  on the other, the proof that the wire never heard of your architecture.</li>
-  <li><strong>Part B — implement <code>classifyFailure</code>.</strong> Run <code>pnpm job b</code> <em>first</em>
-  and watch a raw <code>RateLimitError</code> crash the job — an exception crossing the port is the "before"
-  photo. Then write the <code>instanceof</code> chain (exercise 02's client is your reference), most specific
-  first, rethrowing what you cannot classify. Re-run: three failures, three classifications, zero crashes.</li>
-  <li><strong>Part C — implement <code>FakeModelGateway.complete</code>, then stop the mock.</strong> Ctrl+C in
-  the mock's terminal is part of the exercise. Script a landed reply and a throttle, run
-  <code>pnpm job c</code>, and compare C2's report with B1's — same branch, no wire.</li>
-  <li><strong>Close the loop:</strong> run <code>grep -r "@anthropic-ai/sdk" src/</code> and account for every
-  hit. Two files, both below the port or in the wiring — that grep is the architecture, checkable in one
-  command.</li>
+  <li>Read <code>gateway.ts</code>, <code>supervisor.ts</code>, then <code>anthropic-gateway.ts</code>. At
+  each import, say which side of the port you are on.</li>
+  <li>Run Part A and watch both terminals: the supervisor's report, and the unchanged wire.</li>
+  <li>Run <code>pnpm job b</code> first. A raw <code>RateLimitError</code> crashes the job, and that crash
+  is what you are replacing.</li>
+  <li>Implement <code>classifyFailure</code>, most specific case first. Rethrow what you cannot classify,
+  then re-run for three failures and no crash.</li>
+  <li>Implement <code>FakeModelGateway.complete</code>, stop the mock, and run <code>pnpm job c</code>.
+  Compare C2's report with B1's.</li>
 </ol>
 
 <h2>6 · Exercise: mechanics or policy?</h2>
 
 <section class="exercise" data-scored>
   <h3>Place each item on its side of the port</h3>
-  <p class="rules">Answer from memory before clicking — the effort is the point. Feedback is immediate.</p>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
 
-  <div class="cl" data-cats="policy — above the port|mechanics — below the port|the port itself — the contract|the wire — untouched by all of this">
-    <div class="cl-item" data-cat="0" data-why="measured in B1: the supervisor's switch turned { kind: 'throttled', retryAfterMs: 5000 } into outcome 'retry_later'. Deciding what a failure MEANS for the job — park it, retry later — is policy; the adapter only reported the fact.">
+  <div class="cl" data-cats="policy, above the port|mechanics, below the port|the port itself|the wire, untouched">
+    <div class="cl-item" data-cat="0" data-why="Measured in B1. The supervisor turned a throttled failure into the outcome retry_later. That is a decision.">
       <p>A throttled job is parked and retried after the provider's backoff window.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="the SDK's maxRetries machinery — measured in exercise 02: 3 requests over 10.1 s honoring retry-after. The adapter inherits it by wrapping the client; the supervisor never even learns the retries happened. Responsibility ⑤, below the line.">
+    <div class="cl-item" data-cat="1" data-why="The SDK's own retry machinery, measured in exercise 02 at 3 requests over 10.1 s. Responsibility ⑤.">
       <p>A 429 is retried automatically while honoring the <code>retry-after</code> header.</p>
     </div>
-    <div class="cl-item" data-cat="2" data-why="GatewayResult is the contract both implementations must satisfy and the only vocabulary the domain sees — owned by gateway.ts, which imports nothing. Not policy (it decides nothing) and not mechanics (it does nothing): it is the agreement between them.">
-      <p>The <code>GatewayResult</code> union — proof on one arm, classified failure on the other.</p>
+    <div class="cl-item" data-cat="2" data-why="The contract both implementations satisfy, owned by gateway.ts, which imports nothing. It decides nothing.">
+      <p>The <code>GatewayResult</code> union: proof on one arm, classified failure on the other.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="translation three, inside the adapter: SDK exception classes are provider vocabulary, so flattening them into failure data is mechanics, done once below the port. (The instanceof works at all because error classes survive compilation — unlike the port's interfaces.)">
+    <div class="cl-item" data-cat="1" data-why="Translation three. Exception classes are provider vocabulary, so the adapter flattens them into data once.">
       <p>An <code>instanceof</code> chain turns <code>RateLimitError</code> into <code>{ kind: "throttled" }</code> data.</p>
     </div>
-    <div class="cl-item" data-cat="3" data-why="watch the mock's terminal during Part A: the same POST /v1/messages and the same gates ②③④ as exercise 02. The port is compile-time architecture — it adds zero bytes; the network cannot tell this lesson happened.">
+    <div class="cl-item" data-cat="3" data-why="Watch the mock's terminal during Part A. The same request and gates ②③④ as exercise 02.">
       <p><code>POST /v1/messages</code> with gates ② auth, ③ version, ④ request contract.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="routing is policy (S4: 'above it: Hermes policy — routing, provider, model choice'). The id enters the adapter as constructor configuration decided above; the adapter hardcodes nothing about which model serves a job.">
+    <div class="cl-item" data-cat="0" data-why="S4 reserves model choice for policy above the port. The id reaches the adapter as configuration.">
       <p>Which model id serves this job.</p>
-    </div>
-    <div class="cl-item" data-cat="1" data-why="the boundary check is the adapter's duty at the port's threshold: the reply may not cross until proven, so that above the line, types are proof (lesson 0005's rule). It runs below — inside anthropic-gateway.ts — exactly once per reply.">
-      <p>The <code>safeParse</code> of the reply body against <code>WireReplySchema</code>.</p>
     </div>
   </div>
 
@@ -358,41 +278,41 @@ to the only place it could land. Decided: <strong>a provider-neutral port, exact
 <h2>7 · Quiz</h2>
 
 <section class="exercise" data-scored>
-  <h3>Four questions, equal-length options, no format clues</h3>
+  <h3>Four questions</h3>
 
-  <div class="qz" data-correct="1" data-why="Interfaces are erased (lesson 0001) — a port is not a runtime guard but discipline made checkable: the type-checker enforces it at every `implements` and every import, at build time. Nothing routes, nothing inherits, nothing wraps; at runtime only the two classes exist. The runtime guard is a different artifact — the adapter's boundary parse.">
-    <p class="qz-prompt">Q1. Exercise 05 ships <code>interface ModelGateway</code> with two implementations. What exists of the interface itself at runtime?</p>
+  <div class="qz" data-correct="1" data-why="TypeScript erases interfaces, as lesson 0001 showed. Only the two classes exist at run time. The runtime guard is the adapter's boundary parse.">
+    <p class="qz-prompt">Q1. Exercise 05 ships <code>interface ModelGateway</code> with two implementations. What exists of the interface at runtime?</p>
     <button class="qz-opt" type="button">A registry object that maps each adapter onto its port methods</button>
-    <button class="qz-opt" type="button">Nothing — it is erased; the type-checker enforced it at build time</button>
+    <button class="qz-opt" type="button">Nothing. It is erased, and the type-checker enforced it earlier</button>
     <button class="qz-opt" type="button">A shared prototype that both adapter classes silently inherit from</button>
     <button class="qz-opt" type="button">A wrapper function that routes each call to the chosen adapter</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="2" data-why="The declared return type is an erased compile-time claim — the SDK performs no runtime shape validation of success bodies (measured in B3: the drifted 200 arrived fully 'typed'). The gateway is Hermes's boundary, so the adapter proves the fields policy consumes before they cross. The parse checks; it does not repair, and the camelCase mapping is separate code that runs after it.">
-    <p class="qz-prompt">Q2. The SDK already declares <code>Message</code> as <code>create()</code>'s return type. Why does the adapter still run <code>WireReplySchema.safeParse</code> on the reply?</p>
+  <div class="qz" data-correct="2" data-why="The declared return type is an erased claim. The SDK runs no runtime shape check on success bodies, which B3 measured: the drifted 200 arrived fully typed.">
+    <p class="qz-prompt">Q2. The SDK already declares <code>Message</code> as <code>create()</code>'s return type. Why does the adapter still run <code>safeParse</code>?</p>
     <button class="qz-opt" type="button">Because the SDK validates the headers only, and bodies need their own pass</button>
     <button class="qz-opt" type="button">Because Zod repairs any drifted fields that the SDK would leave set to null</button>
-    <button class="qz-opt" type="button">Because the declared type is an erased claim — the parse is the actual check</button>
+    <button class="qz-opt" type="button">Because the declared type is an erased claim, so the parse is the real check</button>
     <button class="qz-opt" type="button">Because safeParse converts the wire's snake_case into Hermes's camelCase</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="0" data-why="Altitude is the distinction: the mock is a real HTTP process doubling the API at the wire (it exercises transport, gates, and parse — mechanics), while the fake implements the port in-process and doubles the model for policy tests — measured at 0.6 ms with the mock stopped. Both are test doubles; they stand in at different layers, and the supervisor cannot tell either from the real thing.">
-    <p class="qz-prompt">Q3. Exercise 01's mock server and Part C's <code>FakeModelGateway</code> are both test doubles. What actually separates them?</p>
-    <button class="qz-opt" type="button">The mock doubles the wire as a process; the fake doubles the port in-process</button>
-    <button class="qz-opt" type="button">The mock validates each request strictly; the fake accepts whatever it is sent</button>
-    <button class="qz-opt" type="button">The mock replays recorded fixtures; the fake computes replies from the prompt</button>
-    <button class="qz-opt" type="button">The mock serves raw-fetch clients only; the fake serves the SDK-based clients</button>
+  <div class="qz" data-correct="0" data-why="They stand in at different layers. The mock is an HTTP process doubling the API at the wire. The fake implements the port in memory, measured at 0.6 ms.">
+    <p class="qz-prompt">Q3. Exercise 01's mock server and Part C's <code>FakeModelGateway</code> are both test doubles. What separates them?</p>
+    <button class="qz-opt" type="button">The mock doubles the wire as a process, and the fake doubles the port</button>
+    <button class="qz-opt" type="button">The mock validates each request strictly, and the fake accepts anything</button>
+    <button class="qz-opt" type="button">The mock replays recorded fixtures, and the fake computes each reply</button>
+    <button class="qz-opt" type="button">The mock serves raw-fetch clients, and the fake serves SDK-based ones</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="2" data-why="Decided this lesson: the port's vocabulary is Hermes-owned and names nothing provider-shaped, so neutrality is a property of the seam itself; exactly one live adapter exists because no requirement or benchmark asks for a second, and the FakeModelGateway is the second implementation that keeps the contract honest. Provider choice, when it comes, arrives as routing policy above the port — not as a rewrite.">
+  <div class="qz" data-correct="2" data-why="Decided this lesson. The port's words name nothing provider-shaped. One live adapter exists because nothing asks for a second, and the fake keeps the contract in check.">
     <p class="qz-prompt">Q4. Which statement records the provider-neutrality decision as this lesson landed it?</p>
     <button class="qz-opt" type="button">Two live adapters ship today, so the port is proven against real providers</button>
     <button class="qz-opt" type="button">The port stays Claude-shaped until Phase 4 benchmarks justify abstracting</button>
-    <button class="qz-opt" type="button">Neutral port, one live adapter — neutrality lives in the seam, not a count</button>
-    <button class="qz-opt" type="button">The decision is deferred again; the gateway re-exports the SDK's own types</button>
+    <button class="qz-opt" type="button">Neutral port, one live adapter. Neutrality lives in the interface itself</button>
+    <button class="qz-opt" type="button">The decision is deferred again, and the gateway re-exports the SDK's types</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
@@ -401,56 +321,40 @@ to the only place it could land. Decided: <strong>a provider-neutral port, exact
 
 <h2>8 · Say it in your own words</h2>
 
-<p>After the lab work, close the loop with your teacher. In the chat, answer these four — no notes, no
-scrolling up:</p>
+<p>Answer these in the chat after the lab, with no notes.</p>
+
 <ol>
-  <li>Define <strong>port</strong> and <strong>adapter</strong> in one sentence each. Then: which of the two
-  survives compilation, and what enforces the one that does not?</li>
-  <li>Trace a 429 from the wire to the supervisor: bytes → SDK → adapter → port → policy. Name what the SDK
-  hands the adapter, and what the adapter hands the port. Why does <code>instanceof RateLimitError</code> work
-  at runtime when <code>instanceof ModelGateway</code> is not even writable?</li>
-  <li>A reviewer objects: "the SDK already types the reply — the adapter's <code>safeParse</code> is redundant."
-  Defend the parse in two sentences, citing what the installed <code>.d.ts</code> actually promises and what it
-  cannot promise.</li>
-  <li>State the provider-neutrality decision as landed, with the strongest argument for it — and name the risk
-  a one-adapter port runs, plus the thing in this exercise that mitigates that risk from day one.</li>
+  <li>Define port and adapter in one sentence each. Say which one survives compilation, and what enforces
+  the one that does not.</li>
+  <li>Trace a 429 from the wire to the supervisor. Name what the SDK hands the adapter, and what the
+  adapter hands the port.</li>
+  <li>A reviewer calls the adapter's <code>safeParse</code> redundant, because the SDK types the reply.
+  Answer in two sentences.</li>
 </ol>
 
-<p>And the compression — if you keep only five sentences from Phase 1's opening: <em>⑴ A port is an interface
-the domain owns; both adapters and domain depend on it, so the SDK's types stop below the line while the wire
-stays byte-for-byte unchanged. ⑵ The adapter translates three currencies — calls down, replies up through the
-boundary parse, exceptions into failure data — and is the parse's permanent home. ⑶ Above the port, every
-outcome of a model call is a value the supervisor classifies with a switch; nothing unwinds its stack.
-⑷ A fake is a real in-process implementation of the port, which is why the loop's policy is testable in a
-millisecond with no server at all. ⑸ Provider neutrality landed as a property of the seam — Hermes-owned
-vocabulary, one live adapter, the fake keeping the contract honest.</em></p>
-
-<p>This lesson's new terms — <em>port</em>, <em>adapter</em>, <em>fake</em>, <em>dependency inversion</em> —
-have wiki notes under <code>wiki/terms/</code> at <code>status: introduced</code>. As always: promoted when you
-can use them, not when you've seen them. (<em>Typed error</em> and <em>declaration file</em>, waiting since
-lesson 0003, get their pressure test in questions 2 and 3 above.)</p>
+<p>If you keep only five sentences from Phase 1's opening, keep these. A port is an interface the domain
+owns, and the domain and its adapters both depend on it. The adapter translates calls down, replies up
+through the parse, and exceptions into failure data. Above the port every outcome is a value the
+supervisor classifies. A fake implements the port in memory, so policy is testable with no server.</p>
 
 <h2>Primary source</h2>
 
-<p><strong>Read next:</strong> Alistair Cockburn's original
-<a href="https://alistair.cockburn.us/hexagonal-architecture/">Hexagonal Architecture</a> note — the
-ports-and-adapters pattern from its author, two pages, and you will recognize every §2 claim in it. Then Martin
-Fowler's <a href="https://martinfowler.com/bliki/TestDouble.html">Test Double</a> taxonomy for where "mock" and
-"fake" actually sit (our usage matches: the mock server verifies contract shape; the fake is a working
-lightweight implementation). Then the habit that keeps paying: read <code>gateway.ts</code> top to bottom and
-notice it is the first whole file in this course where <em>you</em> own every declaration in it.</p>
+<p>Read Alistair Cockburn's <a href="https://alistair.cockburn.us/hexagonal-architecture/">Hexagonal
+Architecture</a> note, two pages from the pattern's author. Then read Martin Fowler's
+<a href="https://martinfowler.com/bliki/TestDouble.html">Test Double</a> taxonomy, the source of our
+mock and our fake.</p>
 
 <footer>
-  <p><strong>Stuck or curious?</strong> Ask your teacher — the agent that opened this lesson — anything: why the
-  adapter rethrows unknown errors instead of classifying them, whether the port should expose streaming yet (it
-  deliberately does not — lessons 0008–0009 will grow it when tool use and budgets demand it, and speculative
-  surface is how ports rot), how <code>fake.calls</code> becomes real assertions once a test runner arrives in
-  lab 08, or what happens to this seam when the Agent SDK shows up in Phase 5 with a gateway-shaped hole of its
-  own. That conversation <em>is</em> the course.</p>
-  <p><strong>Phase 1 is open.</strong> The loop now has its transport organ: mechanics below, policy above,
-  offline-testable from day one. Next: lesson 0007, <em>The TaskSpec Is a Contract</em> — lab
-  <code>06-taskspec</code> — where lesson 0005's parse meets S1's rule: a Zod-validated TaskSpec, and invalid
-  work rejected before a single token is spent.</p>
+  <p><strong>Version pin.</strong> Every excerpt and number here was verified against
+  <code>@anthropic-ai/sdk</code> 0.113.0 and <code>zod</code> 4.4.3, by live runs against the exercise 01
+  mock. The four new terms have notes under <code>wiki/terms/</code>.</p>
+  <p><strong>Two supplements sit beside this lesson.</strong>
+  <a href="0006a-hermes-architecture-primer.html">What Counts as Policy</a> defines the word it leans on.
+  <a href="0006b-the-hermes-control-plane.html">The Hermes Control Plane</a> says what a Hermes job is.
+  Read section 1, then 0006b, then 0006a.</p>
+  <p><strong>Phase 1 is open.</strong> Next comes lesson 0007, <em>The TaskSpec Is a Contract</em>, with
+  lab <code>06-taskspec</code>. Lesson 0005's parse meets step S1 there, and Hermes rejects invalid work
+  before it spends a token.</p>
 </footer>
 
 </body>

@@ -172,6 +172,39 @@ monotonic drift across all eight shipped lessons: mean sentence length 15.6 → 
 - **Still to rewrite:** 0001 to 0006 and 0006b. 0006b is 6,669 words and 85 errors, and the agreed plan
   demotes it to a reference page rather than rewriting it as a lesson.
 
+## Update 2026-08-08 — lesson 0006 rewritten (second test of the regime)
+
+- **0006: 3,860 words and 60 errors → 1,992 words and 0.** It passes `tools/lesson-lint.mjs`, as do its
+  map note and all four of its term notes. Title and filename unchanged.
+- **The cut was scope, not diction.** Losses are itemised in the map note under *What the 2026-08-08
+  rewrite cut*: the two supplement callouts (355 words before the first teaching sentence, now three
+  footer lines), the above/below explanation that supplement 0006a now owns, two rows of the
+  mock-versus-fake table, one classification item, and one say-it question.
+- **Four `<dfn>` definitions added**, which the lesson never had: port, adapter, fake, dependency
+  inversion. Each is 20 words or fewer at first use, and none of the four definitions depends on an
+  undefined term.
+- **Em-dashes went from 114 to zero.** Every one of them marked a second idea, so each became a sentence.
+  The 2,000-word budget is what made that affordable.
+- **The judgment rules were judged, not measured, and the calls are recorded** in the session's detect
+  pass: metadiscourse (*"B3 deserves a slow look"*), fake-profound endings (*"That ignorance is the
+  product"*), synonym cycling across *seam / line / boundary / contract*, and PARA-6 status labels moved
+  inline-to-one-table. SENT-3 passive voice is still not implemented in the linter, so I read for it.
+- **The apparatus is the binding constraint, not the prose.** Article III's required tables (layer,
+  collision, signature, status), the new-vs-reprise list and the bounded compression cost about 500
+  words. The quiz and classification prose costs about 600. That leaves roughly 900 words for the four
+  concept sections, and the lesson only fit after two rounds of trimming. Any future Article that adds
+  required content to a lesson should state which of these it displaces.
+- **The map note and the four term notes were rewritten too**, because `docs/style/ste-profile.md` governs
+  `wiki/**/*.md` and all five failed it. The term notes' `status` and `introduced` dates are untouched.
+- **The linter cannot quote a banned coinage, even to say it was removed.** The map note originally listed
+  the four deleted phrases by name and failed TERM-2 for it. The list now cites the profile instead. Worth
+  knowing before writing any other removal record.
+- **Not verified this session:** the two Mermaid diagrams were not re-rendered in a browser. Their source
+  changed only in punctuation, and both blocks are free of semicolons (the 2026-07-30 house rule).
+- **Still to rewrite:** 0001 to 0005, and 0006b. 0006b remains slated for demotion to a reference page.
+- **Stray file, untouched:** an untracked duplicate of the old lesson sits at the repo root
+  (`0006-the-model-gateway.html`). It is now stale. Delete it when convenient.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*
