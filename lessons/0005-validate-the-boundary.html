@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0005 — Validate the Boundary</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 0 · Lesson 0005 · lab exercise 04-validate-the-boundary · ~45–60 minutes</p>
+  <h1>Validate the Boundary</h1>
+  <p class="lede">Exercise 01's client asserted its response type; the SDK asserts more politely; nothing has ever
+  <em>checked</em>. Today the mock's wire quietly stops matching your types, and the main question comes due:
+  <strong>when the bytes stop matching the types, which layer notices?</strong> Measured answer, before this
+  lesson: none of them.</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Every guarantee Hermes OS makes — <em>no envelope, no dispatch; no Context Pack, no dispatch; zero silent
+  writes</em> — is enforced at a JSON boundary, and today you build the enforcement move. Scenario step
+  <strong>S1</strong> Zod-parses the Job Envelope so invalid work is rejected before a single token is spent;
+  <strong>S2</strong>'s admissibility check on the Context Pack is the same parse aimed at evidence. This pays the
+  spine's <em>boundary rule</em> debt opened in lesson 0001 §3 — types are compile-time claims about runtime
+  bytes — and closes Phase 0.
+</div>
+
+<h2>1 · The day the wire breaks its word</h2>
+
+<p>Since lesson 0001 every response type in this course has traveled the same pipeline:
+bytes → <code>JSON.parse</code> → untyped value → <strong>assertion</strong> → "typed" code. The
+<code>as MessageResponse</code> in exercise 01 and the SDK's declared <code>Message</code> return type
+(<code>@anthropic-ai/sdk</code> 0.113.0 — the signature-trace supplement walked it) are the same move at
+different altitudes: a claim the compiler believes and the runtime never sees, because types are erased before
+the program runs. The mock can now make the claim false. Send the <code>x-mock-scenario: drift</code> header
+and the wire answers:</p>
+
+<pre><code>POST /v1/messages
+x-api-key: … · anthropic-version: 2023-06-01 · x-mock-scenario: drift
+
+HTTP/1.1 200 OK                        ← a healthy status
+content-type: application/json         ← the same media type
+request-id: req_mock_0001              ← the same headers
+
+{
+  "id": "msg_mock_0001",
+  "type": "message",
+  …
+  "stop_reason": "end-turn",           ← the contract says "end_turn"
+  "usage": {
+    "input_tokens": 11,
+    "output_tokens": "42",             ← the contract says number
+    …
+  }
+}</code></pre>
+
+<p>Run the lab's Part A — exercise 01's pipeline, unchanged — against that response and watch what the course
+has been warning about since lesson 0001 actually happen. Measured:</p>
+
+<pre><code>typeof output_tokens (TS says number): string
+ledger — tokens spent this run: 1142        ← 11 + "42" concatenated as strings
+typeof spent (TS says number): string
+over the 1000-token ceiling? true           ← a phantom breach; actual spend: 53</code></pre>
+
+<p>No line threw. JavaScript's <code>+</code> met a string and concatenated; the comparison coerced
+<code>"1142"</code> back to a number; a budget check fired that should never have fired. With different digits
+the same bug runs the other way — an overrun that never trips. <strong>The lie did not crash; it traveled</strong>,
+and surfaced as a wrong number in the one place Phase 1 can least afford one: the ledger that decides when to
+abort a job.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    participant M as mock :8787
+    participant J as JSON.parse
+    participant A as the assertion (as)
+    participant L as your ledger
+    M-->>J: 200 OK — output_tokens: "42", stop_reason: "end-turn"
+    Note over M: status, headers, media type — all healthy. Only the body lies.
+    J->>A: untyped value (syntax checked, shape unchecked)
+    Note over A: compiles to NOTHING — a claim costs zero and checks zero
+    A->>L: "typed" Message
+    L->>L: 11 + "42" → "1142" · over the ceiling? true
+    Note over L: no exception anywhere — the lie surfaces as a phantom abort
+</pre>
+<figcaption>Part A, measured: the drift crosses every layer built in exercises 01–03 and becomes a corrupt
+ledger entry. Actual spend 53 tokens; the ledger claims 1142.</figcaption>
+</figure>
+
+<p>Account for the layers before reaching for the fix — a claim that "the drift broke X" has to say which
+layer:</p>
+
+<table>
+  <tr><th>Layer</th><th>What the drift changed there</th><th>Why it cannot object</th></tr>
+  <tr><td>the six responsibilities ①–⑥</td><td>nothing — none moved</td><td>endpoint, auth, version, request contract, errors, cancellation are request- and envelope-side; this lie lives in a successful body</td></tr>
+  <tr><td>HTTP status &amp; headers</td><td>nothing — 200, same headers</td><td>HTTP vouches for the exchange, never for the body's shape</td></tr>
+  <tr><td>TypeScript compiler</td><td>nothing to see</td><td>it finished before the bytes existed; every type it checked is erased</td></tr>
+  <tr><td><code>as MessageResponse</code> / the SDK's <code>Message</code></td><td>nothing — both still "succeed"</td><td>assertions compile to zero code; the SDK's type is better maintained, equally erased</td></tr>
+  <tr><td>your running code</td><td>everything</td><td>the only layer left — and it notices as corruption at a distance, not as an error at the boundary</td></tr>
+</table>
+
+<div class="callout">
+  <strong>New today vs. reprise.</strong> Genuinely new ideas — five: ⑴ a schema is a <em>runtime value</em>
+  that encodes a type; ⑵ <em>parse, don't assert</em> — the check replaces the claim at the boundary;
+  ⑶ a failed parse is <em>data</em> — path-addressed issues a supervisor can act on; ⑷ <code>z.infer</code>
+  derives the static type <em>from</em> the schema — one source of truth; ⑸ validate <em>once, at the edge</em> —
+  typed code carries the proof inward. Everything else is reprise: type erasure (0001), the parse→assert
+  pipeline (0001 §3), narrowing a discriminated union (0001, 0004), the six responsibilities (untouched today),
+  the mock as test double (0002).
+</div>
+
+<h2>2 · The schema is a runtime value</h2>
+
+<div class="callout">
+  <strong>Version pin.</strong> Everything below was verified against <code>zod 4.4.3</code> exactly (no
+  <code>^</code>/<code>~</code>) — installed declarations in
+  <code>node_modules/zod/v4/classic/</code> plus live runs against the mock. Schema libraries drift too: issue
+  codes and error formatting are version-specific.
+</div>
+
+<p>The fix is a library whose entire job is the missing runtime half. Read the entry point the way lesson 0003
+read the SDK's — as an object path, one hop at a time:</p>
+
+<pre><code>import { z } from "zod";          // z — a namespace OBJECT. It survives compilation.
+
+const UsageSchema = z.object({    // property access + call → a ZodObject INSTANCE
+  input_tokens: z.number().int().nonnegative(),
+  output_tokens: z.number().int().nonnegative(),
+});
+
+const result = MessageSchema.safeParse(body);   // a method on that instance, fed `unknown`</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>What exists at runtime?</th></tr>
+  <tr><td><code>z</code></td><td>a named import from <code>"zod"</code></td><td>an object full of factory functions (<code>typeof z === "object"</code>, measured) — compare: an <code>interface</code> leaves nothing</td></tr>
+  <tr><td><code>z.object({ … })</code></td><td>call a factory with a field map</td><td>a <code>ZodObject</code> instance (measured: <code>constructor.name === "ZodObject"</code>) holding your field schemas as data</td></tr>
+  <tr><td><code>.safeParse</code></td><td>method lookup on that instance</td><td>a function bound to the schema value</td></tr>
+  <tr><td><code>safeParse(body)</code></td><td>invoke with unchecked input</td><td>code that walks the actual bytes' structure and collects every disagreement</td></tr>
+  <tr><td><code>z.infer&lt;typeof MessageSchema&gt;</code></td><td>a type-level query (§4)</td><td><strong>nothing</strong> — erased; the schema stays, the type is derived from it</td></tr>
+</table>
+
+<p>The standing distinction, third lesson running: <em>a signature tells TypeScript what may be called; the
+implementation does the runtime work.</em> Exercise 01's interface was a signature with no implementation
+anywhere — Zod is the implementation your boundary was missing. And unlike the SDK, which absorbs chores away
+from your application code, Zod absorbs nothing: it hands you the one chore no SDK will do for you, because
+only you know which fields your policy relies on.</p>
+
+<p>You have, in fact, already written one of these by hand: the mock's gate ④ (exercise 01) narrows
+<code>unknown</code> with a page of <code>if</code>-checks — <code>isRecord</code>, "is <code>model</code> a
+non-empty string", "is <code>max_tokens</code> an integer". A Zod schema is that page, industrialized: declared
+once, composable, and reporting <em>all</em> failures with paths instead of bailing at the first.</p>
+
+<p>One overloaded word to pin down before it bites — "parse" now means three different operations:</p>
+
+<table>
+  <tr><th>The phrase</th><th>What it checks</th><th>What you get</th><th>On failure</th></tr>
+  <tr><td><code>JSON.parse(text)</code></td><td>JSON <em>syntax</em> only</td><td>an untyped structure (<code>unknown</code> if you are honest)</td><td>throws <code>SyntaxError</code></td></tr>
+  <tr><td><code>MessageSchema.parse(data)</code></td><td>the declared <em>shape</em>, at runtime</td><td>the validated, typed value</td><td>throws <code>ZodError</code></td></tr>
+  <tr><td><code>MessageSchema.safeParse(data)</code></td><td>the declared <em>shape</em>, at runtime</td><td>a discriminated union (§3)</td><td>returns <code>{ success: false, error }</code> — nothing thrown</td></tr>
+  <tr><td>"the parse→assert pipeline" (lessons 0001–0004)</td><td>syntax, then nothing</td><td>a claim wearing a type</td><td>silence — the lie travels (§1)</td></tr>
+</table>
+
+<p>And one more collision, preempted: a Zod <em>schema</em> is a runtime validator object in your process. It
+is not <em>JSON Schema</em> — a serialized description standard you will meet in Phase 2, when MCP tools
+declare their inputs. Same word, different artifact.</p>
+
+<h2>3 · The rejection is data</h2>
+
+<p><code>parse</code> and <code>safeParse</code> are two methods, not an overload — contrast lesson 0004's
+<code>create()</code>, where one method's return type turned on <code>stream: true</code>. Here you pick by
+name, and the installed declarations say exactly what each returns
+(<code>zod/v4/classic/schemas.d.cts</code>, abridged):</p>
+
+<pre><code>parse(data: unknown, …):     core.output&lt;this&gt;;                      // the value — or it throws
+safeParse(data: unknown, …): parse.ZodSafeParseResult&lt;core.output&lt;this&gt;&gt;;
+
+// zod/v4/classic/parse.d.cts — the whole union, 10 lines:
+type ZodSafeParseResult&lt;T&gt; = ZodSafeParseSuccess&lt;T&gt; | ZodSafeParseError&lt;T&gt;;
+type ZodSafeParseSuccess&lt;T&gt; = { success: true;  data: T;       error?: never };
+type ZodSafeParseError&lt;T&gt;   = { success: false; data?: never;  error: ZodError&lt;T&gt; };</code></pre>
+
+<p>Read that union and you already know how to use it: narrowing on <code>result.success</code> is the same
+move as <code>block.type</code> (lesson 0001 §3) and <code>event.type</code> (lesson 0004 §3) — your third
+discriminated union, and the first where the two arms mean <em>proof</em> and <em>refusal</em>. Beside the
+declaration, the two runtime values the lab actually produced:</p>
+
+<pre><code>// clean wire — Part C                      // drifted wire — Part B
+{                                           {
+  success: true,                              success: false,
+  data: {                                     error: ZodError {
+    id: "msg_mock_…",                        issues: [
+    stop_reason: "end_turn",                      { code: "invalid_value",
+    usage: {                                        values: ["end_turn", "max_tokens",
+      input_tokens: 11,                                      "stop_sequence", "tool_use"],
+      output_tokens: 42,                            path: ["stop_reason"],
+    },                                              message: 'Invalid option: expected one …' },
+    …                                             { code: "invalid_type",
+  },                                                expected: "number",
+}                                                   path: ["usage", "output_tokens"],
+                                                    message: 'Invalid input: expected number,
+                                                              received string' },
+                                                ],
+                                              },
+                                            }</code></pre>
+
+<p>Three measured facts to sit with:</p>
+<ul>
+  <li><strong>One parse, every disagreement.</strong> Zod collected both lies — it does not stop at the first.
+  An admissibility rejection that names one problem per attempt would take Hermes three round-trips to say what
+  this says in one.</li>
+  <li><strong>Every issue carries a <code>path</code>.</strong> <code>["usage", "output_tokens"]</code> points
+  into the value like a map reference. A rejection is not "invalid input" — it is <em>this field, this reason</em>,
+  machine-readable: loggable to a trace, showable to an operator, S1's "rejected before a token is spent" with
+  reasons attached.</li>
+  <li><strong>The schema out-checked the old type.</strong> Exercise 01's interface said
+  <code>stop_reason: string</code> — <code>"end-turn"</code> satisfies that. <code>z.enum([…])</code> encodes
+  the contract's four words, so the schema caught a lie the type system could not even express a complaint
+  about. For humans, <code>z.prettifyError(result.error)</code> renders the same issues as <code>✖</code> lines
+  with <code>→ at usage.output_tokens</code> arrows — same data, different audience.</li>
+</ul>
+
+<p>Which method where: <code>parse</code> (throw) fits places where invalid means <em>stop the program</em> —
+reading your own config at startup. <code>safeParse</code> fits every boundary where invalid is an <em>expected
+outcome to classify</em> — which is every boundary Hermes owns: the loop must reject the job, record why, and
+keep supervising, not unwind its own stack.</p>
+
+<h2>4 · <code>z.infer</code> turns the arrow around</h2>
+
+<p>Until today, the type came first and the bytes were asserted to match. That leaves two artifacts — a
+hand-written interface and the actual wire — with nothing holding them together; §1 is what the gap looks like.
+The inversion:</p>
+
+<pre><code>const MessageSchema = z.object({ … });               // the RUNTIME artifact — written once
+
+type Message = z.infer&lt;typeof MessageSchema&gt;;        // the compile-time view — DERIVED
+// hover it: { id: string; type: "message"; …; usage: { input_tokens: number; … } }</code></pre>
+
+<p><code>typeof MessageSchema</code> is TypeScript's type-level handle on the schema <em>value</em>;
+<code>z.infer</code> extracts from it the type of what a successful parse returns. Delete exercise 01's
+interface and nothing is lost: the schema now carries both halves — the check that runs at runtime and the
+type the compiler enforces — so the claim and the check <em>cannot drift apart</em>, because they are one
+declaration. That is what "single source of truth" means here, and it is the pattern every Hermes contract
+uses from Phase 1 on: TaskSpec, tool arguments, evidence — schema first, type derived.</p>
+
+<p>Two measured details complete the picture, and two deconfusions fence it:</p>
+
+<ul>
+  <li><strong>The parse returns the declared subset.</strong> Measured in Part C: 9 keys arrived on the wire,
+  7 crossed the boundary; <code>usage</code> arrived with 4, crossed with 2. <code>z.object</code> strips
+  unrecognized keys by default (its <code>strictObject</code> variant rejects them instead) — so downstream
+  code sees exactly the contract, nothing smuggled. An admissibility-checked Context Pack contains what was
+  declared, full stop.</li>
+  <li><strong>"Validate the boundary" does not mean validate everywhere.</strong> One parse where bytes enter;
+  past it, the erased types carry the proof — re-checking inside would redo work the compiler already
+  guarantees. The schema stands at the edge precisely so the interior can stay ordinary typed code.</li>
+  <li><strong>It also does not mean mirror the whole API.</strong> Our <code>MessageSchema</code> is
+  deliberately narrower than the SDK's <code>Message</code> — it validates <em>what this client consumes</em>
+  (the ledger's numbers, the text, the stop reason). Phase 1's gateway will do the same: schemas cover the
+  fields policy relies on, not every field the wire might carry.</li>
+</ul>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    W["wire bytes<br/>200 OK"] --> JP["JSON.parse<br/>syntax only"]
+    JP --> U["unknown"]
+    U -.->|"before: as Message —<br/>erased, checks nothing"| T1["#quot;typed#quot; code"]
+    T1 -.-> X["ledger '1142'<br/>silent corruption"]
+    U ==>|"today: MessageSchema<br/>.safeParse(body)"| R{"success?"}
+    R ==>|"true"| T2["typed Message — proven,<br/>stripped to the contract"]
+    R ==>|"false"| E["error.issues —<br/>path-addressed rejection"]
+    T2 ==> OK["ledger 53 ✓<br/>type Message = z.infer&lt;…&gt;"]
+    E ==> REJ["rejected AT the boundary —<br/>downstream never sees the lie"]
+</pre>
+<figcaption>The boundary, before and after. The dashed path is lessons 0001–0004's debt; the solid path is
+S1/S2's admissibility check: parse once at the edge, carry proof inward, or refuse with reasons.</figcaption>
+</figure>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and the full experiment table live in
+<code>hermes-sdk-lab/04-validate-the-boundary/README.md</code>; the arc is:</p>
+
+<ol>
+  <li><strong>Run Part A first</strong> — it is given, not TODO. Watch the ledger corrupt without an error,
+  then answer its three closing questions before touching Zod.</li>
+  <li><strong>Read the contract.</strong> Open
+  <code>node_modules/zod/v4/classic/parse.d.cts</code> — the whole <code>ZodSafeParseResult</code> union fits
+  on one screen — then find <code>parse</code>/<code>safeParse</code> side by side in
+  <code>schemas.d.cts</code>. Every §3 claim is on those two pages.</li>
+  <li><strong>Part B — the parse.</strong> Build <code>MessageSchema</code> (the scaffold gives
+  <code>UsageSchema</code> as the pattern), <code>safeParse</code> the drifted body, print every issue's path,
+  code, and message, then <code>z.prettifyError</code>. Count what one parse reported.</li>
+  <li><strong>Part C — the inversion.</strong> Clean wire, successful parse, ledger recomputed from
+  <code>result.data</code> — no <code>as</code> on the whole path. Derive <code>type Message</code> with
+  <code>z.infer</code> and compare the wire's keys against the parsed keys.</li>
+  <li><strong>Close the loop:</strong> say which of the six responsibilities today changed. (Spoiler: none —
+  and that is the point. The boundary check is the responsibility the SDK does <em>not</em> absorb. It stays
+  yours in Phase 1, in Phase 5 when the Agent SDK arrives, always.)</li>
+</ol>
+
+<h2>6 · Exercise: who catches it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each failure with the layer that catches it</h3>
+  <p class="rules">Answer from memory before clicking — the effort is the point. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the compiler — before the run|an HTTP gate — 4xx, before any body|the boundary parse — inside a 200|nothing — the lie travels">
+    <div class="cl-item" data-cat="0" data-why="the request params live in your source code, where types are awake — lesson 0003 measured the TS2769 with its did-you-mean. Request-side mistakes die at compile time; response-side lies arrive at runtime.">
+      <p>A typo — <code>mesages</code> — in the params object handed to the SDK's <code>create()</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="gate ② answers 401 before any Message exists — measured in exercise 01. Wire-level rules are enforced by the server, at the wire, regardless of what your types say.">
+      <p>A request sent with no <code>x-api-key</code> header at all.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="the assertion compiles to nothing, HTTP vouches only for the envelope, and the compiler is long gone — measured: the ledger printed '1142' and a phantom ceiling breach, with no exception anywhere.">
+      <p><code>output_tokens</code> arrives as <code>"42"</code> — the client attaches its type with <code>as</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="safeParse walks the actual bytes: invalid_type at path usage.output_tokens, 'expected number, received string' — rejected at the edge, and the ledger never sees it.">
+      <p><code>output_tokens</code> arrives as <code>"42"</code> — the client <code>safeParse</code>s at the boundary.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="exercise 01's interface said stop_reason: string, and 'end-turn' IS a string — only the schema's z.enum carries the contract's four exact words. The schema can encode more contract than the type ever did.">
+      <p><code>stop_reason</code> arrives as <code>"end-turn"</code> against a schema that encodes the enum.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="the mock's gate ④ answers 400 'max_tokens: Field required' before any Message exists — measured in exercise 01. (Via the SDK the same mistake moves to the compiler — lesson 0003's story: absorbed, not abolished.)">
+      <p>A raw-<code>fetch</code> request body missing <code>max_tokens</code>.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions, equal-length options, no format clues</h3>
+
+  <div class="qz" data-correct="2" data-why="Types are erased before the program runs — the assertion is a compile-time claim that generates zero code. Measured: typeof said string while TS said number, the ledger concatenated to '1142', and no line threw. A claim costs zero and checks zero.">
+    <p class="qz-prompt">Q1. Part A's drifted 200 flowed through <code>fetch</code>, <code>JSON.parse</code>, and <code>as MessageResponse</code>. What did the assertion contribute at runtime?</p>
+    <button class="qz-opt" type="button">It threw the moment output_tokens arrived as a string</button>
+    <button class="qz-opt" type="button">It coerced the drifted string quietly back to a number</button>
+    <button class="qz-opt" type="button">Nothing — it compiled away before the bytes ever existed</button>
+    <button class="qz-opt" type="button">It logged a type warning but allowed the run to continue</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="safeParse returns ZodSafeParseResult — a discriminated union you narrow on .success, the same move as block.type and event.type. The failure is carried as data (error.issues, with paths), not thrown; parse is the throwing variant. Nothing is repaired or logged for you.">
+    <p class="qz-prompt">Q2. You call <code>MessageSchema.safeParse(body)</code> on untrusted bytes. What comes back?</p>
+    <button class="qz-opt" type="button">A ZodError thrown for your try/catch to intercept there</button>
+    <button class="qz-opt" type="button">A union you narrow on success — failure riding as data</button>
+    <button class="qz-opt" type="button">A repaired copy in which failing fields are reset to null</button>
+    <button class="qz-opt" type="button">A plain boolean, with any issues printed to the console</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="z.infer<typeof MessageSchema> derives the compile-time type from the runtime schema value — the inversion of lessons 0001–0004, where the type came first and checked nothing. One declaration carries both the check and the type, so they cannot drift apart. Nothing is generated, serialized, or compared.">
+    <p class="qz-prompt">Q3. What does <code>type Message = z.infer&lt;typeof MessageSchema&gt;</code> actually do?</p>
+    <button class="qz-opt" type="button">Checks the schema against your interface on every build</button>
+    <button class="qz-opt" type="button">Generates a runtime schema from a hand-written interface</button>
+    <button class="qz-opt" type="button">Derives the static type from the schema — one source of truth</button>
+    <button class="qz-opt" type="button">Serializes the schema into JSON Schema for the wire format</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="The boundary rule: one parse where bytes enter; past it, erased types carry the proof — revalidating inside redoes what the compiler guarantees. The SDK never validates (its types are assertions — that is §1), and S1 means exactly this: the envelope is parsed once, at Hermes's edge, before any token is spent.">
+    <p class="qz-prompt">Q4. Per the boundary rule, where does the runtime check belong?</p>
+    <button class="qz-opt" type="button">Around every function call, so no value is ever trusted</button>
+    <button class="qz-opt" type="button">Once, where bytes enter — typed code carries proof onward</button>
+    <button class="qz-opt" type="button">Only inside tests, where fixtures keep the shapes stable</button>
+    <button class="qz-opt" type="button">Inside the SDK, which validates responses before returning</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>After the lab work, close the loop with your teacher. In the chat, answer these four — no notes, no
+scrolling up:</p>
+<ol>
+  <li>Define <strong>runtime validation</strong> in one sentence and <strong>type erasure</strong> in another —
+  then say why the second makes the first non-optional at a JSON boundary.</li>
+  <li>Walk the boundary pipeline before and after today: bytes → <code>JSON.parse</code> → ? → typed code.
+  Name exactly what replaced the <code>as</code>, and what that replacement is at runtime.</li>
+  <li><code>parse</code> vs <code>safeParse</code> — what does each return, and which one does S1's envelope
+  check want? Why is a rejection that arrives as <em>data with paths</em> worth more to a supervisor than an
+  exception?</li>
+  <li>Explain the ledger measurement: how did <code>11 + "42"</code> become a phantom ceiling breach — and why
+  would the same bug with different digits have been <em>worse</em>?</li>
+</ol>
+
+<p>And the compression — if you keep only five sentences from Phase 0's close: <em>⑴ TypeScript types are
+erased at runtime; at a JSON boundary they are claims, not checks. ⑵ A Zod schema is a runtime value that
+checks what the types only claim. ⑶ <code>safeParse</code> returns a discriminated union — typed data on
+success, path-addressed issues as data on failure. ⑷ <code>z.infer</code> derives the static type from the
+schema, so the claim and the check cannot drift apart. ⑸ Validate once where bytes enter and trust the types
+inside — that parse is Hermes's admissibility check: no envelope, no dispatch.</em></p>
+
+<p>This lesson's new terms — <em>JSON boundary</em>, <em>Zod schema</em>, <em>safe parse</em>,
+<em>schema inference</em> — have wiki notes under <code>wiki/terms/</code> at <code>status: introduced</code>.
+As always: promoted when you can use them, not when you've seen them. (<em>Runtime validation</em>, waiting
+since lesson 0001, is finally eligible — it has now been used in anger.)</p>
+
+<h2>Primary source</h2>
+
+<p><strong>Read next:</strong> the <a href="https://zod.dev/basics">Zod — Basic usage</a> page: defining a
+schema, parsing, inferring types, handling errors — every §2–§4 claim against its source, and the
+<a href="https://zod.dev/error-customization">error customization</a> page for where messages come from. Then
+the habit that keeps paying: <code>node_modules/zod/v4/classic/parse.d.cts</code> is 31 lines — read the whole
+file and notice you now understand every declaration in it.</p>
+
+<footer>
+  <p><strong>Stuck or curious?</strong> Ask your teacher — the agent that opened this lesson — anything: why
+  Zod strips instead of rejects by default, what <code>strictObject</code> and <code>looseObject</code> change,
+  how <code>z.discriminatedUnion</code> will type Phase 1's content blocks, whether the mock's drift is
+  realistic (it is — API evolution, proxies, wrong fixtures, and above all <em>model-generated JSON</em>, the
+  untrusted boundary Hermes exists to guard). That conversation <em>is</em> the course.</p>
+  <p><strong>Phase 0 closes here.</strong> Its exit criteria are met: you can trace the full request lifecycle,
+  read a package's <code>.d.ts</code> as the real contract, and no untrusted byte gets past a boundary without
+  a runtime check. Next: Phase 1 opens with <code>05-model-gateway</code> — wrap the SDK behind a port with
+  mechanics below and policy above, land the provider-neutrality decision, and build the
+  <code>FakeModelGateway</code> that keeps the whole loop testable offline.</p>
+</footer>
+
+</body>
+</html>

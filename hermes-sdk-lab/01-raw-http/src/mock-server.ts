@@ -9,6 +9,8 @@
  *   `x-mock-scenario: rate-limit` header   → 429 rate_limit_error + retry-after
  * Since exercise 03 it also speaks the streaming contract:
  *   `"stream": true` in the body          → 200 text/event-stream (SSE)
+ * Since exercise 04 its own contract can drift (JSON path only):
+ *   `x-mock-scenario: drift` header       → 200 whose BODY shape quietly changed
  *
  * The response and error SHAPES are faithful to the real API (verified against
  * current docs); the error message WORDING is a handcrafted approximation.
@@ -328,6 +330,27 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       input_tokens: Math.max(1, Math.ceil(JSON.stringify(messages).length / 4)),
     },
   };
+
+  // Simulated contract drift (exercise 04): same 200, same headers, same
+  // request-id — but the body no longer matches the shape your types claim.
+  // Note the type below is NOT MessageFixture anymore; the mock has to drop
+  // the annotation to tell this lie, exactly like the real world would.
+  if (req.headers["x-mock-scenario"] === "drift") {
+    const drifted = {
+      ...body,
+      // value drift: still a string, but not one of the contract's strings
+      stop_reason: "end-turn",
+      // type drift: the count is right, the TYPE is wrong
+      usage: { ...body.usage, output_tokens: String(body.usage.output_tokens) },
+    };
+    sendJson(res, 200, requestId, drifted);
+    console.log(
+      `  ${requestId} → 200 DRIFTED — output_tokens: "${drifted.usage.output_tokens}" (a string), ` +
+        `stop_reason: ${drifted.stop_reason} — will any layer notice?`,
+    );
+    return;
+  }
+
   sendJson(res, 200, requestId, body);
   console.log(`  ${requestId} → 200 stop_reason=${body.stop_reason} input_tokens=${body.usage.input_tokens}`);
 }

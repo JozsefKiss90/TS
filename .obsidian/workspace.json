@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "wiki/terms/discriminated-union.md",
+                "file": "wiki/terms/api-client.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "discriminated-union"
+              "title": "api-client"
             }
           },
           {
@@ -199,6 +199,23 @@
   },
   "active": "079b5ea3829adf26",
   "lastOpenFiles": [
+    "wiki/course/course-spine.md.tmp.716504.dfad4bcb75e7",
+    "wiki/course/course-spine.md.tmp.716504.50a89793c38b",
+    "NOTES.md.tmp.716504.c7b721a44839",
+    "ROADMAP.md.tmp.716504.c0ff1e64d402",
+    "CLAUDE.md.tmp.716504.8e7921326eae",
+    "wiki/course/course-module-graph.md",
+    "wiki/course/course-module-graph.md.tmp.716504.0e0e728ef06d",
+    "wiki/course/course-pedagogy.md",
+    "wiki/course/course-pedagogy.md.tmp.716504.7fb98472df25",
+    "wiki/course/hermes-integration.md",
+    "wiki/course/hermes-integration.md.tmp.716504.988f0b4d2f69",
+    "wiki/course/course-spine.md",
+    "wiki/course/course-spine.md.tmp.716504.4a5e11b5e814",
+    "wiki/course/COURSE.md",
+    "wiki/course",
+    "wiki/lessons/lesson-0001-trace-one-request.md",
+    "wiki/terms/discriminated-union.md",
     "docs/hermes_os/README.md",
     "docs/hermes_os/hermes_tool_catalogue.md",
     "docs/hermes_os/hermes_grill_me.md",
@@ -206,34 +223,17 @@
     "docs/hermes_os/CLAUDE.md",
     "docs/hermes_os",
     "lessons_review.md",
-    "learning-records/supplement-signature-trace-from-new-anthropic-to-message.html",
     "wiki/terms/narrowing.md",
-    "wiki/terms/discriminated-union.md",
     "wiki/terms/stop-reason.md",
-    "hermes-sdk-lab/02-model-client-sdk/src/cilent2.ts",
     "wiki/terms/base-url.md",
-    "NOTES.md.tmp.564420.6b71eae053ee",
     "ROADMAP.md",
-    "lessons/0004-the-response-becomes-a-process.html.tmp.564420.3f01683c5883",
-    "NOTES.md.tmp.564420.bd4197725483",
     "wiki/lessons/lesson-0004-the-response-becomes-a-process.md",
-    "wiki/lessons/lesson-0004-the-response-becomes-a-process.md.tmp.564420.b7b41dbdf131",
     "wiki/terms/message-stream.md",
-    "wiki/terms/message-stream.md.tmp.564420.43388f23d0ac",
     "wiki/terms/async-iterator.md",
-    "wiki/terms/async-iterator.md.tmp.564420.11de811c499e",
     "wiki/terms/delta.md",
     "wiki/terms/server-sent-events.md",
-    "lessons/0004-the-response-becomes-a-process.html",
     "hermes-sdk-lab/03-streaming-and-cancellation/README.md",
     "wiki/lessons/lesson-0003-the-sdk-absorbs-the-six.md",
-    "wiki/terms/declaration-file.md",
-    "wiki/terms/typed-error.md",
-    "wiki/terms/request-options.md",
-    "wiki/terms/api-client.md",
-    "hermes-sdk-lab/02-model-client-sdk/README.md",
-    "wiki/terms/messages-api.md",
-    "wiki/terms/retry-with-backoff.md",
-    "wiki/terms/request-contract.md"
+    "wiki/terms/declaration-file.md"
   ]
 }

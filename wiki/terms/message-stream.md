@@ -8,8 +8,9 @@ type: glossary-term
 lesson: "0004"
 phase: 0
 category: sdk-layer
-status: introduced
+status: demonstrated
 introduced: 2026-07-25
+demonstrated: 2026-07-27
 tags:
   - glossary
   - sdk-layer

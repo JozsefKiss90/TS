@@ -1,0 +1,13 @@
+{
+  "name": "04-validate-the-boundary",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mock": "tsx ../01-raw-http/src/mock-server.ts",
+    "request": "tsx src/client.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  }
+}

@@ -30,44 +30,85 @@ const params = {
 async function partA_rawEvents(): Promise<void> {
   console.log("\n=== A. Raw events — create({ ..., stream: true }) ===");
 
-  // TODO: call client.messages.create({ ...params, stream: true }) and
-  //   `for await (const event of stream)` over the result.
-  //   - Log every event's `.type` — write down the exact order you see.
-  //   - `event` is a discriminated union (RawMessageStreamEvent): narrow on
-  //     event.type === "content_block_delta", then on
-  //     event.delta.type === "text_delta", and print the text pieces.
-  //   - Where do stop_reason and usage.output_tokens arrive? Not where
-  //     exercise 02 found them.
+  const stream = await client.messages.create({ ...params, stream: true });
+
+  for await (const event of stream) {
+    console.log("event:", event.type);
+
+    if (
+      event.type === "content_block_delta" &&
+      event.delta.type === "text_delta"
+    ) {
+      console.log("  text delta:", JSON.stringify(event.delta.text));
+    }
+
+    // These final values do not arrive in message_start's skeleton.
+    if (event.type === "message_delta") {
+      console.log("  stop_reason:", event.delta.stop_reason);
+      console.log("  output_tokens:", event.usage.output_tokens);
+    }
+  }
 }
+
 
 async function partB_helper(): Promise<void> {
   console.log("\n=== B. The helper — client.messages.stream() ===");
 
-  // TODO: call client.messages.stream(params)  (no `stream: true` needed —
-  //   the method IS the streaming variant).
-  //   - stream.on("text", (delta, snapshot) => ...): print each delta as it
-  //     arrives (process.stdout.write, not console.log — no newlines).
-  //   - const message = await stream.finalMessage();
-  //   - Print exercise 02's four things from `message`: _request_id,
-  //     stop_reason, first text block, usage. Diff against exercise 02's
-  //     output — what did the helper reassemble for you?
-  //   - One of the four is a trap. When you find it, print
-  //     stream.request_id next to it and explain the difference.
+  const stream = client.messages.stream(params);
+
+  stream.on("text", (delta, _snapshot) => {
+    process.stdout.write(delta);
+  });
+
+  const message = await stream.finalMessage();
+  process.stdout.write("\n");
+
+  const firstBlock = message.content[0];
+  const messageRequestId =
+    "_request_id" in message ? message._request_id : undefined;
+
+  console.log("message._request_id:", messageRequestId);
+  console.log("stream.request_id:", stream.request_id);
+  console.log("stop_reason:", message.stop_reason);
+  console.log(
+    "first text block:",
+    firstBlock?.type === "text" ? firstBlock.text : undefined,
+  );
+  console.log("usage:", message.usage);
 }
 
 async function partC_abortMidStream(): Promise<void> {
   console.log("\n=== C. Cancellation — abort mid-stream ===");
 
-  // TODO: create an AbortController and pass { signal: controller.signal }
-  //   as the SECOND argument (request options) to client.messages.stream().
-  //   - setTimeout(() => controller.abort(), 700): the mock sends its
-  //     skeleton at ~400 ms and a delta every ~120 ms, so 700 ms lands
-  //     MID-STREAM — some text has already arrived.
-  //   - Accumulate text chunks yourself; catch APIUserAbortError and print
-  //     how much of the message you were left holding.
-  //   - Check the mock's terminal: how many deltas did it log before
-  //     "client aborted the request mid-flight"? Where did the REST of the
-  //     message go?
+  const controller = new AbortController();
+  const stream = client.messages.stream(params, {
+    signal: controller.signal,
+  });
+  let partialText = "";
+
+  stream.on("text", (delta, _snapshot) => {
+    partialText += delta;
+    process.stdout.write(delta);
+  });
+
+  const abortTimer = setTimeout(() => controller.abort(), 700);
+
+  try {
+    await stream.finalMessage();
+    console.log("\nThe stream completed before the abort.");
+  } catch (err: unknown) {
+    if (!(err instanceof APIUserAbortError)) {
+      throw err;
+    }
+
+    process.stdout.write("\n");
+    console.log("Caught:", err.constructor.name);
+    console.log("Partial text:", JSON.stringify(partialText));
+    console.log("Characters kept:", partialText.length);
+    console.log("Partial stop_reason:", stream.currentMessage?.stop_reason);
+  } finally {
+    clearTimeout(abortTimer);
+  }
 }
 
 async function main(): Promise<void> {

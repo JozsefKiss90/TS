@@ -6,8 +6,9 @@ type: glossary-term
 lesson: "0001"
 phase: 0
 category: type-system
-status: introduced
+status: demonstrated
 introduced: 2026-07-23
+demonstrated: 2026-07-29
 tags:
   - glossary
   - type-system

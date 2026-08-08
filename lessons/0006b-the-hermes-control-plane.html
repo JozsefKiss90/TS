@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supplement 0006b — The Hermes Control Plane: From Job to Evidence</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 1 · Supplement 0006b to Lesson 0006 · ~35–50 minutes</p>
+  <h1>The Hermes Control Plane: From Job to Evidence</h1>
+  <p class="lede">Supplement 0006a drew the Spec-to-Evidence Loop and defined "policy" — but both supplements so
+  far still assume the surrounding system is already defined somewhere. It is not defined anywhere the course has
+  shown you. This supplement answers the prior question: <strong>what is the Claude-Assisted Hermes OS, what is
+  the actual unit of work it executes, and at what exact moment in that work does a Model Gateway become
+  necessary?</strong> No TypeScript in this document — the architecture must survive without it.</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this supplement exists</strong>
+  Lesson 0006 and supplement 0006a introduce the Model Gateway, the supervisor, routing, and the
+  Spec-to-Evidence Loop — from the <em>code seam outward</em>. What neither provides is the system seen from the
+  <em>job inward</em>: what a Hermes job actually is, what lifecycle it follows, who admits it, what evidence
+  closes it. This supplement supplies that missing mental model from the governance record itself (PDR-001 and
+  ADR-0001..0021 in the <code>hermes-os</code> repo). It advances no new spine thread and ships no code: like
+  0006a, it is context, not a lesson — but where 0006a mapped the <em>course's</em> architecture, 0006b maps the
+  <em>decided Hermes OS</em> architecture the course is training you to build. It touches every scenario step
+  <strong>S1–S9</strong> because it walks the exact job the scenario anchors to. Per Article VII, a needed
+  supplement is a defect signal: the record is <code>wiki/course/course-pedagogy.md</code> row 13.
+  <em>Recommended reading order: <a href="0006-the-model-gateway.html">lesson 0006</a> §1 → this supplement →
+  <a href="0006a-hermes-architecture-primer.html">0006a</a>'s policy/mechanics classification → the rest of
+  0006 and exercise 05.</em>
+</div>
+
+<div class="callout">
+  <strong>How every claim in this supplement is labeled.</strong> This document grades <em>architecture claims
+  against the governance record</em>, so it needs a finer scale than 0006a's implemented/seeded/planned (which
+  graded <em>exercise 05's code</em>):
+  <em>accepted</em> — grounded in PDR-001 or a current ADR (cited).
+  <em>scaffolded</em> — repository structure or partial implementation exists (cited to a Wave issue; the code
+  lives in <code>claude-rag-factory-template</code>, a repo outside this workspace — statuses are quoted from
+  the record, not re-run here).
+  <em>planned</em> — named in the Hermes OS roadmap.
+  <em>proposed clarification</em> — introduced by this supplement to make the architecture coherent; binds
+  nothing until ratified.
+  <em>open decision</em> — unresolved, recorded rather than settled.
+  <em>illustrative only</em> — an example with no normative force.
+  A document merely <em>mentioning</em> a concept never earns it "accepted", and nothing here is called
+  "implemented" on that basis. Any unlabeled sentence about the future is a defect in this document.
+</div>
+
+<div class="callout">
+  <strong>Evidence pin.</strong> Every architectural claim below was verified against the governance repository
+  as of <strong>2026-07-30</strong>: <code>PDR-001</code> (accepted 2026-07-05), <code>ADR-0001..0021</code>,
+  <code>docs/roadmap.md</code>, <code>docs/open-decisions.md</code>, and the Wave-0/Wave-1 issue records. The
+  durable, compact form of this supplement lives at
+  <code>docs/hermes_os/architecture/hermes-job-control-plane.md</code> (a mirror; the canonical copy is
+  <code>docs/architecture/hermes-job-control-plane.md</code> in the <code>hermes-os</code> repo). Where the
+  governance record and this supplement disagree, the record wins.
+</div>
+
+<h2>1 · One command, and everything it must survive</h2>
+
+<p>Start where the operator starts — not at the Model Gateway. The first pillar of Hermes OS v1, and the
+scenario this whole course anchors to, is one read-only command (accepted — PDR-001 §2 pillar 1; Wave 1 is its
+build target):</p>
+
+<pre><code>hermes rag audit atlas --graph-health --cost-report --no-writeback</code></pre>
+
+<p>The operator asked for a <strong>report</strong>: how healthy is the <code>atlas</code> project's knowledge
+graph, what has it been costing, and — by <code>--no-writeback</code> — <em>change nothing while finding out</em>.
+(The governance form of the command adds <code>--dream-brief</code>, a separate zero-tool reflection step with
+its own $0.50 ceiling; this walkthrough leaves it aside.) By the end of this supplement you will have followed
+this request from the operator's keyboard to its persistent evidence, and you will be able to point at the
+first moment — and it is late — where a Model Gateway is genuinely needed.</p>
+
+<p>Hold one distinction from the start. What Hermes creates from this command is a <strong>job</strong>, and a
+Hermes job is <em>not</em>: a prompt, a model request, a Claude Code session, a cron invocation, a tool call,
+or a chat message. Every one of those may occur <em>inside</em> a job — governed by the job's contract. A
+Hermes job is a <strong>governed unit of work created to achieve a specified outcome</strong>: it carries its
+own operational contract, its own admitted evidence, its own state, its own budget, and it ends in a terminal
+outcome supported by persistent evidence. §3 makes that structure exact.</p>
+
+<div class="callout">
+  <strong>New today vs. reprise.</strong> Genuinely new ideas — five: ⑴ the <em>Hermes job</em> as the unit of
+  work — envelope + context pack + state + evidence, none of which is a prompt; ⑵ the <em>control plane</em> as
+  fourteen owned responsibilities, most of which are scripts, schemas, checks, or the human — not agents;
+  ⑶ <em>capability routing precedes model routing</em> — "which kind of executor?" is decided before "which
+  model?" ever can be; ⑷ <em>evidence</em> is ten categories with different authority, of which Graph RAG
+  retrieval is exactly one; ⑸ implementation order — the Model Gateway enters only at the first step that
+  genuinely requires probabilistic reasoning, and the real Wave-1 slice reached review with <em>zero</em> model
+  calls. Everything else is reprise: the operational definition of policy (0006a §2), the port/adapter seam
+  (0006), rejection-as-data (0005), the three graphs (course spine), Hermes-orchestrates / Claude-Code-implements
+  (<code>wiki/course/hermes-integration.md</code>).
+</div>
+
+<h2>2 · The system, defined</h2>
+
+<p>The definition this supplement will justify piece by piece (proposed clarification — a compression of
+PDR-001 §§1–3; the PDR's own mission sentence is the accepted form):</p>
+
+<blockquote><p>The <strong>Claude-Assisted Hermes Operating System</strong> is a governed job-execution system
+in which Hermes admits, grounds, plans, routes, supervises, and records work; Claude Code performs bounded
+repository implementation; deterministic services gather and verify evidence; and the human operator approves
+consequential change.</p></blockquote>
+
+<p><strong>v1 is the RAG Factory, not a general AI OS</strong> (accepted — D-001). In scope: ontology-grounded
+RAG project creation, audit, refresh, benchmarking, source and graph validation, context-pack assembly, bounded
+model reasoning, controlled Claude Code jobs, artifact publication, cost accounting, human-reviewed changes.
+Out of scope: unrestricted general assistance; unattended code or graph mutation; unbounded multi-agent
+orchestration (H5+); recursive self-modification; autonomous approval; arbitrary tool access; treating model
+output as authoritative evidence; silently changing ADRs, memory, skills, budgets, or policies (accepted —
+D-002, ADR-0014's forbidden levels, ADR-0011/0012's zero-silent-writes family). Every scope dispute defaults
+to: <em>does it make the factory safer or more observable?</em></p>
+
+<p><strong>And Hermes is not the OS.</strong> Hermes is one operating layer inside it — the persistent
+controller. The responsibility matrix (accepted — PDR-001 §3, condensed):</p>
+
+<table>
+  <tr><th>Part</th><th>Owns</th><th>Never does</th></tr>
+  <tr><td><strong>Hermes</strong></td><td>scheduling, typed job manifests, model routing, budgets, notifications, job supervision, memory/skill/cron <em>proposals</em></td><td>implementation; graph writes; self-modification without approval</td></tr>
+  <tr><td><strong>Claude Code</strong></td><td>repo-local implementation + verification via enveloped jobs</td><td>orchestration; ADR override; direct pushes — mutation ⇒ PR</td></tr>
+  <tr><td><strong><code>dev_graph</code></strong></td><td>canonical engineering <em>intent</em>: constraints, gates, decisions, admissible context</td><td>describing current reality — that is code truth</td></tr>
+  <tr><td><strong>CodeGraph</strong></td><td>derived code topology: symbols, call paths, impact — read-only adapter</td><td>canonical meaning; architecture decisions</td></tr>
+  <tr><td><strong>Harnesses</strong></td><td>blocking gates — "passing" defined per gate, not per vibe</td><td>being edited by what they grade</td></tr>
+  <tr><td><strong>Artifact Vault</strong></td><td>persistence of every job output, linked to jobs and costs</td><td>—</td></tr>
+  <tr><td><strong>The trace</strong></td><td>the record of what happened during execution</td><td>being consulted as truth about intent</td></tr>
+  <tr><td><strong>Human operator</strong></td><td>approvals: merges, writebacks, memory/skill/cron changes, budgets, promotions</td><td>—</td></tr>
+</table>
+
+<p>When <code>dev_graph</code> intent and code reality disagree, neither wins by rank: the disagreement is
+<strong>Drift</strong>, a blocking defect artifact, never auto-resolved (accepted — ADR-0003). That single rule
+is why the two authorities above stay separate.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    OP["human operator<br/>requests · approvals · /stop"]
+    subgraph CP["Hermes control plane"]
+        ADM["admission · grounding · supervision<br/>routing · budgets · scheduling"]
+    end
+    subgraph CAP["governed capabilities, behind gateways"]
+        CC["Claude Code<br/>enveloped repo jobs → PRs"]
+        MOD["model providers<br/>bounded reasoning steps"]
+        TOOLS["admitted MCP tools<br/>allowedTools whitelist"]
+        GR["dev_graph (intent) · CodeGraph (topology)<br/>read-only projections"]
+    end
+    HAR["harnesses A–H<br/>blocking gates per map"]
+    OUT["Artifact Vault + trace + cost ledger<br/>what landed · what happened · what it cost"]
+    OP -->|"hermes rag audit atlas ..."| CP
+    CP --> CC & MOD & TOOLS & GR
+    CC & MOD & TOOLS & GR --> HAR
+    HAR --> OUT
+    OUT -.->|"evidence for the next approval"| OP
+    CP -.->|"consequential change? ask"| OP
+</pre>
+<figcaption>Diagram 1 — the whole system (accepted shape, PDR-001 §3): the operator above, the control plane
+in the middle, capabilities behind gateways, harnesses before anything counts, and everything landing in vault
++ trace. Hermes is the middle box only.</figcaption>
+</figure>
+
+<h2>3 · The unit of work: what a job actually contains</h2>
+
+<p>Two artifacts are mandatory before Hermes may dispatch anything, and both rules are mechanical, not
+manners (accepted — D-006, D-013, ADR-0002): <strong>no envelope → no dispatch; no pack → no dispatch.</strong>
+Script-only (<code>--no-agent</code>) work is pack-exempt — no model interprets context — but never
+envelope-exempt.</p>
+
+<p><strong>The Job Envelope</strong> is the operational contract: eight fields, accepted verbatim (D-013,
+ADR-0012; encoded in <code>rag_job.schema.json</code>). For the audit job the worked values are the ones
+Wave-1 issue 02 scaffolded:</p>
+
+<table>
+  <tr><th>Envelope field</th><th>Audit job value (scaffolded)</th></tr>
+  <tr><td>title</td><td>report-only RAG audit of <code>atlas</code></td></tr>
+  <tr><td>owner</td><td><strong>Themis</strong> — a routing-table row, not a separate agent (ADR-0015)</td></tr>
+  <tr><td>model policy</td><td>strong-reasoning class, Anthropic, API-billed only</td></tr>
+  <tr><td>tool policy</td><td>read-only <code>allowedTools</code> — no write-capable tool granted</td></tr>
+  <tr><td>cost ceiling</td><td><strong>$1</strong> (the audit ceiling; the stricter of command and persona default binds)</td></tr>
+  <tr><td>output artifact path</td><td>vault-relative, under <code>artifacts/reports/</code></td></tr>
+  <tr><td>completion condition</td><td>report + evidence bundle filed; blocking harnesses green</td></tr>
+  <tr><td>cancellation rule</td><td>kill at ceiling, partial artifact kept; <code>/stop</code> honored</td></tr>
+</table>
+
+<p>Notice what the envelope is <em>not</em>: it governs execution, but it contains no context, no evidence, no
+state, no results. Those live elsewhere in the job.</p>
+
+<p><strong>The Context Pack</strong> is the admitted evidence bundle (accepted — ADR-0002/0020): canonical
+nodes, constraints, code truth, permitted docs, and acceptance criteria, assembled by the blueprint's 8-step
+protocol — <em>semantic retrieval proposes → frontmatter admits → graph traversal expands → filesystem/Git
+grounds → permitted docs supply</em> — and passing 9 admissibility checks before it is marked
+<code>admitted: true</code>. Memory may enter only as a labeled advisory block (ADR-0011); CodeGraph evidence
+enters as a distinct derived-read-only section, downgraded to advisory when its index is stale against Git
+HEAD (ADR-0004). You met this shape in miniature in lesson 0005: nothing crosses a boundary unvalidated —
+here the "boundary" is <em>what an agent is allowed to believe</em>.</p>
+
+<p><strong>The whole job, composed</strong> (proposed clarification — the accepted record defines every
+starred part, but no single accepted schema yet composes them into one job object):</p>
+
+<pre><code>Hermes job
+├── identity + job type + requested outcome + owner + target project   *envelope fields / manifest
+├── Job Envelope        * accepted — the eight governing fields
+├── Context Pack        * accepted — admitted evidence, provenance-labeled
+├── current state         proposed — §6; ADR-0018 fixes only WHERE state lives
+├── permitted actions   * accepted as tool policy + operation classes
+├── execution plan        proposed as a named part — v1 plans are largely static per job type
+├── budget state        * accepted as cost-ledger rows
+├── approval state      * accepted as review-queue artifacts + operator GO records
+├── evidence            * accepted as artifacts + harness results (§7)
+├── produced artifacts  * accepted — Artifact Vault, linked to job and cost
+├── decision history      partially accepted — run-log Stop hook; full history proposed
+└── terminal outcome    * accepted words: done / failed; the richer set in §6 is proposed</code></pre>
+
+<p><strong>And the collision table this section owes you</strong> — three words that mean different things at
+different levels:</p>
+
+<table>
+  <tr><th>Word</th><th>In this meaning</th><th>It refers to</th></tr>
+  <tr><td rowspan="3">"job"</td><td>Hermes job</td><td>the governed unit of work above — envelope + pack + state + evidence</td></tr>
+  <tr><td>Claude Code job</td><td>one bounded repo-implementation sub-execution a Hermes job may dispatch (its own envelope, worktree, PR)</td></tr>
+  <tr><td>cron job</td><td>a scheduled <em>trigger</em> that creates a Hermes job — the schedule is not the work</td></tr>
+  <tr><td rowspan="2">"evidence"</td><td>evidence category (§7)</td><td>any of ten kinds of ground for a decision — governance, semantic, execution, cost…</td></tr>
+  <tr><td><code>evidence:</code> frontmatter</td><td>a <code>dev_graph</code> node field with a closed enum (wiki · layer2 · code · benchmark · ADR · external · design) — the narrow, node-level use</td></tr>
+  <tr><td rowspan="2">"dashboard"</td><td>the generated pages</td><td>script-written markdown in <code>artifacts/dashboards/</code> — derivative, deletable, regenerable (ADR-0013)</td></tr>
+  <tr><td>the native Kanban</td><td>a UI that may be <em>observed</em>; nothing gates on it, nothing is recorded only there (ADR-0018)</td></tr>
+</table>
+
+<p><strong>Where does lesson 0007's TaskSpec fit?</strong> Honestly: the governance corpus never says
+"TaskSpec" — it says <em>typed job manifest</em> (ADR-0001) and <em>Job Envelope</em> (ADR-0006/0007/0012),
+and it uses those two names for overlapping things. The reading this supplement adopts (proposed
+clarification, recorded as an open decision — not settled silently): the <em>manifest</em> is the serialized
+dispatch document; the <em>envelope</em> is the eight governing fields it must contain; and the course's
+<em>TaskSpec</em> is the validated request that admission turns into an admitted job — S1 in course terms, Job
+Admission in this supplement's terms:</p>
+
+<pre><code>operator request
+→ validated TaskSpec            (course name; governance: schema-checked manifest)
+→ admitted Hermes job
+    ├── Job Envelope            (the contract)
+    ├── Context Pack            (the admitted evidence)
+    ├── state · plan · budget
+    ├── evidence as it accrues
+    └── artifacts at the end</code></pre>
+
+<h2>4 · The control plane, component by component</h2>
+
+<p>"Control plane" now gets the same treatment "policy" got in 0006a: decomposition. Fourteen owned
+responsibilities — <em>owned</em>, not necessarily running as separate processes, and emphatically not
+fourteen agents. In v1 most are scripts, schemas, checks, or the operator. For each: what it owns, what it
+must not own, and its honest status.</p>
+
+<table>
+  <tr><th>Component</th><th>Owns</th><th>Must not own</th><th>Status</th></tr>
+  <tr><td>1 · Operator Interface<br/>(<code>hermes</code> CLI + Telegram)</td><td>receiving requests; notifications; <code>/clear</code> · <code>/stop</code></td><td>admission or completion decisions</td><td>scaffolded — <code>scripts/hermes.py</code>; single notify+command channel (ADR-0017)</td></tr>
+  <tr><td>2 · Job Admission<br/>(<code>dispatch_gate.py</code>)</td><td>validity + admissibility, fail-closed three ways: envelope complete, pack <code>admitted: true</code>, memory-canary green; rejection = <strong>typed refusal, no ledger row</strong></td><td>execution planning; pack contents</td><td>scaffolded — Wave-1 issue 01 done, issue 02 in review (ADR-0002, D-013)</td></tr>
+  <tr><td>3 · Authority Resolution</td><td>the 11-rank hierarchy; declaring intent↔reality conflict <strong>Drift</strong></td><td>resolving Drift by rank</td><td>accepted as policy — no separate component (D-005, ADR-0003)</td></tr>
+  <tr><td>4 · Context-Pack Assembly</td><td>what evidence enters, with provenance; checks 1–9</td><td>the dispatch decision</td><td>scaffolded — Wave-1 issue 03 (ADR-0002/0004/0011/0020)</td></tr>
+  <tr><td>5 · Job Supervisor</td><td>state transitions; next permitted action; <strong>whole-job completion</strong> against the envelope's completion condition</td><td>provider-specific mechanics; implementation</td><td>accepted as a named Hermes role; <strong>absent as a specified component</strong> — no accepted state machine exists (§6); exercise 05's <code>superviseOneCall</code> is its one-call course seed</td></tr>
+  <tr><td>6 · Planner</td><td>decomposing a job into steps</td><td>executing steps</td><td>absent as a named component — v1 decomposition is largely static per job type (audit = its flags; <code>rag new</code> = the 14-step pipeline); proposed clarification</td></tr>
+  <tr><td>7 · Capability Router</td><td>choosing the <em>kind</em> of executor per step (§9)</td><td>performing the step; picking the model (that is model routing)</td><td>proposed clarification as a component; its ordering rule is accepted — <em>deterministic scripts run before model calls</em> (ADR-0007)</td></tr>
+  <tr><td>8 · Policy Services</td><td>the eight policy families (§5) as data + checks</td><td>executing anything</td><td>accepted as rules across ADRs; not one service</td></tr>
+  <tr><td>9 · Capability Gateways</td><td>bounded execution of one authorized step each (§10)</td><td>job-level decisions</td><td>proposed clarification as named components; the rules behind each are accepted</td></tr>
+  <tr><td>10 · Verification / Harness Coordinator</td><td>running harnesses A–H per the blocking map; verdicts</td><td>fixing what it grades — grader ≠ graded (ADR-0009)</td><td>accepted + scaffolded — Wave 1: C/D/H blocking, A/B/E/F advisory until ≥30 golden questions (ADR-0008)</td></tr>
+  <tr><td>11 · Approval Coordinator</td><td>routing consequential changes to the operator <em>with evidence</em>; recording GO/NO-GO</td><td>approving anything itself</td><td>accepted — the operator plus the Review-queue page; no automated component (PDR §3, ADR-0013)</td></tr>
+  <tr><td>12 · Trace Recorder</td><td>what happened: run-log hook, ledger rows, traces</td><td>being truth about intent</td><td>partially scaffolded — hooks + ledger exist; a queryable trace <em>graph</em> is planned (course Phase 4)</td></tr>
+  <tr><td>13 · Artifact Publisher</td><td>filing outputs into the correct <code>artifacts/</code> subtree, linked to job + cost</td><td>judging success</td><td>scaffolded — <code>artifact-publish</code> skill, PR-gated (ADR-0013/0005)</td></tr>
+  <tr><td>14 · Scheduler / Resume</td><td>user-approved crons; fresh isolated sessions; circuit breaker after 2 consecutive failures; catch-up-on-wake once</td><td>creating or editing crons autonomously — no recursion, natively enforced</td><td>accepted; Wave-1 candidates built, deliberately not scheduled (ADR-0012)</td></tr>
+</table>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    OI["operator interface<br/>CLI · Telegram"] --> JA["job admission<br/>envelope · pack · canary — fail-closed"]
+    JA -->|"typed refusal, no ledger row"| REF["refused"]
+    JA --> AR["authority resolution + Context-Pack assembly<br/>11-rank hierarchy · 9 checks · Drift blocks"]
+    AR --> SUP["JOB SUPERVISOR<br/>state · next permitted action · completion"]
+    SUP --> PL["planner (static per job type in v1)<br/>+ capability router"]
+    PL -.->|"selected capability, back for approval"| SUP
+    PL --> GW["capability gateways<br/>evidence · tool · model · Claude Code · artifact · notification"]
+    GW --> VER["verification — harnesses A–H<br/>blocking map decides what counts"]
+    VER --> APP["approval coordinator<br/>operator, with evidence"]
+    APP --> PUB["publication<br/>vault + ledger + trace"]
+    VER -.->|"findings → re-ground / re-plan"| SUP
+</pre>
+<figcaption>Diagram 2 — the control plane's components. The supervisor is the center; gateways are below it;
+verification stands between execution and anything counting as done. Component names 6, 7, and 9 are proposed
+clarifications; every arrow is an accepted rule.</figcaption>
+</figure>
+
+<h2>5 · Policy is eight families, not one layer</h2>
+
+<p>0006a defined <em>a</em> policy operationally: a deterministic rule converting validated facts into a
+permitted next action or terminal outcome. Hermes has many, and they group by decision domain. Each family
+below is accepted; what is proposed is only the grouping itself.</p>
+
+<table>
+  <tr><th>Family</th><th>Decides</th><th>Accepted anchor</th></tr>
+  <tr><td><strong>Admission</strong></td><td>recognized job type? in v1 scope? envelope complete? pack admitted? canary green? does an Open Decision block it?</td><td>D-002 · D-006/D-013 · ADR-0002</td></tr>
+  <tr><td><strong>Authority</strong></td><td>which source wins on disagreement; what may enter the pack; Drift = blocking defect</td><td>D-005 hierarchy · ADR-0003/0011/0020</td></tr>
+  <tr><td><strong>Tool &amp; capability</strong></td><td><code>allowedTools</code> whitelist (~20-tool ceiling), per-job-type profiles, MCP admission cards, the reach matrix; write-capable MCPs forbidden in unattended crons</td><td>ADR-0006 · ADR-0017 · ADR-0019</td></tr>
+  <tr><td><strong>Cost &amp; resource</strong></td><td>ceilings: spawn $3 · rag new $5 · <strong>audit $1</strong> · dream $0.50 · daily $10 · weekly $50 hard stop; <strong>alert at 80%; kill at ceiling</strong>, partial artifact kept, job marked failed; interactive use exempt</td><td>ADR-0007 (D-019)</td></tr>
+  <tr><td><strong>Routing</strong></td><td>deterministic-first ordering; model class per task kind; personas as routing-table rows; API-only billing; <strong>no silent model substitution</strong> — pause + notify</td><td>ADR-0007 · ADR-0015</td></tr>
+  <tr><td><strong>Approval</strong></td><td>operator approves merges, writebacks, memory/skill/cron changes, budgets, promotions; every request arrives with evidence via the Review queue</td><td>PDR §3 · ADR-0013/0014</td></tr>
+  <tr><td><strong>Completion</strong></td><td>the envelope's completion condition; typed exit codes (0 pass · 1 findings · 2 usage-error); "passing" defined per harness gate; promotion needs ≥10 clean runs + a signed ADR</td><td>D-013 · ADR-0008/0014</td></tr>
+  <tr><td><strong>Writeback</strong></td><td><strong>mutation ⇒ PR, never direct push</strong>; only staged proposal artifacts (Suggestion · Risk · OpenDecision · SkillCandidate · CronCandidate · memory deltas); graph writeback blocked by its harnesses; Wave 1 does zero writeback</td><td>ADR-0001/0003/0008/0012</td></tr>
+</table>
+
+<p>Each family's inputs come from governed data (schemas, matrices, the hierarchy, ledgers) and each is
+enforced at a specific point: admission at the dispatch gate, tool policy at the gateway, cost at the ledger +
+kill switch, writeback at the PR boundary and the harness map. A policy that is enforced nowhere is a wish —
+the record is careful to give every family its enforcement point.</p>
+
+<h2>6 · The job lifecycle — what is decided, and what is honestly not</h2>
+
+<p>Here the record forces this supplement to practice what it preaches. <strong>Accepted:</strong> job truth
+lives in manifests, job state files, and the ledger — never in UI state (ADR-0018). Also accepted, as isolated
+transition facts: admission's accept produces a dispatch record + ledger row; its reject produces a typed
+refusal and <em>no</em> ledger row; kill-at-ceiling keeps the partial artifact and marks the job
+<strong>failed</strong>; an unavailable or over-budget model route means <strong>pause + notify</strong>, never
+substitution; <code>/stop</code> kills background work; exit codes are typed (0 pass · 1 findings · 2
+usage-error); the terminal words in use are <code>done</code> and <code>failed</code>.</p>
+
+<p><strong>Not accepted anywhere:</strong> an enumerated state set. ADR-0018 is titled a task-state policy and
+deliberately defines only <em>where</em> state lives. So the state machine below is a <strong>proposed
+clarification</strong> — built so every arrow is one of the accepted facts above, and recorded as a
+recommended Open Decision rather than smuggled in as settled:</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> requested : operator command / approved cron fires
+    requested --> validating : envelope built, schema-checked
+    validating --> refused : incomplete envelope — typed refusal, no ledger row
+    validating --> grounding : envelope complete
+    grounding --> admitted : pack admitted true + canary green (dispatch gate)
+    grounding --> refused : no admitted pack / canary red-missing-unconfirmed
+    grounding --> blocked : Drift or a blocking Open Decision
+    admitted --> executing : dispatch record + ledger row created
+    executing --> verifying : steps done — artifacts staged
+    executing --> failed : killed at ceiling (partial kept) / execution error
+    executing --> paused : route unavailable or over budget — pause + notify
+    executing --> cancelled : /stop or cancellation rule
+    paused --> executing : operator resolves
+    verifying --> failed_verification : a blocking harness is red
+    verifying --> awaiting_approval : outcome mutates something (never this audit)
+    verifying --> publishing : blocking harnesses green, no approval needed
+    awaiting_approval --> publishing : operator GO
+    awaiting_approval --> blocked : operator NO-GO
+    publishing --> completed : exit 0 — filed to vault + ledger + trace
+    publishing --> completed_with_findings : exit 1 — the report is the product
+    refused --> [*]
+    blocked --> [*]
+    cancelled --> [*]
+    failed --> [*]
+    failed_verification --> [*]
+    completed --> [*]
+    completed_with_findings --> [*]
+</pre>
+<figcaption>Diagram 3 — the proposed job state machine. Names are proposed; transitions are accepted facts
+(citations in §6's text). <code>awaiting_approval</code> exists on mutating paths only — the
+<code>--no-writeback</code> audit never enters it.</figcaption>
+</figure>
+
+<p>The per-state discipline — condensed to the four columns that decide the exercises later (proposed, except
+where a cell quotes an accepted rule):</p>
+
+<table>
+  <tr><th>State</th><th>Responsible</th><th>Model reasoning?</th><th>Tools?</th><th>Human required?</th></tr>
+  <tr><td>requested → validating</td><td>operator interface → admission</td><td>no</td><td>no</td><td>the request itself</td></tr>
+  <tr><td>grounding</td><td>pack assembly</td><td>no — retrieval proposes, frontmatter admits</td><td>read-only evidence tools</td><td>no</td></tr>
+  <tr><td>admitted → executing</td><td>supervisor + router + gateways</td><td>only where the envelope's model policy permits it</td><td>only <code>allowedTools</code></td><td>no</td></tr>
+  <tr><td>verifying</td><td>harness coordinator</td><td>no</td><td>harness scripts</td><td>no</td></tr>
+  <tr><td>awaiting_approval</td><td>approval coordinator</td><td>no</td><td>no</td><td><strong>yes</strong></td></tr>
+  <tr><td>publishing → terminal</td><td>artifact publisher + trace recorder</td><td>no</td><td>vault + ledger writes</td><td>no</td></tr>
+</table>
+
+<p>Keep the shape of this in your hands: <strong>the supervisor owns the lifecycle</strong>. Everything else —
+gateways included — acts inside one state, at the supervisor's instruction, and reports back facts.</p>
+
+<h2>7 · The Spec-to-Evidence Loop, properly</h2>
+
+<p>The course has used the phrase since session 1; 0006a drew it as nine moments of the <em>course's</em>
+system. The general definition (proposed clarification — an operational expansion of the mission sentence):</p>
+
+<blockquote><p>The <strong>Spec-to-Evidence Loop</strong> is the governed lifecycle through which Hermes
+transforms an admitted job specification into a verified terminal outcome supported by persistent
+evidence.</p></blockquote>
+
+<p>Expanded into stages, it is §6 with verbs: <strong>specify → validate → admit → ground → plan → select
+capability → execute → verify → decide → record → continue, suspend, or terminate.</strong> And the word
+<em>loop</em> earns its place for one reason only: <strong>verification or new evidence can send the job
+backward</strong> — a red harness sends it back to planning; stale topology sends it back to grounding; an
+unavailable route sends it back to capability selection; ambiguity sends it to human clarification. It is
+<em>not</em> necessarily a loop of repeated model calls — the audit walkthrough in §8 loops zero times through
+a model.</p>
+
+<p><strong>What counts as evidence?</strong> Far more than Graph RAG retrieval — ten categories, each with its
+own authority and its own place in the record:</p>
+
+<table>
+  <tr><th>Category</th><th>What it grounds</th><th>Authority / example</th></tr>
+  <tr><td>governance</td><td>what may be done at all</td><td>PDR-001, ADRs, constitutions — ranks 3–4 of the hierarchy</td></tr>
+  <tr><td>semantic</td><td>engineering intent</td><td>canonical <code>dev_graph</code> nodes passing the 9 checks — rank 5</td></tr>
+  <tr><td>project &amp; code</td><td>current reality</td><td>filesystem/Git truth — rank 6; CodeGraph topology, derived and advisory-when-stale</td></tr>
+  <tr><td>source &amp; provenance</td><td>where knowledge came from</td><td>manifests: stable ID · checksum · provenance · extraction method · license</td></tr>
+  <tr><td>retrieval</td><td>candidate relevance</td><td>semantic search results — they <em>propose, never admit</em></td></tr>
+  <tr><td>execution</td><td>what the job did</td><td>run logs, typed exit codes, produced artifacts</td></tr>
+  <tr><td>verification</td><td>whether it counts</td><td>harness A–H <code>eval_result</code>s against the blocking map</td></tr>
+  <tr><td>approval</td><td>who authorized it</td><td>operator GO records, review-queue decisions, signed promotion ADRs</td></tr>
+  <tr><td>operational &amp; cost</td><td>what it consumed</td><td>ledger rows, canary reports, cost reports</td></tr>
+  <tr><td>trace</td><td>what happened, replayable</td><td>run traces and event records — never truth about intent</td></tr>
+</table>
+
+<p>And the standing separation, restated because this supplement traffics in all three: the
+<strong>knowledge graph</strong> (what Hermes knows — <code>dev_graph</code>), the <strong>workflow
+graph</strong> (what it may do — envelopes, tool policy, harness gates), and the <strong>trace</strong> (what
+it did) never merge. None of the three exists today as an implemented graph database — knowledge is markdown +
+a read-only Neo4j projection (config-soft, <em>check-verified, not identity-enforced</em> — ADR-0021's own
+required wording); workflow is schemas + gates; trace is logs + ledger. The separation is a rule about
+<em>concepts</em>, so that Drift — intent versus reality — stays detectable forever.</p>
+
+<h2>8 · The walkthrough: one audit, request to evidence</h2>
+
+<p>Now the whole supplement in motion. Twelve moments of
+<code>hermes rag audit atlas --graph-health --cost-report --no-writeback</code> — for each: who acts, under
+which policy family, and what evidence moves. Status: moments 1–6 and 9–12 are accepted rules with scaffolded
+mechanisms (Wave-1 issues 01–06); moments 7–8 are where the record runs out and the labels say so.</p>
+
+<ol>
+  <li><strong>Request.</strong> The operator asks for a report-only audit. <em>(operator interface; the
+  request is the one human input this job needs until its report lands)</em></li>
+  <li><strong>Validation.</strong> Hermes builds the eight-field envelope — Themis, strong-reasoning policy,
+  read-only tools, $1 ceiling, vault output path, completion + cancellation rules — and schema-checks it.
+  Incomplete ⇒ <strong>typed refusal, no ledger row</strong>. <em>(admission policy)</em></li>
+  <li><strong>Grounding.</strong> Pack assembly gathers, with provenance labels: the governing PDR/ADRs, the
+  project constitution, canonical <code>dev_graph</code> nodes passing the 9 checks, current repository truth,
+  CodeGraph topology (derived section, advisory if stale), the blueprint's requirements, the source manifest,
+  existing eval results, permitted docs. Marked <code>admitted: true</code>. <em>(authority policy — the
+  hierarchy decides what may enter)</em></li>
+  <li><strong>Admission.</strong> <code>dispatch_gate.py</code> checks all three fail-closed rules: envelope
+  complete, pack admitted, memory-canary green. Accept ⇒ dispatch record + ledger row; the job exists.
+  <em>(scaffolded and tested — Wave-1 issue 01 done)</em></li>
+  <li><strong>Decomposition.</strong> The flags are the plan: graph-health checks, cost report, no writeback.
+  No dynamic planner runs — v1 decomposition is static per job type. <em>(proposed-clarification territory:
+  "Planner" as a component does not exist)</em></li>
+  <li><strong>Deterministic evidence first.</strong> Scripts run before any model, per the accepted ordering
+  rule: source-manifest and checksum/provenance checks, ontology validation, frontmatter lint and graph-health
+  composition, retrieval benchmark queries (advisory until ≥30 golden questions), cost-ledger inspection,
+  stale-source checks. Their outputs are the evidence bundle. <em>(routing policy; scaffolded — issues
+  04–06)</em></li>
+  <li><strong>The capability question.</strong> For each remaining step the router's sequence runs (§9). Can a
+  script answer it? Done — most of the audit ended at step 6. Is repository implementation required? Not in
+  this job — <code>--no-writeback</code>; a <em>follow-up fix job</em> would dispatch Claude Code, this one may
+  not. Is probabilistic synthesis required? For exactly one kind of step, next. <em>(capability routing —
+  proposed name, accepted ordering)</em></li>
+  <li><strong>The first genuine model step.</strong> Prioritizing the verified findings, separating fact from
+  hypothesis, explaining implications, drafting the human-readable report — synthesis over an evidence bundle
+  that deterministic tools produced but cannot interpret. Model routing picks the route the envelope's policy
+  allows; <strong>the Model Gateway executes that one bounded step</strong> and returns a normalized result
+  with usage booked against the remaining ceiling. <em>(planned — the Wave-1 skeleton reached review with zero
+  model calls; this moment is exactly where the gateway will enter, §11)</em></li>
+  <li><strong>Verification.</strong> The blocking map decides what counts: harnesses C (node health), D
+  (cross-node integrity + the read-only check) and H (Hermes-native discipline — envelope completeness among
+  its five assertions) block; A/B/E/F advise. The read-only proof asserts the audit changed nothing.
+  <em>(completion policy; scaffolded — issue 05, harness wiring issue 09)</em></li>
+  <li><strong>Approval.</strong> Not needed — nothing mutated, so no approval state is entered. The report may
+  <em>recommend</em> changes; each recommendation becomes a staged proposal for the operator, never an action.
+  <em>(approval + writeback policy)</em></li>
+  <li><strong>Terminal.</strong> Exit 0 ⇒ <code>completed</code>; exit 1 ⇒ findings — for an audit, findings
+  are the product, so it lands as a successful report that says "unhealthy". Overshooting $1 would have killed
+  it at the ceiling: partial artifact kept, marked failed. <em>(accepted)</em></li>
+  <li><strong>Record.</strong> Into the vault: the audit report, the context pack used, the evidence bundle,
+  harness results, the cost report, stated limitations. Into the ledger: every booking against the $1. Into
+  the trace: what happened, replayable. The dashboard pages regenerate <em>from</em> these — derivative by
+  construction. <em>(accepted — ADR-0013)</em></li>
+</ol>
+
+<p>That is the whole OS, and you narrated it without one word of TypeScript. Notice the architectural weight
+distribution: eleven of twelve moments are deterministic; the model appears once, late, bounded, and
+optional to the job's validity.</p>
+
+<h2>9 · Capability routing before model routing</h2>
+
+<p>Lesson 0006's S4 quote — "above it: Hermes policy — routing, provider, model choice" — compresses
+<strong>three separate decisions</strong> into one word. Uncompressed:</p>
+
+<p><strong>Capability routing</strong> — which <em>kind</em> of executor should perform this step? The
+decision sequence, in order (the ordering is accepted — ADR-0007's deterministic-first rule and ADR-0012's
+script-only preference; the component name is proposed):</p>
+
+<ol>
+  <li>Can a deterministic operation answer this? → script.</li>
+  <li>Is authoritative evidence already on file? → read it, run nothing.</li>
+  <li>Is retrieval required? → retrieval operation (which proposes, never admits).</li>
+  <li>Is probabilistic synthesis required? → model reasoning — <em>only now does a model enter</em>.</li>
+  <li>Is repository implementation required? → a Claude Code job.</li>
+  <li>Is human judgement required? → the operator.</li>
+  <li>Whatever was chosen: is it currently permitted? → tool policy, budget, approval state.</li>
+</ol>
+
+<p><strong>Model routing</strong> — given that a step is approved for model reasoning: which eligible route?
+Model class by task kind (cheap → classification/dedup; mid → synthesis drafts; strong coding →
+implementation; strong reasoning → governance review), personas as routing-table rows, API-only billing, and
+<strong>no silent substitution</strong> — an unavailable route pauses and notifies (accepted — ADR-0007/0015).</p>
+
+<p><strong>Claude Code dispatch</strong> — given that a step needs repository implementation: which bounded,
+enveloped, context-packed job goes to Claude Code, headless, in a worktree, ending in a PR (accepted —
+ADR-0001). §10 explains why this is not a third model route.</p>
+
+<p>Three decisions, three owners, three different failure modes. "Routing" without a qualifier is the
+collision 0006a's policy table warned about, one level up.</p>
+
+<h2>10 · The gateways</h2>
+
+<p>A <strong>capability gateway</strong> is a bounded access point: policy is enforced <em>before</em> it,
+execution happens <em>through</em> it, and normalized results plus metadata come <em>back from</em> it. The
+gateway map (proposed clarification as named components — each row's underlying rules are accepted where
+cited):</p>
+
+<table>
+  <tr><th>Gateway</th><th>Caller → capability</th><th>Policy enforced before it</th><th>Returns</th><th>Fails as</th></tr>
+  <tr><td><strong>Model Gateway</strong></td><td>supervisor → one model-reasoning step</td><td>model policy, route, budget — all decided above</td><td>normalized result; usage + cost; model + provider identity; timing + trace correlation</td><td>classified operational failure — throttled, aborted, malformed, refused</td></tr>
+  <tr><td><strong>Claude Code Job Gateway</strong></td><td>Hermes dispatch → headless Claude Code (report-only, or worktree → branch → PR)</td><td>envelope + pack gates; mutation ⇒ PR (ADR-0001)</td><td>implementation evidence: diffs, commands, tests, run-log, costs, limitations, PR status</td><td>typed refusal; harness-blocked PR; failed job</td></tr>
+  <tr><td><strong>Evidence Gateway</strong></td><td>pack assembly + checks → vault, semantic search, Neo4j (read-only — config-soft, check-verified: ADR-0021), CodeGraph</td><td>admissibility + read-only reach</td><td>provenance-labeled evidence</td><td>stale / unavailable / inadmissible</td></tr>
+  <tr><td><strong>Tool Execution Gateway</strong></td><td>executing steps → admitted MCP tools</td><td><code>allowedTools</code>, admission cards, operation classes (ADR-0006/0019)</td><td>tool results + trace events</td><td>denied / errored, recorded</td></tr>
+  <tr><td><strong>Artifact Gateway</strong></td><td>completion path → the versioned <code>artifacts/</code> tree</td><td>vault layout; job + cost linkage (ADR-0013)</td><td>persisted artifact paths</td><td>publication failure — the job is not done</td></tr>
+  <tr><td><strong>Notification Gateway</strong></td><td>supervisor + approvals → Telegram, the single channel (ADR-0017)</td><td>reach matrix</td><td>delivery record</td><td>undelivered — retry or surface</td></tr>
+</table>
+
+<p>The two that are easiest to conflate, defined side by side:</p>
+
+<blockquote><p>The <strong>Model Gateway</strong> is the bounded access point through which the supervisor
+executes an <em>already authorized</em> model-reasoning step and receives a normalized result, usage record,
+and classified failure.</p></blockquote>
+
+<blockquote><p>The <strong>Claude Code Job Gateway</strong> is the bounded dispatch point through which Hermes
+sends an enveloped, context-packed repository job to Claude Code and receives implementation evidence — diffs,
+commands, tests, costs, limitations, PR status.</p></blockquote>
+
+<p><strong>Why Claude Code must not be treated as another model behind the Model Gateway</strong> (the
+boundary is accepted — ADR-0001; this argument is why it exists): a model call is one stateless, tool-less,
+bounded request that returns text and usage — it has no reach. A Claude Code job is a <em>governed
+sub-execution</em>: its own envelope, its own tool policy, a worktree, harness gates on its PR, and write
+reach into a repository. Push it through the model route and every one of those controls evaporates — the
+tool whitelist, the PR boundary, the blocking map. The gateways differ because the <em>capabilities'
+blast radii</em> differ.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    RT["capability router — which KIND of executor?<br/>deterministic → on-file → retrieval → model → Claude Code → human"]
+    EG["Evidence Gateway<br/>reads, provenance-labeled"]
+    TG["Tool Execution Gateway<br/>allowedTools, cards"]
+    MG["Model Gateway<br/>one bounded reasoning step"]
+    CG["Claude Code Job Gateway<br/>enveloped repo job → PR"]
+    RT --> EG & TG & MG & CG
+    EG & TG & MG & CG --> SUP["job supervisor — decides what each result MEANS"]
+</pre>
+<figcaption>Diagram 5 — four execution gateways under one router, all reporting to the supervisor. No gateway
+talks to another gateway; results converge on the component that owns the lifecycle.</figcaption>
+</figure>
+
+<h2>11 · When the Model Gateway is actually introduced</h2>
+
+<p>The course built the gateway in lesson 0006, before admission (0007's TaskSpec), before any evidence
+machinery. That was the right <em>teaching</em> order — the SDK mechanics were fresh from Phase 0 and the seam
+needed them. It is not the Hermes OS <em>implementation</em> order. The implementation-order argument, as a
+dependency sequence:</p>
+
+<ol>
+  <li>Select one concrete v1 job — the report-only audit.</li>
+  <li>Define its requested outcome.</li>
+  <li>Define its Job Envelope.</li>
+  <li>Define its states and terminal outcomes.</li>
+  <li>Define its authority and evidence requirements.</li>
+  <li>Define the supervisor's responsibilities.</li>
+  <li>Define capability-routing rules.</li>
+  <li>Implement deterministic evidence gathering.</li>
+  <li>Identify the first step that genuinely requires model reasoning.</li>
+  <li>Introduce the Model Gateway for that step — and not before.</li>
+</ol>
+
+<p>And the empirical anchor (scaffolded, quoted from the Wave-1 record): the real audit walking skeleton
+reached human review — envelope, admission gate, context pack, graph-health checks, cost report, vault filing,
+ledger, read-only proof, 310 template tests green — with <strong>zero model calls</strong>. Steps 1–8 needed
+no gateway. The first steps that do are synthesis-shaped: prioritizing verified defects, distinguishing facts
+from hypotheses, explaining implications, drafting the report. Hence the formulation this supplement exists to
+plant:</p>
+
+<div class="callout">
+  <strong>The placement rule.</strong> The Model Gateway is introduced when an admitted Hermes job reaches a
+  permitted step that requires probabilistic model reasoning and cannot be completed by authoritative retrieval
+  or deterministic tools alone. The course introduces the gateway earlier for TypeScript and SDK pedagogy —
+  that is a teaching order, not the Hermes OS implementation order. "Hermes uses an LLM somewhere" is never,
+  by itself, the reason a Model Gateway exists.
+</div>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    ENV["Job Envelope — model policy field<br/>class · provider · API-billed · ceiling"]
+    SUP["JOB SUPERVISOR<br/>owns the step; owns what the result means"]
+    CAPD["capability decision<br/>is model reasoning permitted and required for THIS step?"]
+    MR["model routing<br/>eligible route: class → persona row → provider"]
+    MG["Model Gateway<br/>executes the one authorized step"]
+    PROV["model provider"]
+    RES["normalized result<br/>reply or classified failure · usage · identity · timing"]
+    ENV --> CAPD
+    SUP --> CAPD --> MR --> MG --> PROV --> MG --> RES --> SUP
+</pre>
+<figcaption>Diagram 4 — the model subsystem, drawn to scale: the supervisor above, the gateway one box among
+several below it. Everything left of the gateway is decided before it is called; everything it returns is a
+fact for the supervisor to interpret.</figcaption>
+</figure>
+
+<h2>12 · What the Model Gateway owns — and the twelve things it must not</h2>
+
+<p>The gateway <strong>may</strong>: receive an authorized reasoning request; use the already-selected route;
+execute the bounded operation; return a normalized result; return usage and cost metadata; return model and
+provider identity; return timing and trace-correlation data; return classified operational failure. Exercise
+05 implements exactly this surface in miniature — which is why its supervisor could stay so small.</p>
+
+<p>It <strong>must not</strong>: create the job; admit the job; assemble the Context Pack; decide which ADR is
+authoritative; decide whether model reasoning is necessary; decide which tool may execute; define the budget;
+determine whole-job completion; dispatch Claude Code; approve writeback; merge a PR; persist governance
+changes. It is not the control loop — it is one organ the loop calls.</p>
+
+<p>One accepted qualification so the compression below is not read too absolutely: on an unavailable or
+over-budget route the rule is <em>pause + notify</em> (ADR-0007) — the gateway <em>classifies</em> that
+condition and the <em>supervisor</em> pauses. Detection at the boundary, decision above it — the same split
+exercise 05 taught for <code>throttled</code>.</p>
+
+<pre><code>Policy constrains.
+Router selects.
+Gateway executes.
+Supervisor decides.
+Harness verifies.
+Human approves.
+Trace records.</code></pre>
+
+<h2>13 · Exercise: who owns it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Part 1 — control-plane owners</h3>
+  <p class="rules">Answer from memory before clicking — the effort is the point. Feedback is immediate.</p>
+  <div class="cl" data-cats="Job Admission|Job Supervisor|Capability Router|model routing|Model Gateway|Claude Code Job Gateway">
+    <div class="cl-item" data-cat="0" data-why="all three admission rules are fail-closed at the dispatch gate: envelope completeness, pack admitted, canary green. Rejection is a typed refusal with no ledger row — the job never existed as dispatched work.">
+      <p>A request arrives with no cost ceiling in its envelope and is turned away before any ledger row is written.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="whole-job completion is judged against the envelope's completion condition, and only the supervisor owns that judgement — never a gateway, never a harness alone (harnesses supply verdicts; the supervisor converts them into the job's outcome).">
+      <p>Deciding that the filed report and green blocking harnesses satisfy the completion condition, so the job is done.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="choosing the KIND of executor — script vs retrieval vs model vs Claude Code vs human — is capability routing, and it runs before any model can be named. Deterministic-first is the accepted ordering rule (ADR-0007).">
+      <p>Determining that defect prioritization needs probabilistic synthesis rather than yet another deterministic script.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="once a step is approved for model reasoning, selecting the eligible route — class, persona row, provider, within budget — is model routing. It is a narrower decision than capability routing and runs after it.">
+      <p>Picking the strong-reasoning class and the Themis routing-table row for a step already approved for reasoning.</p>
+    </div>
+    <div class="cl-item" data-cat="4" data-why="executing one already-authorized reasoning step and returning a normalized result plus usage, identity, timing, and classified failure is the Model Gateway's entire job description — nothing upstream, nothing downstream.">
+      <p>Executing a single authorized reasoning request and returning the normalized result with its usage record.</p>
+    </div>
+    <div class="cl-item" data-cat="5" data-why="an enveloped, context-packed repository job dispatched headless into a worktree and returning diffs, tests, costs, and PR status is the Claude Code Job Gateway's contract (ADR-0001) — a governed sub-execution, not a model call.">
+      <p>Dispatching an enveloped worktree job and receiving back diffs, test results, costs, and a PR's status.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="state transitions — which state the job is in and what the next permitted action is — belong to the supervisor. The gateway only reported a classified fact (throttled); what that fact MEANS for the job is the supervisor's call, exactly as in exercise 05.">
+      <p>Converting a throttled result into "this job parks and resumes later" rather than "this job has failed".</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="pack admission is the gate's second fail-closed rule: no admitted Context Pack, no dispatch (ADR-0002). The gate checks the admitted flag; it never assembles or edits the pack's contents.">
+      <p>Refusing dispatch because the assembled Context Pack never received its <code>admitted: true</code> mark.</p>
+    </div>
+  </div>
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<section class="exercise" data-scored>
+  <h3>Part 2 — system authorities</h3>
+  <p class="rules">Same discipline: commit to an answer, then click.</p>
+  <div class="cl" data-cats="human operator|dev_graph|CodeGraph|harnesses|Artifact Vault|trace">
+    <div class="cl-item" data-cat="0" data-why="promotions are operator approvals with evidence: ≥10 consecutive clean runs plus a signed one-paragraph promotion ADR (ADR-0014). No component may self-promote.">
+      <p>Granting the L1→L2 promotion after ten consecutive clean runs and a signed one-paragraph record.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="constraints, gates, decisions, and admissible context are engineering INTENT — dev_graph's territory (ADR-0003). Whether reality currently matches is code truth's territory; a mismatch is Drift.">
+      <p>Stating the constraint the audit checks the project against — what should be true, not what currently is.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="impact radius, call paths, and affected tests are derived code topology — CodeGraph's territory (ADR-0004): read-only, never canonical, downgraded to advisory when stale against Git HEAD.">
+      <p>Reporting which modules a proposed change would impact — derived, read-only, and never the canonical meaning.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="harnesses make 'passing' a per-gate verdict with an explicit blocking map (ADR-0008): agent harness blocks PR creation, the relevant set green blocks merge, graph harnesses block writeback, Hermes-native blocks automation changes.">
+      <p>Turning "it passed" from a vibe into a per-gate verdict that can mechanically block a merge.</p>
+    </div>
+    <div class="cl-item" data-cat="4" data-why="every job output persists in the versioned artifacts/ tree, linked to its job and its cost (ADR-0013) — that linkage is the vault's defining duty, and the dashboard is merely generated from it.">
+      <p>Persisting the finished audit report so it stays linked to the job that made it and the dollars it consumed.</p>
+    </div>
+    <div class="cl-item" data-cat="5" data-why="what happened — including refusals, timings, and every executed command — is trace territory: the record of execution, never an authority about what should have happened.">
+      <p>Recording that the dispatch gate refused this request at 14:02 with a typed refusal — the fact, not the norm.</p>
+    </div>
+  </div>
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>14 · Exercise: pick the next state</h2>
+
+<section class="exercise" data-scored>
+  <h3>Audit scenarios against the §6 state machine (proposed names, accepted transitions)</h3>
+  <p class="rules">Each scenario is one moment in a job's life. Choose the state it lands in.</p>
+  <div class="cl" data-cats="refused|blocked|paused|awaiting_approval|failed|completed_with_findings|completed">
+    <div class="cl-item" data-cat="0" data-why="no envelope → no dispatch is mechanical (D-013). The gate answers with a typed refusal and writes no ledger row — the job never enters the executing world at all.">
+      <p>The request reaches the dispatch gate without a Job Envelope.</p>
+    </div>
+    <div class="cl-item" data-cat="5" data-why="for a report-only audit, findings ARE the product: a stale manifest is written into the report and the job exits 1 — a successful audit that says 'unhealthy', not a failed job.">
+      <p>The deterministic checks find the source manifest is stale; everything else completes inside the ceiling.</p>
+    </div>
+    <div class="cl-item" data-cat="4" data-why="an execution error — a required check crashing before producing its evidence — fails the job itself. Distinguish this from the check RUNNING and reporting bad health, which is a finding.">
+      <p>The graph-health script itself crashes before producing any report at all.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="an unavailable or throttled-out route triggers the accepted rule: pause + notify, never silent substitution (ADR-0007). The operator resolves; the job resumes.">
+      <p>The only eligible model route is throttled into unavailability mid-synthesis, and no substitute may be used silently.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="a mutating outcome — a refresh's PR — waits on the operator, with evidence, before publishing counts. Note the contrast: the --no-writeback audit never enters this state.">
+      <p>A <code>rag refresh</code> job's PR is open, harnesses green, and the change now needs a human's decision.</p>
+    </div>
+    <div class="cl-item" data-cat="4" data-why="kill-at-ceiling is accepted verbatim: terminated at the $1 ceiling, partial artifact kept, job marked failed (ADR-0007). The 80% mark earlier produced an alert, not a stop.">
+      <p>Spend hits $1.00 of the $1 ceiling with the report half-written.</p>
+    </div>
+    <div class="cl-item" data-cat="6" data-why="all blocking harnesses green, nothing mutated, artifacts + ledger + trace filed, exit 0 — the clean terminal. The approval state was skipped because no consequence needed a human.">
+      <p>The verified no-writeback report is filed to the vault with every blocking harness green and budget to spare.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="a blocking Open Decision — like Drift between graph intent and code reality — blocks the path rather than failing or completing it: the job waits on governance, not on retry.">
+      <p>Grounding surfaces a graph-versus-code disagreement that an unresolved Open Decision must settle first.</p>
+    </div>
+  </div>
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>15 · Exercise: what kind of evidence?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Part 1 — the authority-bearing categories</h3>
+  <p class="rules">Ten categories exist; this part covers the five that ground what may be believed.</p>
+  <div class="cl" data-cats="governance|semantic|project / code|source / provenance|retrieval">
+    <div class="cl-item" data-cat="0" data-why="PDR and ADR content is governance evidence — ranks 3–4 in the authority hierarchy, above graph nodes and code truth, below only user instruction and safety.">
+      <p>PDR-001's rule that every scope dispute defaults to "does it make the factory safer or more observable?"</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="a canonical dev_graph node passing the nine admissibility checks is semantic evidence — engineering intent, rank 5, admissible into a Context Pack.">
+      <p>A canonical <code>dev_graph</code> constraint node that passes all nine admissibility checks.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="what the repository actually contains right now is code truth — rank 6, canonical for reality. When it contradicts a graph node, neither wins: that is Drift.">
+      <p>The current Git HEAD showing the module still imports the client the graph says was retired.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="the manifest's five fields — stable ID, checksum, provenance, extraction method, license — are source/provenance evidence: where knowledge came from and whether it may be used (ADR-0020).">
+      <p>A manifest row carrying stable ID, checksum, extraction method, and license for one ingested document.</p>
+    </div>
+    <div class="cl-item" data-cat="4" data-why="semantic search output is retrieval evidence and its authority is deliberately weak: the blueprint's protocol is 'retrieval proposes, frontmatter admits' — relevance is a candidate, never a fact.">
+      <p>Five chunks a semantic search ranks as most relevant to the question — candidates, pending admission.</p>
+    </div>
+  </div>
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<section class="exercise" data-scored>
+  <h3>Part 2 — the record-bearing categories</h3>
+  <p class="rules">The five that ground what happened, what it cost, and who said yes.</p>
+  <div class="cl" data-cats="execution|verification|approval|operational / cost|trace">
+    <div class="cl-item" data-cat="0" data-why="a typed exit code is execution evidence — what the job did and how it ended. Exit 1 for an audit means the run succeeded and found findings.">
+      <p>Exit code 1: the audit ran to completion and its report contains findings.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="a harness eval_result is verification evidence — the per-gate verdict the blocking map consumes. Harness D covers cross-node integrity and the read-only projection check.">
+      <p>Harness D's <code>eval_result</code>: cross-node integrity green, read-only projection verified this cycle.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="an operator GO record is approval evidence: who authorized a consequential transition, on what evidence, and when — the Wave-0 exit GO of 2026-07-13 is the founding instance.">
+      <p>The operator's recorded GO that closed Wave 0 and unblocked the audit pillar.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="ledger rows are operational/cost evidence — every booking against the ceiling, feeding the 80% alert and the kill-at-ceiling rule, and the cost report the audit itself produces.">
+      <p>The ledger row booking $0.41 of this job's spend against its $1 ceiling.</p>
+    </div>
+    <div class="cl-item" data-cat="4" data-why="the run log is trace evidence: the replayable record of what happened — commands, timings, refusals — never an authority on what should have happened.">
+      <p>The run log listing every command the job executed, in order, with timings.</p>
+    </div>
+  </div>
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>16 · Exercise: which gateway?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Route each step through the §10 map</h3>
+  <p class="rules">One step, one bounded access point — or a human. Decide before clicking.</p>
+  <div class="cl" data-cats="Evidence Gateway|Tool Execution Gateway|Model Gateway|Claude Code Job Gateway|Artifact Gateway|human decision">
+    <div class="cl-item" data-cat="0" data-why="a read of the Neo4j projection is evidence access: read-only reach (config-soft, check-verified per ADR-0021), returning provenance-labeled facts for the pack or the checks.">
+      <p>Query the read-only graph projection for nodes with no inbound relationships.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="running an admitted MCP tool under the envelope's allowedTools whitelist is exactly what the Tool Execution Gateway bounds: cards filed, operation class respected, result traced.">
+      <p>Run one admitted MCP tool that the envelope's <code>allowedTools</code> whitelist grants this job.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="drafting prose from a verified evidence bundle is bounded probabilistic synthesis — one authorized reasoning step through the Model Gateway, usage booked, result normalized.">
+      <p>Draft the human-readable audit report from the verified evidence bundle.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="fixing repository content is implementation: an enveloped, context-packed worktree job through the Claude Code Job Gateway, ending in a PR — never a direct push, never a model route.">
+      <p>Fix the three broken links the audit found, as a bounded worktree job that ends in a pull request.</p>
+    </div>
+    <div class="cl-item" data-cat="4" data-why="filing outputs into the versioned artifacts/ tree with job and cost linkage is the Artifact Gateway's duty — publication is part of the job landing, not an afterthought.">
+      <p>File the finished report into <code>artifacts/reports/</code>, linked to this job and its spend.</p>
+    </div>
+    <div class="cl-item" data-cat="5" data-why="writeback approval is reserved to the operator with evidence (PDR §3): no gateway, harness, or supervisor may approve a consequential mutation on its own.">
+      <p>Decide whether the graph writeback the report recommends may actually proceed.</p>
+    </div>
+  </div>
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>17 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Six questions, equal-length options, no format clues</h3>
+
+  <div class="qz" data-correct="2" data-why="a job is the governed unit: envelope (contract) + Context Pack (admitted evidence) + state + budget + evidence + terminal outcome. A prompt is at most the content of one bounded step inside it — and the audit's skeleton reached review containing no prompt at all.">
+    <p class="qz-prompt">Q1. Why is a Hermes job not a prompt?</p>
+    <button class="qz-opt" type="button">Because prompts are written by the operator while jobs are always generated by scheduled crons</button>
+    <button class="qz-opt" type="button">Because a job is a longer prompt that carries its own system message and its retrieved context</button>
+    <button class="qz-opt" type="button">Because a job is a governed unit — contract, admitted evidence, state, budget, evidence, outcome — and a prompt is at most one step's content</button>
+    <button class="qz-opt" type="button">Because jobs are billed through the API while prompts run on the interactive subscription instead</button>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="the placement rule: the gateway enters when an admitted job reaches a permitted step that needs probabilistic reasoning and cannot be completed by authoritative retrieval or deterministic tools. The Wave-1 skeleton proved the point by reaching review with zero model calls.">
+    <p class="qz-prompt">Q2. When should the Model Gateway first appear in the architecture's implementation order?</p>
+    <button class="qz-opt" type="button">At the very start, because every layer of the system ultimately depends on having model access available</button>
+    <button class="qz-opt" type="button">When an admitted job reaches a permitted step that deterministic tools and authoritative retrieval cannot complete</button>
+    <button class="qz-opt" type="button">As soon as the first envelope is defined, since the model policy field would otherwise have nothing to bind to</button>
+    <button class="qz-opt" type="button">Immediately after the operator interface ships, so that requests can be answered while the gates are built</button>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="whether a step needs a model at all is capability routing — the supervisor applying routing policy above the gateway. The gateway executes an ALREADY authorized step; deciding necessity is one of the twelve things it must not own.">
+    <p class="qz-prompt">Q3. Who decides whether a step needs model reasoning at all?</p>
+    <button class="qz-opt" type="button">The Model Gateway, since it is the component with the most direct knowledge of what models can do</button>
+    <button class="qz-opt" type="button">The model itself, by attempting the step and reporting back whether it was able to complete it</button>
+    <button class="qz-opt" type="button">The Job Envelope, whose model policy field states in advance which steps of the job are reasoning steps</button>
+    <button class="qz-opt" type="button">Capability routing above the gateway — the supervisor applying the deterministic-first decision sequence</button>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="whole-job completion is the supervisor's alone, judged against the envelope's completion condition, consuming harness verdicts and (on mutating paths) the operator's approval as inputs. Gateways return facts about single steps; harnesses return verdicts; neither closes the job.">
+    <p class="qz-prompt">Q4. Who decides that the whole job is complete?</p>
+    <button class="qz-opt" type="button">The Job Supervisor, judging the envelope's completion condition with harness verdicts and any required approval as inputs</button>
+    <button class="qz-opt" type="button">The final gateway used, because it is the component that observes the last operation finish and can close out the run</button>
+    <button class="qz-opt" type="button">The harness coordinator, because nothing in the system is allowed to count as done until its blocking gates are green</button>
+    <button class="qz-opt" type="button">The human operator in every case, because v1 forbids any terminal state that was not explicitly reviewed by a person</button>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="the blast radii differ: a model call is stateless, tool-less, reach-less — text and usage back. A Claude Code job carries its own envelope, tool policy, worktree, harness gates, and PR-bounded write reach into a repository. Route it through the model gateway and those controls vanish.">
+    <p class="qz-prompt">Q5. Why is dispatching Claude Code different from making a model call?</p>
+    <button class="qz-opt" type="button">Because Claude Code responses are longer and structured, so they need a different parser than model replies do</button>
+    <button class="qz-opt" type="button">Because Claude Code runs locally on the repository host while model providers are reached over the network</button>
+    <button class="qz-opt" type="button">Because a Claude Code job is a governed sub-execution with tools, a worktree, gates, and PR-bounded write reach — a model call has none</button>
+    <button class="qz-opt" type="button">Because Claude Code bills by the job while model calls bill by the token, and the ledger must keep those rows apart</button>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="the loop's backward edges are what make it a loop: verification or new evidence can send the job back to grounding, planning, capability selection, execution, or human clarification. The audit walkthrough looped zero times through a model — repetition of model calls is not the definition.">
+    <p class="qz-prompt">Q6. What makes the Spec-to-Evidence process a loop?</p>
+    <button class="qz-opt" type="button">Each job step calls the model repeatedly until its output stabilizes, and that iteration is the loop being named</button>
+    <button class="qz-opt" type="button">Verification or new evidence can send an admitted job backward — to grounding, planning, selection, execution, or a human</button>
+    <button class="qz-opt" type="button">Completed jobs schedule their own successors, so the factory cycles continuously from one audit into the next one</button>
+    <button class="qz-opt" type="button">The trace is replayed after every run, and replaying past execution against new state closes the loop each time</button>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>18 · Say it in your own words</h2>
+
+<p>Close the loop with your teacher. In the chat, answer these five — no notes, no scrolling up:</p>
+<ol>
+  <li>Narrate the complete <code>rag audit</code> job — operator request to Artifact Vault — using no
+  TypeScript, SDK, or Anthropic terminology at all. (If you reach for "interface" or "port", start over.)</li>
+  <li>Someone says "so a Hermes job is basically a prompt with settings." Correct them: what are the envelope,
+  the Context Pack, and the job's state — and which of the three is the contract?</li>
+  <li>The Wave-1 audit skeleton reached human review with zero model calls. Why is that fact an
+  <em>architectural argument</em> about where the Model Gateway belongs, and not just a progress report?</li>
+  <li>Distinguish capability routing, model routing, and Claude Code dispatch — three decisions, three owners.
+  What goes wrong if the second absorbs the first?</li>
+  <li>"Evidence" is more than retrieval: name as many of the ten categories as you can, and say which category
+  a cost-ledger row belongs to and what decision it feeds.</li>
+</ol>
+
+<p>And the compression — if you keep only seven sentences from this supplement: <em>⑴ v1 of the
+Claude-Assisted Hermes OS is the RAG Factory — a governed job-execution system, not a general AI OS, and
+Hermes is one layer inside it, never the whole. ⑵ The unit of work is the Hermes job — envelope as contract,
+Context Pack as admitted evidence, state, budget, evidence, terminal outcome — and it is not a prompt, a model
+request, or a chat. ⑶ The Job Supervisor owns the lifecycle: every other component acts inside one state and
+reports facts back. ⑷ Policy is eight enforced families — admission, authority, tool, cost, routing, approval,
+completion, writeback — each with a mechanical enforcement point, not one vague layer. ⑸ Capability routing
+precedes model routing: which kind of executor comes first, and deterministic tools run before any model is
+even nameable. ⑹ The Model Gateway executes exactly one bounded, already-authorized reasoning step and returns
+a normalized result with usage, identity, timing, and classified failure — twelve upstream and downstream
+decisions are not its to make. ⑺ A job has landed only when its acceptance conditions are supported by
+persistent evidence — artifacts in the vault, verdicts from the harnesses, bookings in the ledger, a
+replayable trace — and, for anything consequential, a human's recorded yes.</em></p>
+
+<h2>Primary source</h2>
+
+<p><strong>Read next:</strong> the governance record this supplement compresses — <code>PDR-001</code> (the
+mission, scope, responsibility matrix, and authority hierarchy, two pages) and, for the boundary this
+supplement leans on hardest, <code>ADR-0001</code> (Hermes / Claude Code responsibility) and
+<code>ADR-0007</code> (routing and cost control) in the <code>hermes-os</code> repo's <code>docs/adr/</code>.
+The durable, compact form of this supplement's architecture lives at
+<code>docs/hermes_os/architecture/hermes-job-control-plane.md</code> (mirrored from the governance repo) —
+later lessons link there instead of re-explaining. Course-side context stays where it was:
+<code>wiki/course/hermes-integration.md</code> (S1–S9) and <code>wiki/course/course-architecture.md</code>
+(the code-seam view 0006a built).</p>
+
+<footer>
+  <p><strong>Stuck or curious?</strong> Ask your teacher — the agent that opened this lesson — anything: why
+  the dispatch gate writes <em>no</em> ledger row on refusal (and what forensic property that buys), whether
+  the proposed state machine should collapse <code>failed</code> and <code>failed_verification</code>, why
+  personas are routing-table rows rather than agents, or what would have to be true before the audit's
+  synthesis step is allowed to spend its first token. That conversation <em>is</em> the course.</p>
+  <p><strong>Back to the sequence:</strong> this supplement changes nothing about what ships next. Resume
+  lesson 0006 where you left it (§2, the port), read 0006a's classification if you haven't, finish exercise
+  05 — and then lesson 0007, <em>The TaskSpec Is a Contract</em> — lab <code>06-taskspec</code> — remains the
+  next step, now with its governance question attached: the course's TaskSpec and the governance record's
+  manifest/envelope naming is an <em>open decision</em>, recorded, not resolved.</p>
+</footer>
+
+</body>
+</html>

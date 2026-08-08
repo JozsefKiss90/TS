@@ -9,10 +9,11 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 - **Numbering:** `NNNN` ids are firm through the next lesson; later ids are placeholders and may shift. Phase 2+ lessons get ids when their phase opens.
 - One lesson ≈ one session (~45–60 min). Every lesson ships three things: the HTML lesson, its glossary-wiki cluster (`wiki/terms/` + lesson map), and at least one Mermaid diagram. Lab exercises live in `hermes-sdk-lab/` (pnpm workspace, **mock-first** — live API calls only after the cost/auth route is confirmed).
 - Standing separations that shape the whole sequence: the three graphs never merge (**knowledge** = what Hermes knows · **workflow** = what it may do · **trace** = what it did); model-client SDK before Agent SDK; single-agent before multi-agent; raw HTTP before SDK.
+- **Graph form & governance:** this plan as Mermaid module graphs: [wiki/course/course-module-graph.md](wiki/course/course-module-graph.md) — kept in sync when a status flips. What a lesson must be: [CLAUDE.md](CLAUDE.md) (the constitution). What the course means — terminal skills and the Hermes OS integration scenario (steps S1–S9) every lesson anchors to: [wiki/course/](wiki/course/COURSE.md).
 
 ---
 
-## Phase 0 — TS/SDK literacy — *in progress, 4 of 5 shipped*
+## Phase 0 — TS/SDK literacy — *complete, 5 of 5 shipped (2026-07-27)*
 
 **Goal:** see exactly what an SDK does to an API, so nothing downstream is magic — and end with contracts that are typed **and runtime-validated**.
 **Exit criteria:** trace the full request lifecycle from memory; read a package's `.d.ts` as the real contract; never let untrusted bytes past a boundary without a runtime check.
@@ -23,22 +24,22 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 | 0002 | [Raw HTTP Against a Mock](lessons/0002-raw-http-against-a-mock.html) | `01-raw-http` | every responsibility written by hand against a test double; the base-URL seam | ✅ |
 | 0003 | [The SDK Absorbs the Six](lessons/0003-the-sdk-absorbs-the-six.html) | `02-model-client-sdk` | the official SDK against the same mock — mechanics absorbed, policy left behind; typed errors, retries, declaration files | ✅ |
 | 0004 | [The Response Becomes a Process](lessons/0004-the-response-becomes-a-process.html) | `03-streaming-and-cancellation` | SSE event grammar; the delta fold; cancellation becomes a cost lever | ✅ |
-| 0005 | Validate the Boundary | `04-validate-the-boundary` | Zod turns the assertion into a checked parse; `z.infer` as single source of truth — the debt open since lesson 0001 §3, and the close of Phase 0 | ▶ |
+| 0005 | [Validate the Boundary](lessons/0005-validate-the-boundary.html) | `04-validate-the-boundary` | Zod turns the assertion into a checked parse; `z.infer` as single source of truth — the debt open since lesson 0001 §3, and the close of Phase 0 | ✅ |
 
-*Lesson maps in the wiki: [[lesson-0001-trace-one-request]] · [[lesson-0002-raw-http-against-a-mock]] · [[lesson-0003-the-sdk-absorbs-the-six]] · [[lesson-0004-the-response-becomes-a-process]].*
+*Lesson maps in the wiki: [[lesson-0001-trace-one-request]] · [[lesson-0002-raw-http-against-a-mock]] · [[lesson-0003-the-sdk-absorbs-the-six]] · [[lesson-0004-the-response-becomes-a-process]] · [[lesson-0005-validate-the-boundary]].*
 
 ---
 
-## Phase 1 — The manual bounded loop — *opens after 0005*
+## Phase 1 — The manual bounded loop — *open; next up: 0007*
 
 **Goal:** implement the Hermes loop by hand — bounded, permissioned, budgeted, traceable — before any framework touches it.
-**Entry decision:** provider neutrality vs Claude-only (still open; must land in the ModelGateway lesson, informed by lesson 0003's mechanics-vs-policy line).
+**Entry decision:** provider neutrality vs Claude-only — **decided in lesson 0006 (2026-07-29): provider-neutral port, exactly one live adapter.** Neutrality is a property of the seam (Hermes-owned vocabulary in `gateway.ts`); provider choice is policy above the port; the `FakeModelGateway` is the second implementation that keeps the contract honest. Rationale in NOTES.md.
 **Exit criteria (from MISSION):** a bounded single-agent loop with permissions, budgets, approval, and termination — testable offline with fakes and recorded fixtures.
 
 | # (prov.) | Lesson | Lab (prov.) | The win | Status |
 |---|---|---|---|---|
-| 0006 | The Model Gateway | `05-model-gateway` | wrap the SDK behind a port: mechanics below, policy above; the provider-neutrality decision lands; `FakeModelGateway` exists from day one | ○ |
-| 0007 | The TaskSpec Is a Contract | `06-taskspec` | a Zod-validated TaskSpec — the typed, runtime-checked upgrade of spec-first practice; invalid work is rejected before a token is spent | ○ |
+| 0006 | [The Model Gateway](lessons/0006-the-model-gateway.html) | `05-model-gateway` | wrap the SDK behind a port: mechanics below, policy above; the provider-neutrality decision lands; `FakeModelGateway` exists from day one | ✅ |
+| 0007 | The TaskSpec Is a Contract | `06-taskspec` | a Zod-validated TaskSpec — the typed, runtime-checked upgrade of spec-first practice; invalid work is rejected before a token is spent | ▶ |
 | 0008 | Tool Use — the Loop's Heartbeat | `07-tool-loop` | `tool_use` / `tool_result` blocks, `stop_reason: "tool_use"`, one manual iteration end to end | ○ |
 | 0009 | Bounds and Termination | `07-tool-loop` | iteration caps, token budgets, deadlines; lesson 0004's mid-stream abort becomes budget *enforcement* | ○ |
 | 0010 | Approval Gates and Permissions | `07-tool-loop` | which tool calls run, which wait for a human; permissions as data, not vibes | ○ |
@@ -46,6 +47,12 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 | 0012 | Offline by Construction | `08-tested-adapters` | the whole loop runs green with fakes and recorded fixtures — no LLM, no network; Phase 1's capstone | ○ |
 
 *Provisional shape: labs `07-tool-loop` onward evolve one codebase across lessons rather than starting fresh each time. Expect this table to compress or split as sessions reveal pace.*
+
+*Lesson maps in the wiki: [[lesson-0006-the-model-gateway]].*
+
+*Supplement (2026-07-29): [0006a — Hermes Architecture Primer: Where the Model Gateway Fits](lessons/0006a-hermes-architecture-primer.html) — the Spec-to-Evidence Loop drawn end to end, "policy" defined operationally, and an implemented/seeded/planned ledger for exercise 05 (a one-call policy seed; no routing, budgets, permissions, or trace yet). Durable reference: [wiki/course/course-architecture.md](wiki/course/course-architecture.md). Defect record: [[course-pedagogy]] row 12. Adds no capability and shifts no lesson — 0007 remains next.*
+
+*Supplement (2026-07-30): [0006b — The Hermes Control Plane: From Job to Evidence](lessons/0006b-the-hermes-control-plane.html) — the Claude-Assisted Hermes OS from its governance record (PDR-001, ADR-0001..0021): the Hermes job as the unit of work (envelope · Context Pack · lifecycle), the control-plane components, capability routing before model routing, the gateway map, and the Model Gateway's placement rule — with every claim labeled accepted / scaffolded / planned / proposed clarification / open decision. Reading order: 0006 §1 → 0006b → 0006a → the rest. Durable reference: [docs/hermes_os/architecture/hermes-job-control-plane.md](docs/hermes_os/architecture/hermes-job-control-plane.md) (mirror; canonical in the `hermes-os` repo). Defect record: [[course-pedagogy]] row 13. Adds no capability and shifts no lesson — 0007 remains next.*
 
 ---
 
