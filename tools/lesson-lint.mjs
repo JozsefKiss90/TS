@@ -371,6 +371,22 @@ function lint(path, registry) {
   if (introduced.length > 6)
     add("ERROR", "BUDGET-terms", 1, `${introduced.length} new terms registered to this lesson (limit 6)`);
 
+  // ---- TERM-7 · scenario steps carry a gloss
+  // "S4" is meaningless to a reader who has not read hermes-integration.md.
+  // Each distinct step a lesson uses must appear once with a parenthetical
+  // gloss; later mentions can be bare. Runs on prose blocks, not raw source,
+  // so Mermaid node ids like S1["@anthropic-ai/sdk"] are not mistaken for it.
+  const steps = new Set();
+  for (const b of blocks)
+    for (const m of b.text.matchAll(/\bS([1-9])\b/g)) steps.add(m[0]);
+  for (const step of [...steps].sort()) {
+    const glossed = blocks.some((b) =>
+      new RegExp(`\\b${step}\\b\\s*\\([^)]*\\b\\w+\\b[^)]*\\b\\w+\\b[^)]*\\)`).test(b.text)
+    );
+    if (!glossed)
+      add("ERROR", "TERM-7", 1, `scenario step ${step} is never glossed — write "${step} (what it is)" at first use`);
+  }
+
   // ---- PARA-7 · the compression is bounded
   const comp = blocks.find((b) => /keep only \w+ sentences/i.test(b.text));
   if (isHtml && !comp) {

@@ -138,6 +138,16 @@ An exception: a metaphor that is the established industry name for the thing, su
 **prepared**. *Reserved* was tried first and rejected, because lesson 0006a already uses "reserved" for
 the model choice, and TERM-3 forbids the second meaning.
 
+### TERM-7 · Scenario steps carry a gloss
+
+`S1` to `S9` are the nine steps of the worked job in `wiki/course/hermes-integration.md`. A bare code
+tells a learner nothing, which is the same defect as an undefined Technical Name.
+
+Each distinct step a lesson uses appears once as `S4 (model calls)`. Later mentions can be bare. The
+gloss is six words or fewer.
+
+The linter reads prose blocks, not raw HTML, so a Mermaid node named `S1` is not mistaken for a step.
+
 ## 4 · Sentences
 
 ### SENT-1 · Length

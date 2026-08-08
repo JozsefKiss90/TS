@@ -20,10 +20,10 @@
 
 <div class="callout mission">
   <strong>Why this matters for Hermes</strong>
-  Scenario step <strong>S4</strong> puts every model call behind the ModelGateway. The SDK's mechanics run
-  below it, and Hermes policy sits above it. Failures reach the supervisor as data it can classify. The
-  same interface carries the supervisor's abort signal (S6) and the request id the trace needs (S7). Two
-  threads advance. The six responsibilities move below the line, and lesson 0005's parse finds its home.
+  Scenario step S4 (model calls) puts every one behind the ModelGateway. The SDK's mechanics run below
+  it, and Hermes policy sits above it. Failures reach the supervisor as data it can classify. The same
+  interface carries the abort signal S6 (budget limits) needs, and the request id for S7 (the trace).
+  Two threads advance: the six responsibilities move below the line, and lesson 0005's parse lands.
 </div>
 
 <h2>1 · The cost of copying the client</h2>
@@ -353,7 +353,7 @@ mock and our fake.</p>
   <a href="0006b-the-hermes-control-plane.html">The Hermes Control Plane</a> says what a Hermes job is.
   Read section 1, then 0006b, then 0006a.</p>
   <p><strong>Phase 1 is open.</strong> Next comes lesson 0007, <em>The TaskSpec Is a Contract</em>, with
-  lab <code>06-taskspec</code>. Lesson 0005's parse meets step S1 there, and Hermes rejects invalid work
+  lab <code>06-taskspec</code>. Lesson 0005's parse meets S1 (the envelope check) there, and Hermes rejects invalid work
   before it spends a token.</p>
 </footer>
 

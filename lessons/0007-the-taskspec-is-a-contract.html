@@ -20,7 +20,7 @@
 
 <div class="callout mission">
   <strong>Why this matters for Hermes</strong>
-  Scenario step <strong>S1</strong> parses the job before anything else happens, so Hermes rejects
+  Scenario step S1 (the envelope check) parses the job first, so Hermes rejects
   invalid work before it spends a token. Lesson 0005 built that parse and aimed it at a provider's
   reply. Today the same parse guards the operator's request. The boundary rule now covers both
   directions into the loop.
@@ -213,7 +213,7 @@ rejected twice, and reports round 1 first.</figcaption>
   <tr><td>Invalid work costs zero requests</td><td>implemented</td><td>Part B, the fake's <code>calls</code> and the mock's counter</td></tr>
   <tr><td>A token budget per job</td><td>prepared</td><td><code>costCeilingTokens</code> is carried and reported. Lesson 0009 enforces it</td></tr>
   <tr><td>A tool permission list</td><td>prepared</td><td><code>allowedTools</code> is carried and defaults to empty. Lesson 0010 enforces it</td></tr>
-  <tr><td>The artifact lands at <code>outputPath</code></td><td>planned</td><td>No <code>ROADMAP.md</code> row writes a file yet. That is step S8</td></tr>
+  <tr><td>The artifact lands at <code>outputPath</code></td><td>planned</td><td>No <code>ROADMAP.md</code> row writes a file yet. That is S8 (landing the outputs)</td></tr>
 </table>
 
 <h2>5 · The exercise</h2>

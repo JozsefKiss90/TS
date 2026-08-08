@@ -303,6 +303,22 @@ picking a side. Both were defects in the rules, not the lesson. The user chose t
 - Older dated entries above, and `course-pedagogy.md` row 13, keep the word *seeded* as written. They
   are records of what was decided at the time, not current instructions.
 
+## Update 2026-08-08 — scenario steps must be glossed (user report)
+
+The user read the lessons and could not tell what `S1`, `S4` and the rest referred to. They are the nine
+steps of the worked job in `wiki/course/hermes-integration.md`. Article II.2 required a lesson to *name*
+its step and never to *explain* it, so 22 bare codes shipped across five lessons.
+
+- **New rule TERM-7:** each distinct step appears once as `S4 (model calls)`, six words or fewer; later
+  mentions may be bare. Added to the profile and to Article II.2.
+- **The linter checks it**, reading prose blocks rather than raw HTML. Lesson 0006 has Mermaid nodes
+  named `S1` and `S2`; a raw-source check would have flagged those as scenario steps.
+- **Glossed now:** 0006 (S1, S4, S6, S7), 0006a (S4), 0007 (S1, S8). All three still pass.
+- **The budget bit back, as predicted.** 0006 sat at 1,992 of 2,000 words with four glosses to add, so
+  its mission callout was tightened by the words the glosses cost. It now sits at 1,995. Per amended
+  Article VII the new rule records what it displaces.
+- **Pending:** 0005 and 0006b hold the remaining bare codes and will gloss them when rewritten.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*
