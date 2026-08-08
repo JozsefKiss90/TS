@@ -310,9 +310,43 @@ A rewrite runs in two passes, taken from the source skill's two modes.
 
 Keeping the passes separate stops a rewrite from quietly deciding that a violation was acceptable.
 
-Two rules are heuristic and will produce false positives: passive-voice detection (SENT-3) and the
-instruction-versus-explanation split that selects the 20-word or 25-word limit (SENT-1). Calibrate both
-against lesson 0001, which is the closest shipped text to this profile.
+### Calibration, measured 2026-08-08
+
+Calibrated against lesson 0001, the closest shipped text to this profile. Warnings across the eight
+lessons fell from 417 to 178 after three fixes. The `-ing` check stopped firing on *everything* and
+*nothing*. The noun-cluster check gained a determiner anchor and a function-word filter. Callout labels
+stopped gluing onto the first sentence of their block, which had been inflating word counts.
+
+Known limits, stated rather than hidden:
+
+- **SENT-6 has low precision even after calibration.** It returns nothing on lesson 0001 and three hits
+  on 0006a, and those three are verb phrases rather than true noun clusters. Real detection needs
+  part-of-speech tagging, which the linter does not have. It stays WARN-only. Treat it as a prompt to
+  look, not as a finding.
+- **SENT-1 applies a flat 25-word limit.** The linter does not separate lab instructions from
+  explanation, so the 20-word procedural limit is not enforced mechanically. Judge it.
+- **SENT-3 passive voice is not implemented.** It remains a judgment rule.
+
+The linter is satisfiable. A conforming fixture exits 0. All eight shipped lessons exit 1.
+
+Block splitting is why the sentence counts can be trusted. A document split on full stops alone turns a
+bullet list into one 62-word sentence. The linter splits on block boundaries first.
+
+### Baseline, 2026-08-08
+
+| Lesson | Words | Errors | Warnings |
+|---|---|---|---|
+| 0001 | 1,262 | 19 | 13 |
+| 0002 | 1,372 | 20 | 16 |
+| 0003 | 1,368 | 22 | 15 |
+| 0004 | 1,562 | 23 | 13 |
+| 0005 | 2,574 | 37 | 22 |
+| 0006 | 3,375 | 59 | 25 |
+| 0006a | 4,088 | 60 | 33 |
+| 0006b | 6,669 | 90 | 41 |
+
+Word counts here are lower than section 1's, because the linter excludes code blocks and diagrams and
+counts prose only.
 
 ## 9 · What this profile cannot do
 

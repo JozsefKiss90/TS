@@ -59,12 +59,14 @@ Run the linter:
 node tools/lesson-lint.mjs lessons/NNNN-name.html
 ```
 
-**Not built yet, as of 2026-08-08.** Until it exists, check the profile's mechanical rules by hand and
-say in your report that you did so. Do not claim a lesson passed the linter when no linter ran.
+Add `--warnings` to see the judgment-rule candidates as well as the failures.
 
-It exits non-zero on any mechanical violation and reports the rule ID. Fix every violation. Two rules are
-heuristic and produce false positives — passive voice, and the 20-word versus 25-word split. Judge those,
-and say which ones you judged.
+It exits non-zero on any mechanical violation and names the rule id. Fix every error. Warnings do not
+fail the run, because those rules are heuristic: SENT-6 has low precision, SENT-1 applies a flat 25-word
+limit rather than separating instructions from explanation, and SENT-3 is not implemented at all. Judge
+those yourself, and say in your report which ones you judged rather than measured.
+
+Never claim a lesson passed a check that did not run.
 
 ## Rewriting an existing lesson
 
