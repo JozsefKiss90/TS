@@ -336,17 +336,26 @@ bullet list into one 62-word sentence. The linter splits on block boundaries fir
 
 | Lesson | Words | Errors | Warnings |
 |---|---|---|---|
-| 0001 | 1,262 | 19 | 13 |
-| 0002 | 1,372 | 20 | 16 |
-| 0003 | 1,368 | 22 | 15 |
-| 0004 | 1,562 | 23 | 13 |
-| 0005 | 2,574 | 37 | 22 |
-| 0006 | 3,375 | 59 | 25 |
-| 0006a | 4,088 | 60 | 33 |
-| 0006b | 6,669 | 90 | 41 |
+| Lesson | Words | Errors | Warnings |
+|---|---|---|---|
+| 0001 | 1,262 | 19 | 4 |
+| 0002 | 1,372 | 18 | 8 |
+| 0003 | 1,368 | 18 | 13 |
+| 0004 | 1,562 | 19 | 11 |
+| 0005 | 2,574 | 33 | 16 |
+| 0006 | 3,375 | 55 | 24 |
+| **0006a** | **1,320** | **0** | **8** |
+| 0006b | 6,669 | 85 | 64 |
 
 Word counts here are lower than section 1's, because the linter excludes code blocks and diagrams and
 counts prose only.
+
+0006a was rewritten on 2026-08-08, from 4,088 words and 60 errors to 1,320 words and none. Three linter
+bugs surfaced during that rewrite and were fixed: `<button>` was not a block boundary, so four quiz
+options concatenated into one 45-word sentence; markdown tables were not split into cells, so a table
+read as one 107-word sentence; and *wiring*, *routing* and *streaming* were treated as participles when
+this course uses them as nouns. The other lessons' counts moved because of those fixes, not because
+their text changed.
 
 ## 9 · What this profile cannot do
 

@@ -145,6 +145,33 @@ monotonic drift across all eight shipped lessons: mean sentence length 15.6 → 
 - A worked before/after sample of 0006a §2 sits at `.scratch/lesson-clarity/sample-0006a-section2.html`.
   It predates the profile's final section 6 and has not been rechecked against it.
 
+## Update 2026-08-08 — supplement 0006a rewritten, the first test of the regime
+
+- **0006a: 4,088 words and 60 errors → 1,320 words and 0.** It passes `tools/lesson-lint.mjs`. Retitled
+  *What Counts as Policy*, because that is the one question it answers. Filename unchanged.
+- **The rewrite cut scope, it did not compress prose.** Under Article VIII the budget forced real losses,
+  and they are itemised in the new map note `wiki/lessons/lesson-0006a-what-counts-as-policy.md`: the
+  nine-moment narrative (kept there as Diagram 2), the file-by-file layer stack and both call
+  walkthroughs (reprise of lesson 0006), the ownership matrix (restated the five-category table), and the
+  argument for provider-neutral types (belongs with the port, in lesson 0006). Four opening callouts of
+  ~380 words became a footer.
+- **Three terms now have a `<dfn>` at first use**, which they never had: [[hermes-policy]],
+  [[composition-root]], [[routing-policy]]. That was the TERM-1 finding.
+- **Three linter bugs were found by using it, and fixed:** `<button>` was not a block boundary, so four
+  quiz options read as one 45-word sentence; markdown tables were not split into cells, so a table read
+  as one 107-word sentence; and *wiring*, *routing*, *streaming* were treated as participles although
+  this course uses them as nouns. Every lesson's warning count moved as a result. **Only the third fix
+  changed a rule rather than a parser bug** — worth remembering, because tuning a linter until your own
+  text passes is the failure mode here.
+- **Two genuine violations in my own drafts were fixed in the text, not the tool:** a gerund clause
+  opener (SENT-5) and the banned coinage "the three graphs" (TERM-2) in the map note.
+- **Known linter gaps, recorded rather than left to be discovered.** Quiz `data-why` feedback lives in an
+  HTML attribute, so the linter never sees it — in the old 0006a that was roughly 800 words of unchecked
+  reader-facing prose. PARA-7 anchors on the phrase "keep only N sentences", so moving that phrase into a
+  heading would hide the compression from the check. Both need fixing before the remaining rewrites.
+- **Still to rewrite:** 0001 to 0006 and 0006b. 0006b is 6,669 words and 85 errors, and the agreed plan
+  demotes it to a reference page rather than rewriting it as a lesson.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

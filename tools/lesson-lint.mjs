@@ -71,6 +71,8 @@ const META_MARKERS = [
 const NOT_PARTICIPLES = new Set([
   "everything", "nothing", "something", "anything", "during", "string", "thing",
   "king", "spring", "ring", "wing", "sing", "bring", "along", "morning",
+  // Course nouns, not participles: "wiring builds the objects", "streaming arrives in 0004".
+  "wiring", "streaming", "testing", "logging", "routing",
 ]);
 
 // Used to reject false noun clusters. Broad on purpose: a missed cluster is
@@ -119,8 +121,11 @@ function decode(s) {
     .replace(/&[a-z]+;/g, " ");
 }
 
+// `button` and `label` are here because quiz options are buttons. Without them
+// four options concatenate into one 45-word "sentence" — the same false
+// positive class as a callout's bold label gluing onto its first sentence.
 const BLOCK_TAGS =
-  "p|li|h1|h2|h3|h4|h5|h6|figcaption|td|th|dd|dt|blockquote|div|section|header|footer";
+  "p|li|h1|h2|h3|h4|h5|h6|figcaption|td|th|dd|dt|blockquote|div|section|header|footer|button|label|option";
 
 /**
  * Split an HTML lesson into prose blocks, each with its source line.
@@ -175,9 +180,25 @@ function mdBlocks(src) {
   const noCode = src.replace(/```[\s\S]*?```/g, (m) => m.replace(/[^\n]/g, " "));
   const body = noCode.replace(/^---[\s\S]*?^---/m, (m) => m.replace(/[^\n]/g, " "));
   const blocks = [];
+  const clean = (s) => s.replace(/[#*>`]+/g, " ").replace(/\s+/g, " ").trim();
   let offset = 0;
   for (const chunk of body.split(/\n\s*\n/)) {
-    const text = chunk.replace(/[#*>|`\-]+/g, " ").replace(/\s+/g, " ").trim();
+    // A markdown table is not one sentence. Emit each cell as its own block,
+    // for the same reason HTML splits on <td>.
+    if (/^\s*\|/m.test(chunk)) {
+      let lineOffset = offset;
+      for (const row of chunk.split("\n")) {
+        if (/^\s*\|?[\s:|-]*\|[\s:|-]*$/.test(row)) { lineOffset += row.length + 1; continue; }
+        for (const cell of row.split("|")) {
+          const text = clean(cell);
+          if (text) blocks.push({ text, line: lineOf(src, lineOffset) });
+        }
+        lineOffset += row.length + 1;
+      }
+      offset += chunk.length + 2;
+      continue;
+    }
+    const text = clean(chunk.replace(/^[\s-]*[-*]\s+/gm, " "));
     if (text) blocks.push({ text, line: lineOf(src, offset) });
     offset += chunk.length + 2;
   }

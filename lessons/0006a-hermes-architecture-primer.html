@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Supplement 0006a — Hermes Architecture Primer: Where the Model Gateway Fits</title>
+<title>Supplement 0006a — What Counts as Policy</title>
 <link rel="stylesheet" href="../assets/course.css">
 <script src="../assets/quiz.js" defer></script>
 <script src="../assets/vendor/mermaid.min.js" defer></script>
@@ -12,574 +12,242 @@
 <body>
 
 <header class="lesson-head">
-  <p class="kicker">Hermes · Phase 1 · Supplement 0006a to Lesson 0006 · ~20–30 minutes</p>
-  <h1>Hermes Architecture Primer: Where the Model Gateway Fits</h1>
-  <p class="lede">Lesson 0006 told you that "Hermes policy — routing, provider, model choice" lives above the
-  port you built. This supplement answers the question that sentence assumes you can already answer:
-  <strong>what is the whole system this seam belongs to, what exactly counts as "policy" in it — and which of
-  its parts actually exist in exercise 05 today?</strong></p>
+  <p class="kicker">Hermes · Phase 1 · Supplement 0006a to Lesson 0006 · ~20 minutes</p>
+  <h1>What Counts as Policy</h1>
+  <p class="lede">Lesson 0006 put Hermes policy above the port and the SDK below it. Which of the things
+  in exercise 05 is actually policy?</p>
 </header>
 
 <div class="callout mission">
-  <strong>Why this supplement exists</strong>
-  Lesson 0006 grounds scenario step <strong>S4</strong> and seeds <strong>S6</strong> and <strong>S7</strong>
-  — but it names the surrounding architecture (the Spec-to-Evidence Loop, the supervisor, routing) without
-  drawing it, and a careful reader could mistake exercise 05's one-call policy seed for a routing engine, a
-  budget system, or a trace. This primer supplies the missing map and labels every part
-  <em>implemented</em>, <em>seeded</em>, or <em>planned</em>. It advances no new spine thread and ships no new
-  code: it is context, not a lesson. Read it after lesson 0006 §1 (or after finishing the lab); it assumes
-  lessons 0001–0005. Per the constitution's Article VII, a needed supplement is a defect signal — the defect
-  record is <code>wiki/course/course-pedagogy.md</code> row 12.
+  <strong>Why this matters for Hermes</strong>
+  Scenario step <strong>S4</strong> says model calls cross the port, and policy sits above it. You cannot
+  place a rule correctly until you can say what a rule is. This supplement defines the word and labels
+  what exercise 05 contains. It ships no code.
 </div>
+
+<h2>1 · The definition</h2>
+
+<p>Lesson 0006 uses the word policy in almost every section. A <dfn>Hermes policy</dfn> is a rule. It
+turns checked facts into an action Hermes may take, or into a final outcome.</p>
 
 <div class="callout">
-  <strong>How every claim in this primer is labeled.</strong>
-  <em>Implemented</em> — you can run it in <code>hermes-sdk-lab/05-model-gateway/</code> today (Part B/C count:
-  the scaffold ships them as your exercise).
-  <em>Seeded</em> — a data field or seam exists today so a future subsystem has something to attach to; the
-  subsystem itself does not exist.
-  <em>Planned</em> — grounded in <code>MISSION.md</code> or <code>ROADMAP.md</code>; Phase 1 lesson numbers
-  0008–0012 are <strong>provisional</strong> (the roadmap says so — only 0007 is firm).
-  <em>Illustrative only</em> — a shape shown to make a sentence concrete, normative for nothing.
-  Any sentence about the future that lacks one of these labels is a defect in this document.
+  <strong>Three things that sentence claims.</strong>
+  The rule is deterministic, so the same facts always give the same decision.
+  The facts are checked, either by Zod at run time or by the port's types at build time.
+  The output is always permitted, so it is never whatever an exception happened to unwind to.
 </div>
 
-<div class="callout">
-  <strong>The system this primer assumes — supplement 0006b (added 2026-07-30).</strong> This primer maps the
-  <em>course's</em> architecture: the loop as lessons will build it, exercise 05's honest ledger. It still
-  assumes the surrounding Hermes OS is defined somewhere. It now is:
-  <a href="0006b-the-hermes-control-plane.html">The Hermes Control Plane: From Job to Evidence</a> defines the
-  v1 system, the Hermes job (envelope · Context Pack · lifecycle), capability routing, the gateway map, and
-  the exact placement rule for the Model Gateway — from the governance record (PDR-001, ADR-0001..0021), with
-  every claim status-labeled. If §1's nine moments leave you asking "but what dispatches the task in the first
-  place?", read 0006b before continuing.
-</div>
-
-<div class="callout">
-  <strong>Version pin.</strong> Every code excerpt and measured number below comes from the shipped exercise 05
-  (<code>@anthropic-ai/sdk 0.113.0</code>, <code>zod 4.4.3</code> exactly), verified by the lesson-0006 runs
-  against the exercise 01 mock. No new measurements were taken for this primer.
-</div>
-
-<h2>1 · One run through Hermes, end to end</h2>
-
-<p>Before any more architecture words, watch one job cross the intended system. This is the
-<strong>Hermes Spec-to-Evidence Loop</strong> from <code>MISSION.md</code> — <em>validated TaskSpec → bounded
-planning → Graph RAG evidence → approved tool execution → evaluation → durable trace</em> — told as nine
-moments in the life of one task. The guiding principle it implements: <em>put probabilistic reasoning inside a
-deterministic, typed, observable control system.</em> The model is the probabilistic part; everything numbered
-below is the deterministic shell around it.</p>
-
-<ol>
-  <li>A task arrives as <strong>untrusted input</strong> — bytes, not facts.</li>
-  <li>Hermes validates it into a <strong>TaskSpec</strong> — lesson 0005's parse applied to work itself;
-  invalid work is rejected before a token is spent (S1).</li>
-  <li>The <strong>supervisor</strong> — the control loop's deterministic core — reads the spec's constraints
-  and decides the next <em>permitted</em> action.</li>
-  <li>A <strong>routing decision</strong> selects a model route for this step: which provider, which model,
-  at what cost class.</li>
-  <li>The supervisor calls <code>ModelGateway.complete(...)</code> — the port from lesson 0006 (S4).</li>
-  <li>The <strong>provider adapter</strong> translates the call and invokes the SDK; the SDK does its
-  mechanics on the wire.</li>
-  <li>The result comes back as <strong>provider-neutral data</strong> — a <code>GatewayResult</code>, proof
-  or classified failure, never an exception.</li>
-  <li>The supervisor decides what that result <em>means</em>: continue the loop, retry later, request
-  approval, stop, or record failure.</li>
-  <li>Evidence, decisions, usage, and request identifiers enter the <strong>durable trace</strong> —
-  what Hermes <em>did</em>, replayable (S7).</li>
-</ol>
-
-<p>Now the honest ledger — which of those nine moments exercise 05 actually contains:</p>
+<p>The word is only useful if it rules things out. Four other kinds of work look like policy and are not.
+The wire protocol sits underneath all four.</p>
 
 <table>
-  <tr><th>Moment</th><th>Status today (2026-07-29)</th><th>Where it lives / arrives</th></tr>
-  <tr><td>1–2 · untrusted input → validated TaskSpec</td><td><strong>planned</strong></td><td>lesson 0007 (firm, next up). Today the "task" is a hardcoded string in <code>main.ts</code>: <code>"Hello, Claude!"</code></td></tr>
-  <tr><td>3 · supervisor reads constraints, picks next permitted action</td><td><strong>seeded</strong></td><td><code>superviseOneCall()</code> classifies <em>one</em> call's result; there are no constraints to read yet — bounds arrive in lesson 0009, permissions in 0010 (both provisional)</td></tr>
-  <tr><td>4 · routing decision</td><td><strong>planned, unscheduled</strong></td><td>no roadmap row names it yet; today the model id is fixed wiring in <code>main.ts</code> (§4)</td></tr>
-  <tr><td>5 · call through the port</td><td><strong>implemented</strong></td><td><code>gateway.ts</code> + <code>supervisor.ts</code>, lesson 0006 Part A</td></tr>
-  <tr><td>6 · adapter → SDK → wire</td><td><strong>implemented</strong></td><td><code>anthropic-gateway.ts</code> (failure classification is your Part B)</td></tr>
-  <tr><td>7 · provider-neutral result</td><td><strong>implemented</strong></td><td><code>GatewayResult</code> — measured: <code>end_turn</code> → <code>completed</code>, <code>retry-after: 5</code> s → <code>retryAfterMs: 5000</code></td></tr>
-  <tr><td>8 · outcome decision</td><td><strong>minimal subset implemented</strong></td><td><code>landed</code> / <code>retry_later</code> / <code>gave_up</code> on a single call; <em>continue the loop</em> needs lesson 0008, <em>request approval</em> needs 0010 (provisional)</td></tr>
-  <tr><td>9 · durable trace</td><td><strong>seeded only</strong></td><td>the adapter keeps <code>requestId</code> and the supervisor prints it in <code>notes</code>; the trace subsystem is lesson 0011 (provisional)</td></tr>
-  <tr><td>Graph RAG evidence (S2)</td><td><strong>planned</strong></td><td>Phase 2, gated on Phase 1's exit — nothing in exercise 05 touches it</td></tr>
-  <tr><td>evaluation (S9)</td><td><strong>planned</strong></td><td>Phase 4 — nothing in exercise 05 touches it</td></tr>
+  <tr><th>The work</th><th>What it does</th><th>In exercise 05</th><th>Policy?</th></tr>
+  <tr>
+    <td>port contract</td>
+    <td>Names the facts allowed to cross the seam.</td>
+    <td><code>gateway.ts</code>: <code>ModelCall</code>, <code>ModelReply</code>, <code>GatewayResult</code></td>
+    <td>No. It decides nothing. It says what decisions can be about.</td>
+  </tr>
+  <tr>
+    <td>wiring</td>
+    <td>Builds the objects and hands them to the code that uses them.</td>
+    <td><code>main.ts</code>: <code>new AnthropicModelGateway(client, MODEL)</code></td>
+    <td>No. It settles which object exists. It says nothing about what a result means.</td>
+  </tr>
+  <tr>
+    <td>adaptation</td>
+    <td>Translates between Hermes words and provider words, both ways.</td>
+    <td><code>end_turn</code> becomes <code>completed</code>. Five seconds becomes 5000 ms.</td>
+    <td>No. Translation keeps the meaning and chooses nothing.</td>
+  </tr>
+  <tr>
+    <td>SDK mechanics</td>
+    <td>Sends the request, retries it, times it out, throws typed errors.</td>
+    <td>The SDK obeys <code>retry-after</code> twice, then throws <code>RateLimitError</code></td>
+    <td>No. It runs an operation and holds no view about the job.</td>
+  </tr>
+  <tr>
+    <td>wire protocol</td>
+    <td>Carries the bytes.</td>
+    <td><code>POST /v1/messages</code> to the mock on port 8787</td>
+    <td>No. It is unchanged by every architecture above it.</td>
+  </tr>
 </table>
 
-<p>One structural rule survives every phase: the <strong>three graphs never merge</strong>. What Hermes
-<em>knows</em> (knowledge), what it <em>may do</em> (workflow), and what it <em>did</em> (trace) are separate
-structures — because Hermes OS's central defect class, Drift, is the <em>disagreement</em> between intent and
-reality, and a merged graph would let one side silently win. The diagram keeps them visibly apart:</p>
+<p>Exercise 05 holds two policies. A throttled call means the job waits and runs later. A bad reply means
+the job stops and counts zero tokens. Each turns a checked fact into a job outcome. Both live in
+<code>supervisor.ts</code> and could live nowhere else.</p>
+
+<div class="callout">
+  <strong>"Above" and "below" describe imports and duties.</strong>
+  Code above the port imports only <code>gateway.ts</code> and uses Hermes words.
+  Code below the port implements <code>gateway.ts</code>, and must translate provider words before they
+  cross.
+  The pair does not describe secrecy, because nothing is hidden.
+  It does not describe folders, because every file sits in the same <code>src/</code>.
+  It does not describe the call stack, where the supervisor waits below the adapter.
+</div>
 
 <figure class="diagram">
 <pre class="mermaid">
 flowchart TD
-    TS["S1 · validated TaskSpec<br/>lesson 0007 — planned (firm next)"] --> SUP
-    subgraph LOOP["the control loop — Phase 1, being built by hand"]
-        SUP["supervisor — Hermes policy<br/>seed implemented: superviseOneCall()"]
-        SUP -->|"S4 model reasoning — implemented (0006)"| GW["ModelGateway<br/>port · adapter · fake"]
-        SUP -->|"S5 approved tool execution — planned (0008 / 0010)"| TOOLS["tool runner"]
-    end
-    subgraph KNOW["knowledge graph — what Hermes KNOWS"]
-        EVID["Graph RAG evidence over MCP<br/>Phase 2 — planned, gated"]
-    end
-    subgraph WORK["workflow graph — what Hermes MAY do"]
-        GATES["permissions · approval gates<br/>0010 / Phase 3 — planned"]
-    end
-    subgraph DID["trace graph — what Hermes DID"]
-        TRACE["durable trace — 0011 planned<br/>(requestId seeded today)"]
-    end
-    EVID -.->|"S2 evidence"| SUP
-    GATES -.->|"may this run?"| TOOLS
-    SUP -->|"S9 evaluation — Phase 4, planned"| EVALN["evaluation"]
-    EVALN --> TRACE
+    W["main.ts — wiring<br/>builds objects, decides nothing"]
+    P["supervisor.ts — policy<br/>decides what a result means"]
+    C["gateway.ts — the port<br/>erased at build time"]
+    A["anthropic-gateway.ts — adapter<br/>translates and validates"]
+    S["@anthropic-ai/sdk 0.113.0<br/>auth, retries, timeouts"]
+    T["POST /v1/messages"]
+    P --> C --> A --> S --> T
+    W -.->|"constructs"| A
+    W -.->|"constructs"| S
 </pre>
-<figcaption>Diagram 1 — the intended Spec-to-Evidence Loop, with the three graphs kept separate. Solid
-implemented pieces: the gateway cluster and the supervisor's seed. Everything labeled <em>planned</em> is
-grounded in ROADMAP.md and does not exist in exercise 05.</figcaption>
+<figcaption>Diagram 1. The call direction, with what each file owns. Imports point at the port from both
+sides, so this is not the import graph. Wiring stands beside the path and takes no part in a call.</figcaption>
 </figure>
 
-<h2>2 · "Policy," defined operationally</h2>
+<h2>2 · Wiring is not routing</h2>
 
-<p>Lesson 0006 leaned on the word "policy" in nearly every section; here is the definition it deserves:</p>
-
-<div class="callout">
-  <strong>A Hermes policy is a deterministic rule that converts validated facts — about a task, the loop's
-  state, or an external result — into a permitted next action or a terminal outcome.</strong>
-  Deterministic: same facts, same decision, every time. Validated facts: nothing crosses into a policy rule
-  without a runtime check (lesson 0005) or a compile-time contract (lesson 0006). Permitted: the output is
-  always an action Hermes is allowed to take, or a terminal state — never "whatever the exception unwound to."
-</div>
-
-<p>The word earns its keep only if it <em>excludes</em> things. Four neighbours get mistaken for policy, plus
-the wire beneath them all — learn to tell the five apart and lesson 0006's "mechanics below, policy above"
-becomes a precise sentence instead of a slogan:</p>
-
-<table>
-  <tr><th>Concept</th><th>What it is</th><th>Exercise 05 example</th><th>Is it policy?</th></tr>
-  <tr><td><strong>port contract</strong></td><td>the facts and operations <em>permitted to cross</em> the seam — vocabulary, not decisions</td><td><code>gateway.ts</code>: <code>ModelCall</code>, <code>ModelReply</code>, <code>GatewayFailure</code>, <code>GatewayResult</code></td><td>no — it decides nothing; it defines what decisions can be <em>about</em></td></tr>
-  <tr><td><strong>composition / wiring</strong></td><td>constructing concrete clients and adapters and handing them to the code that uses them (the file that does this is the <em>composition root</em>)</td><td><code>main.ts</code>: <code>new Anthropic({ baseURL, apiKey })</code>, <code>new AnthropicModelGateway(client, MODEL)</code></td><td>no — choosing <em>which object exists</em> is not deciding <em>what a result means</em></td></tr>
-  <tr><td><strong>provider adaptation</strong></td><td>translating between Hermes vocabulary and provider vocabulary, both directions, including the boundary parse and failure classification</td><td><code>anthropic-gateway.ts</code>: <code>end_turn → completed</code>, <code>retry-after: 5</code> s → <code>retryAfterMs: 5000</code>, <code>RateLimitError → { kind: "throttled" }</code></td><td>no — translation preserves meaning; it never chooses an action</td></tr>
-  <tr><td><strong>SDK / transport mechanics</strong></td><td>serialization, HTTP, auth headers, the SDK's internal retries, timeouts, cancellation plumbing — the six responsibilities</td><td><code>@anthropic-ai/sdk 0.113.0</code> honoring <code>retry-after</code> twice before surfacing <code>RateLimitError</code> (measured, exercise 02)</td><td>no — mechanics execute an operation; they hold no opinion about the job</td></tr>
-  <tr><td><strong>wire protocol</strong></td><td>the actual request and response bytes</td><td><code>POST /v1/messages</code> against the mock on :8787 — byte-for-byte unchanged by everything above it</td><td>no — the wire cannot even see the architecture (lesson 0006 §3)</td></tr>
-</table>
-
-<p>Against those five, the policy in exercise 05 is easy to point at: <em>"a throttled call means this job is
-parked and retried later"</em> and <em>"a malformed reply means give up and book zero tokens"</em> are rules
-converting a classified fact into a job outcome. They live in <code>supervisor.ts</code> and nowhere else.</p>
-
-<div class="callout">
-  <strong>Deconfusion: "above" and "below".</strong> These words describe <strong>architectural dependency and
-  responsibility</strong> — which files may import which vocabulary, and who owns which decision. They do
-  <em>not</em> mean: security layers (nothing is hidden — the adapter imports the SDK in plain sight), physical
-  location (every file sits in the same <code>src/</code>), or call-stack height (at runtime the supervisor's
-  frame sits <em>under</em> the adapter's on the stack while awaiting it — the call stack is upside-down
-  relative to the architecture diagram, and that is fine, because the diagram was never about the stack).
-  "Above the port" = imports only <code>gateway.ts</code>, speaks only domain vocabulary. "Below the port" =
-  implements <code>gateway.ts</code>, may speak provider vocabulary, must translate before crossing up.
-</div>
-
-<p>One more collision to pin, because "policy" itself is about to be overloaded across the course:</p>
-
-<table>
-  <tr><th>The phrase</th><th>What it names</th><th>Where you meet it</th></tr>
-  <tr><td><strong>Hermes policy</strong> (this primer)</td><td>a deterministic decision <em>rule</em> — facts in, permitted action out</td><td><code>supervisor.ts</code> today; the whole supervisor as Phase 1 grows</td></tr>
-  <tr><td>"model policy" / "tool policy" in a Job Envelope</td><td><em>data</em> that parameterizes rules — the envelope fields a rule reads</td><td>Hermes OS docs; reaches the course with the TaskSpec (0007) and permissions (0010, provisional)</td></tr>
-  <tr><td>"the workflow graph is policy"</td><td>a whole rule <em>set</em> encoded as an explicit state graph</td><td>Phase 3 — planned</td></tr>
-</table>
-
-<h2>3 · The policy that exists today: <code>superviseOneCall</code>, traced honestly</h2>
-
-<p>Open <code>hermes-sdk-lab/05-model-gateway/src/supervisor.ts</code> and count the actual decisions. There
-are exactly five, one per arm of the result union — every one meets §2's definition (validated fact in,
-terminal outcome out):</p>
-
-<ul>
-  <li><strong>Success → <code>landed</code>, and the ledger books validated usage only.</strong>
-  <code>tokensSpent: usage.inputTokens + usage.outputTokens</code> — numbers that passed the adapter's
-  boundary parse; exercise 04's <code>"1142"</code> string-concat corruption cannot reach this line.</li>
-  <li><strong><code>throttled</code> → <code>retry_later</code>.</strong> The provider's backoff request is a
-  fact; "park the job" is the rule's output.</li>
-  <li><strong><code>aborted</code> → <code>gave_up</code></strong> — the operator's kill is terminal for this
-  one-call world.</li>
-  <li><strong><code>malformed_reply</code> → <code>gave_up</code>, booking zero tokens</strong> — a lying
-  ledger is worse than an empty one, so an unproven reply contributes nothing to the count.</li>
-  <li><strong><code>transport</code> / <code>rejected</code> → <code>gave_up</code></strong> — with the detail
-  preserved in <code>notes</code> for a human to read.</li>
-</ul>
-
-<p>Call this what it is: a <strong>policy seed</strong> — the smallest real instance of the supervisor's job,
-planted where the full organ will grow. Deconfusion, per house rule: <em>seed</em> does not mean "small version
-of everything." It classifies <em>one</em> model-call result into a report. It does not loop, route, budget,
-gate, or persist. The full picture:</p>
-
-<table>
-  <tr><th>Concern</th><th>Exercise 05 status</th><th>Current owner</th><th>Later development (provisional where numbered ≥ 0008)</th></tr>
-  <tr><td>SDK invocation</td><td>implemented</td><td><code>anthropic-gateway.ts</code></td><td>stays beneath the port; grows streaming/tools when lessons 0008–0009 demand</td></tr>
-  <tr><td>runtime reply validation</td><td>implemented</td><td><code>WireReplySchema</code> in the adapter</td><td>schema grows with tool blocks and streaming</td></tr>
-  <tr><td>failure classification</td><td>implemented (your Part B)</td><td>adapter → <code>GatewayFailure</code> data</td><td>taxonomy may grow; every new kind forces a supervisor decision (exhaustive switch)</td></tr>
-  <tr><td>job outcome decision</td><td><strong>minimal — the seed</strong></td><td><code>supervisor.ts</code></td><td>expands through all of Phase 1 into the bounded loop</td></tr>
-  <tr><td>model id</td><td>fixed configuration</td><td><code>main.ts</code> (wiring)</td><td>future routing policy — reserved, unscheduled (§4)</td></tr>
-  <tr><td>provider selection</td><td>not implemented</td><td>none</td><td>future policy <em>if a requirement or benchmark ever asks</em> (MISSION rules out speculative work)</td></tr>
-  <tr><td>task validation</td><td>not implemented</td><td>none</td><td>lesson 0007 (firm): the Zod-validated TaskSpec boundary</td></tr>
-  <tr><td>iteration / token / deadline bounds</td><td>not implemented</td><td>none</td><td>lesson 0009: the supervisor enforces budgets — S6</td></tr>
-  <tr><td>tool permission &amp; approval</td><td>not implemented</td><td>none</td><td>lesson 0010: permissions as data, gates before execution</td></tr>
-  <tr><td>durable trace</td><td><strong>seeded</strong> — <code>requestId</code> survives to the report's <code>notes</code></td><td>adapter keeps it; supervisor prints it</td><td>lesson 0011: the trace subsystem — S7</td></tr>
-  <tr><td>fully offline loop</td><td>partial — the fake covers one-call policy</td><td><code>FakeModelGateway</code></td><td>lesson 0012: whole loop green on fakes + recorded fixtures — Phase 1's capstone</td></tr>
-</table>
-
-<figure class="diagram">
-<pre class="mermaid">
-flowchart LR
-    subgraph NOW["implemented in exercise 05 (runs today, mock-first, no credentials)"]
-        MAIN["main.ts<br/>fixed wiring"]
-        SUP2["superviseOneCall<br/>one-call policy seed"]
-        PORT2["gateway.ts<br/>the port (erased)"]
-        AD2["anthropic-gateway.ts<br/>adapter + boundary parse"]
-        FAKE2["FakeModelGateway<br/>in-process test double"]
-    end
-    subgraph SEED["seeded — a field or seam exists; the subsystem does not"]
-        RID["requestId kept in notes<br/>→ trace, lesson 0011"]
-        SIG["AbortSignal crosses the port<br/>→ budget enforcement, lesson 0009"]
-    end
-    subgraph PLAN2["planned — Phase 1, provisional order per ROADMAP.md"]
-        L7["0007 TaskSpec (firm)"] --> L8["0008 tool loop"]
-        L8 --> L9["0009 bounds"] --> L10["0010 approvals"]
-        L10 --> L11["0011 trace"] --> L12["0012 offline capstone"]
-    end
-    ROUTE["routing policy —<br/>reserved, unscheduled"]
-    MAIN -.->|"model id waits here"| ROUTE
-    AD2 --- RID
-    PORT2 --- SIG
-    classDef future stroke-dasharray: 5 5
-    class RID,SIG,L7,L8,L9,L10,L11,L12,ROUTE future
-</pre>
-<figcaption>Diagram 3 — present versus future. Solid boxes run today; dashed boxes are seeded fields or
-roadmap plans. Lesson numbers 0008–0012 are provisional; routing policy has no lesson number at all.</figcaption>
-</figure>
-
-<h2>4 · Wiring is not routing</h2>
-
-<p>The sentence in lesson 0006 most likely to be over-read is "routing is policy, decided above." Here is the
-evidence of what actually exists — <code>main.ts</code>, verbatim (abridged):</p>
+<p>One sentence in lesson 0006 invites a misreading: routing is policy, decided above. Here is what
+<code>main.ts</code> actually contains.</p>
 
 <pre><code>const MODEL = "claude-opus-4-8";
-
-const client = new Anthropic({ baseURL: BASE_URL, apiKey: API_KEY, ... });
 return new AnthropicModelGateway(client, MODEL);</code></pre>
 
-<p>Read it for what it is:</p>
+<p><code>main.ts</code> is the <dfn>composition root</dfn>. It is the one file that knows the concrete
+classes and bolts them together. The model name is a constant, and nothing picks it at run time.</p>
 
-<ul>
-  <li>This is <strong>static composition — wiring</strong>. <code>main.ts</code> is the exercise's
-  <em>composition root</em>: the one place that knows concrete classes exist and bolts them together. The
-  model id is a constant; nothing chooses it at runtime.</li>
-  <li>Passing <code>MODEL</code> into the adapter's constructor <strong>prevents the adapter from owning model
-  selection</strong> — the adapter cannot hardcode a model, so whoever constructs it decides. That is a real
-  architectural move: the decision <em>point</em> was placed above the port.</li>
-  <li>It does <strong>not</strong> prove a dynamic routing policy exists. A constant is not a decision rule
-  (§2: no facts in, no rule, no policy — just configuration).</li>
-  <li><em>Illustrative only:</em> a future router might hold several configured gateways and select one from a
-  validated task's requirements, cost class, or capability needs — a rule converting facts into a choice, which
-  <em>would</em> meet §2's definition. No such router exists anywhere in this repository, no roadmap row
-  schedules it, and this primer does not design it.</li>
-</ul>
+<p>The injection still does real work. The adapter cannot hardcode a model, so whoever builds it chooses.
+That places the decision point above the port. It does not create a <dfn>routing policy</dfn>, which
+would be a rule that picks a model per task from that task's needs. No such rule exists here, and no
+roadmap row schedules one.</p>
 
 <div class="callout">
-  <strong>The one-sentence version, worth memorizing:</strong> Lesson 0006 reserves model selection for policy;
-  it does not yet implement model-selection policy.
+  <strong>The sentence to remember.</strong>
+  Lesson 0006 reserves model choice for policy. It does not yet implement a rule that makes the choice.
 </div>
 
-<h2>5 · The layer stack, file by file</h2>
+<h2>3 · What exists today</h2>
 
-<p>Part A's single call, as a runtime trace through the layers — every hop is a file you have open:</p>
-
-<pre><code>supervisor                       superviseOneCall()          policy
-→ ModelGateway.complete(...)     the port's signature        contract (erased at runtime)
-→ AnthropicModelGateway.complete the adapter                 translation + boundary validation
-→ client.messages.create(...)    the SDK                     mechanics
-→ SDK transport                  fetch, serialization        mechanics
-→ HTTP API                       POST /v1/messages (:8787)   the wire</code></pre>
-
-<p>State each layer's nature precisely, because two of these lines are easy to misread:</p>
-
-<ul>
-  <li><code>ModelGateway</code> is an <strong>erased TypeScript interface</strong>. At runtime it does not
-  exist: it never calls the SDK, never routes, never wraps. The type-checker enforced it at build time, at
-  every <code>implements</code> and every import — then deleted it.</li>
-  <li><code>AnthropicModelGateway</code> is the <strong>runtime object</strong> that actually executes: it
-  holds the SDK client, translates the call down, runs the SDK, parses the reply at the boundary, and
-  translates the result up.</li>
-  <li><code>main.ts</code> <strong>chooses and injects</strong> the implementation. The supervisor receives
-  "some <code>ModelGateway</code>" and cannot tell which — swap in <code>FakeModelGateway</code> and it runs
-  identically (Part C, measured: 0.6 ms, mock stopped).</li>
-  <li>The <strong>port defines Hermes vocabulary</strong>; the <strong>adapter translates</strong> that
-  vocabulary into Anthropic requests and translates <em>validated</em> provider results back.</li>
-</ul>
-
-<figure class="diagram">
-<pre class="mermaid">
-flowchart TD
-    WIRING["COMPOSITION ROOT — main.ts<br/>owns: which client, which adapter, which model id<br/>(fixed wiring today — not routing)"]
-    POL["HERMES POLICY — supervisor.ts<br/>owns: what a classified result MEANS for the job<br/>(landed · retry_later · gave_up · the ledger)"]
-    PORT["PORT — gateway.ts · erased at runtime<br/>owns: the vocabulary allowed to cross<br/>(ModelCall · ModelReply · GatewayFailure · GatewayResult)"]
-    AD["PROVIDER ADAPTER — anthropic-gateway.ts<br/>owns: translation both ways + the boundary parse<br/>(end_turn→completed · s→ms · exceptions→data)"]
-    SDK["CLIENT SDK — @anthropic-ai/sdk 0.113.0<br/>owns: the six responsibilities' mechanics<br/>(auth · retries honoring retry-after · timeouts · typed errors)"]
-    HTTP["SDK TRANSPORT — fetch<br/>owns: serialization, sockets, bytes in flight"]
-    WIRE["WIRE / API — POST /v1/messages<br/>the mock on :8787 today — unchanged by all of the above"]
-    POL -->|"invokes through the port's signature"| PORT
-    PORT --> AD
-    AD --> SDK
-    SDK --> HTTP
-    HTTP --> WIRE
-    WIRING -.->|"constructs + injects"| AD
-    WIRING -.->|"constructs"| SDK
-</pre>
-<figcaption>Diagram 2 — the model boundary as a runtime call path, annotated with what each layer owns.
-Careful: this is the <em>call</em> direction, not the import graph — imports point <em>at</em> the port from
-both sides (lesson 0006 §2's diagram). The composition root sits beside the stack, not in it: it builds the
-lower layers and hands them up, then takes no further part in any call.</figcaption>
-</figure>
-
-<h3>Walkthrough one — the successful call (Part A, measured)</h3>
+<p>Every claim about a capability carries a label. <em>Implemented</em> runs in exercise 05 today.
+<em>Seeded</em> means a field or seam exists so a later subsystem has somewhere to attach.
+<em>Planned</em> is grounded in <code>ROADMAP.md</code>, where Phase 1 numbers above 0007 are provisional.</p>
 
 <table>
-  <tr><th>Step</th><th>Runtime value</th><th>Vocabulary</th><th>Layer</th><th>Kind of work</th></tr>
-  <tr><td>supervisor builds the call</td><td><code>{ prompt: "Hello, Claude!", maxTokens: 100 }</code></td><td>domain (<code>ModelCall</code>)</td><td>supervisor</td><td>policy asks its question through the contract</td></tr>
-  <tr><td>adapter translates down</td><td><code>{ model: "claude-opus-4-8", max_tokens: 100, messages: [...] }</code></td><td>provider</td><td>adapter</td><td>translation</td></tr>
-  <tr><td>SDK sends</td><td><code>POST /v1/messages</code> + auth/version headers</td><td>wire</td><td>SDK + transport</td><td>mechanics</td></tr>
-  <tr><td>SDK resolves</td><td>a body <em>typed as</em> <code>Message</code> — an unchecked claim</td><td>provider</td><td>SDK</td><td>mechanics (deserialization; no runtime validation of the shape)</td></tr>
-  <tr><td>adapter proves the reply</td><td><code>WireReplySchema.safeParse → success</code></td><td>provider, now <em>validated</em></td><td>adapter</td><td>boundary validation</td></tr>
-  <tr><td>adapter translates up</td><td><code>{ text, stop: "completed", usage: { inputTokens: 11, outputTokens: 42 }, requestId: "req_mock_0001" }</code></td><td>domain (<code>ModelReply</code>)</td><td>adapter → port</td><td>translation</td></tr>
-  <tr><td>supervisor decides</td><td><code>{ outcome: "landed", tokensSpent: 53, notes: [...] }</code></td><td>domain (<code>JobReport</code>)</td><td>supervisor</td><td><strong>policy</strong> — the only hop that is</td></tr>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>Model call crosses the port</td><td>implemented</td><td><code>gateway.ts</code> and <code>anthropic-gateway.ts</code></td></tr>
+  <tr><td>Failures arrive as data, not exceptions</td><td>implemented</td><td>Part B. Measured: <code>retry-after: 5</code> became <code>retryAfterMs: 5000</code></td></tr>
+  <tr><td>One call's result becomes a job outcome</td><td>implemented</td><td><code>supervisor.ts</code>. Five decisions, one per result kind</td></tr>
+  <tr><td>The same policy runs with no server</td><td>implemented</td><td>Part C. Measured at 0.6 ms with the mock stopped</td></tr>
+  <tr><td>The provider's request id survives</td><td>seeded</td><td>The adapter keeps it. The trace subsystem is lesson 0011</td></tr>
+  <tr><td>An abort signal crosses the port</td><td>seeded</td><td>Part B proves it. Budget rules arrive in lesson 0009</td></tr>
+  <tr><td>Invalid work is rejected before a token is spent</td><td>planned</td><td>Lesson 0007, the one firm next step</td></tr>
+  <tr><td>A rule picks the model for a task</td><td>planned</td><td>No roadmap row names it yet</td></tr>
+  <tr><td>Budgets, approval gates, durable trace</td><td>planned</td><td>Lessons 0009, 0010 and 0011, all provisional</td></tr>
 </table>
 
-<h3>Walkthrough two — the throttled call (Part B1, measured)</h3>
-
-<table>
-  <tr><th>Step</th><th>Runtime value</th><th>Vocabulary</th><th>Layer</th><th>Kind of work</th></tr>
-  <tr><td>the wire refuses</td><td>HTTP <code>429</code> + <code>retry-after: 5</code></td><td>wire</td><td>transport</td><td>mechanics</td></tr>
-  <tr><td>SDK surfaces it</td><td><code>RateLimitError</code> thrown (B1 sets <code>maxRetries: 0</code>; by default the SDK would first retry twice itself — mechanics, §6)</td><td>provider (a runtime error <em>class</em>)</td><td>SDK</td><td>mechanics</td></tr>
-  <tr><td>adapter classifies</td><td><code>{ kind: "throttled", retryAfterMs: 5000 }</code> — seconds became milliseconds on the way</td><td>domain (<code>GatewayFailure</code>)</td><td>adapter</td><td>translation — failure becomes data; the unit conversion is adaptation, not a decision</td></tr>
-  <tr><td>the result crosses</td><td><code>{ ok: false, failure: { ... } }</code></td><td>domain (<code>GatewayResult</code>)</td><td>port</td><td>contract</td></tr>
-  <tr><td>supervisor decides</td><td><code>{ outcome: "retry_later", tokensSpent: 0, notes: ["provider asked for 5000 ms of backoff"] }</code></td><td>domain (<code>JobReport</code>)</td><td>supervisor</td><td><strong>policy</strong> — "park the job" is the rule's output</td></tr>
-</table>
-
-<h2>6 · Who decides? The ownership matrix</h2>
-
-<table>
-  <tr><th>Question</th><th>Owner</th></tr>
-  <tr><td>How is a Hermes call encoded as an Anthropic request?</td><td>adapter (translation)</td></tr>
-  <tr><td>Which HTTP endpoint and API key configure the client?</td><td>wiring / configuration (<code>main.ts</code>)</td></tr>
-  <tr><td>How does the SDK retry a 429 internally?</td><td>SDK mechanics (measured in exercise 02: 3 requests over 10.1 s honoring <code>retry-after</code>)</td></tr>
-  <tr><td>What does Anthropic's <code>RateLimitError</code> <em>mean</em> in Hermes vocabulary?</td><td>adapter (classification into <code>{ kind: "throttled" }</code>)</td></tr>
-  <tr><td>Should a throttled job wait, retry elsewhere, or terminate?</td><td>Hermes policy (<code>supervisor.ts</code> — today's rule: park and retry later)</td></tr>
-  <tr><td>Which model serves this task?</td><td>future routing policy; today, fixed wiring (§4)</td></tr>
-  <tr><td>May a requested tool run?</td><td>future permission policy — lesson 0010, provisional</td></tr>
-  <tr><td>Has the token or iteration budget been exhausted?</td><td>future supervisor policy — lesson 0009, provisional</td></tr>
-  <tr><td>What actually happened during the run?</td><td>future durable trace — lesson 0011, provisional (only <code>requestId</code> is kept today)</td></tr>
-</table>
-
-<p><strong>The deliberately ambiguous one, resolved.</strong> "Retry" names two different things in that
-matrix, and conflating them is the classic layer mistake. The SDK's automatic retry re-sends <em>one HTTP
-operation</em> inside <em>one</em> <code>complete()</code> call — the supervisor never learns it happened, no
-job state changes, and the whole affair is responsibility ⑤ mechanics. The supervisor's
-<code>retry_later</code> is a <em>job-level</em> decision: this unit of work is parked, its report says so,
-and something above (today: you, reading the report; later: the loop of lessons 0008+) will resume it. Same
-English word; different layer, different owner, different lifetime. When both fire — default
-<code>maxRetries: 2</code> against a persistent 429 — the SDK retries twice (mechanics, ~10 s), gives up,
-the adapter classifies (translation), and <em>then</em> the supervisor parks the job (policy). Each layer did
-its own kind of retry-shaped work without ever borrowing the other's.</p>
-
-<h2>7 · Why provider-neutral types earn their keep — here, specifically</h2>
-
-<p>The weak argument for the port's neutral vocabulary is "another provider might someday be added." The
-course did not use it, and neither should you — MISSION rules out speculative work, and no requirement names a
-second provider. The strong arguments are all about the system that exists today:</p>
-
-<ul>
-  <li><strong>The supervisor classifies domain facts, not provider classes.</strong> Its switch reads
-  <code>failure.kind</code>, not <code>err instanceof RateLimitError</code> — so policy rules are written once,
-  in Hermes's own words, and survive any change below the port.</li>
-  <li><strong>The same policy runs against <code>AnthropicModelGateway</code> and
-  <code>FakeModelGateway</code>.</strong> Measured: Part C drives the identical <code>retry_later</code> branch
-  B1 drove over the wire, in 0.6 ms, mock stopped. Offline-testable policy is Phase 1's exit criterion, and
-  neutral types are what make it possible.</li>
-  <li><strong>Provider response validation stays at the external boundary.</strong> The one place unproven
-  bytes exist is inside the adapter, and that is where <code>WireReplySchema</code> lives. Above the port,
-  types are proof.</li>
-  <li><strong>SDK upgrades cannot silently redefine domain vocabulary.</strong> If 0.114.0 renamed a field or
-  added a <code>stop_reason</code>, the breakage lands in one adapter file — the supervisor's words
-  (<code>completed</code>, <code>throttled</code>) are Hermes's to keep.</li>
-  <li><strong>Exhaustive switching over <code>GatewayFailure</code> forces decisions.</strong> Add a failure
-  kind to the port and the supervisor fails to compile until Hermes has decided what that failure <em>means</em>
-  for a job. The type system turns "we forgot to handle it" into a build error.</li>
-</ul>
-
-<p>And the honest risk, stated as lesson 0006 §4 stated it: <strong>a port designed against one provider can
-still grow provider-shaped</strong> — vocabulary that looks neutral but silently mirrors Anthropic's model.
-<code>FakeModelGateway</code> supplies a second implementation and therefore some standing pressure against
-this: every time the fake satisfies the contract trivially, it re-demonstrates that nothing in the signature
-requires Anthropic. But keep the claim inside its evidence: the fake is a <strong>second implementation — a
-test double</strong>, not a second provider, and it does not constitute proof of interoperability with any
-real provider. That proof would take a second live adapter, which nothing currently justifies building.</p>
-
-<h2>8 · Exercise: present, seeded, or planned?</h2>
+<h2>4 · Exercise: name the kind of work</h2>
 
 <section class="exercise" data-scored>
-  <h3>Label each capability with its honest status today</h3>
-  <p class="rules">Answer from memory before clicking — the effort is the point. Feedback is immediate.</p>
+  <h3>Five words, applied</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
 
-  <div class="cl" data-cats="implemented in exercise 05|seeded in exercise 05|planned — later Phase 1 (provisional)">
-    <div class="cl-item" data-cat="0" data-why="Part B is yours to write, but the exercise ships it: SDK exceptions become GatewayFailure data inside the adapter, and the supervisor switches on failure.kind with no try/catch. Measured in B1–B3.">
-      <p>Failure classification: SDK exceptions crossing the port as data.</p>
-    </div>
-    <div class="cl-item" data-cat="1" data-why="the adapter keeps requestId and the supervisor prints it in notes — a field for the future trace to attach to. The trace subsystem itself (durable, replayable, resumable) is lesson 0011, provisional.">
-      <p>The provider's request id is preserved for the run's record.</p>
-    </div>
-    <div class="cl-item" data-cat="2" data-why="lesson 0007 (the one firm next step): a Zod-validated TaskSpec rejecting invalid work before a token is spent. Today the 'task' is a hardcoded string in main.ts — no validation boundary for work exists yet.">
-      <p>Invalid work is rejected by a validated TaskSpec before any token is spent.</p>
-    </div>
-    <div class="cl-item" data-cat="1" data-why="the port's signature carries an AbortSignal and B2 proves an abort crosses as { kind: 'aborted' } — the seam exists. But the POLICY that fires the controller at a token ceiling (S6's kill-at-ceiling) is lesson 0009, provisional.">
-      <p>The supervisor's abort controller fires when the token budget hits its ceiling.</p>
-    </div>
-    <div class="cl-item" data-cat="2" data-why="lesson 0010, provisional: permissions as data, approval gates before tool execution. Exercise 05 has no tools at all — tool_use enters the port's world in lesson 0008.">
-      <p>A requested tool call waits at an approval gate for a human decision.</p>
-    </div>
-    <div class="cl-item" data-cat="0" data-why="measured in B3: exercise 04's drifted bytes are refused by WireReplySchema inside the adapter, the supervisor books zero tokens and gives up loudly — the rule 'a lying ledger is worse than an empty one' is running code today.">
-      <p>A malformed reply is refused at the boundary and books zero tokens.</p>
-    </div>
-    <div class="cl-item" data-cat="2" data-why="lesson 0012, Phase 1's capstone, provisional: the WHOLE loop green on fakes and recorded fixtures. Today the fake covers one-call policy only — real, but partial. Calling it the complete offline loop would be the exact overclaim this primer exists to prevent.">
-      <p>The complete Phase 1 loop runs green offline on fakes and recorded fixtures.</p>
-    </div>
-  </div>
-
-  <p class="score" data-score>Score: 0 / 0</p>
-</section>
-
-<h2>9 · Exercise: mechanics, wiring, adaptation, validation, or policy?</h2>
-
-<section class="exercise" data-scored>
-  <h3>Name the kind of work — the five words of §2, applied</h3>
-
-  <div class="cl" data-cats="SDK/transport mechanics|composition / wiring|provider adaptation|boundary validation|Hermes policy">
-    <div class="cl-item" data-cat="1" data-why="constructing concrete objects and choosing their configuration is the composition root's job — main.ts. No facts are converted into actions; an object is built. Object construction is wiring, not policy.">
+  <div class="cl" data-cats="SDK mechanics|wiring|adaptation|boundary validation|Hermes policy">
+    <div class="cl-item" data-cat="1" data-why="Building an object and choosing its configuration is the composition root's job. No facts become an action. An object is built.">
       <p><code>new Anthropic({ baseURL, apiKey, maxRetries: 0 })</code> in <code>main.ts</code>.</p>
     </div>
-    <div class="cl-item" data-cat="2" data-why="field translation between vocabularies: the wire says seconds, the port speaks milliseconds. Meaning is preserved, no action is chosen — adaptation, performed inside classifyFailure on the way up.">
+    <div class="cl-item" data-cat="2" data-why="The wire speaks seconds and the port speaks milliseconds. The meaning is kept and no action is chosen, so this is translation.">
       <p>The wire's <code>retry-after: 5</code> becomes the port's <code>retryAfterMs: 5000</code>.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="the SDK's own retry machinery re-sending one HTTP operation — measured in exercise 02 as 3 requests over 10.1 s. The supervisor never learns it happened; no job state changes. Responsibility ⑤, below everything Hermes owns.">
-      <p>After a 429, the request is automatically re-sent once the <code>retry-after</code> window passes.</p>
+    <div class="cl-item" data-cat="0" data-why="The SDK re-sends one HTTP operation inside one complete() call. Measured in exercise 02 as three requests over 10.1 seconds. The supervisor never learns it happened.">
+      <p>After a 429, the request is sent again once the wait has passed.</p>
     </div>
-    <div class="cl-item" data-cat="4" data-why="a deterministic rule converting a classified fact into a job outcome: throttled means park it and retry later. It lives in supervisor.ts and could live nowhere else — deciding what a result MEANS for the job is policy.">
+    <div class="cl-item" data-cat="4" data-why="A checked fact becomes a job outcome: throttled means park the job. This is a rule, and it lives in supervisor.ts.">
       <p>A <code>throttled</code> failure produces the job outcome <code>retry_later</code>.</p>
     </div>
-    <div class="cl-item" data-cat="3" data-why="Zod parsing at the JSON boundary is boundary validation — proving unchecked bytes before they may cross the port. Not policy (it decides no action), not adaptation (nothing is renamed yet): it is lesson 0005's parse at its permanent address.">
+    <div class="cl-item" data-cat="3" data-why="Zod proves unchecked bytes before they may cross the port. It decides no action, and it renames nothing.">
       <p><code>WireReplySchema.safeParse(message)</code> inside the adapter.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="which concrete implementation the supervisor receives is decided where objects are constructed — the composition root. Part C swaps in the fake by changing one construction, and the supervisor cannot tell. Choosing the object is wiring; a runtime rule choosing PER TASK would be routing policy, which does not exist yet.">
-      <p>Whether <code>superviseOneCall</code> receives the Anthropic adapter or the fake.</p>
-    </div>
-    <div class="cl-item" data-cat="2" data-why="translating a provider error CLASS into port failure DATA is classification — adaptation work, done once in the adapter. The rule that decides what 'throttled' means for the job sits one layer up, in the supervisor.">
-      <p><code>RateLimitError</code> becomes <code>{ kind: "throttled", retryAfterMs: 5000 }</code>.</p>
+    <div class="cl-item" data-cat="1" data-why="Which implementation the supervisor receives is settled where objects are built. Part C swaps in the fake and the supervisor cannot tell.">
+      <p>Whether <code>superviseOneCall</code> gets the Anthropic adapter or the fake.</p>
     </div>
   </div>
 
   <p class="score" data-score>Score: 0 / 0</p>
 </section>
 
-<h2>10 · Quiz</h2>
+<h2>5 · Quiz</h2>
 
 <section class="exercise" data-scored>
-  <h3>Four questions, equal-length options, no format clues</h3>
+  <h3>Four questions</h3>
 
-  <div class="qz" data-correct="2" data-why="A constant is configuration, not a decision rule — no validated facts go in, no per-task choice comes out. The real move is architectural: injecting the id means the ADAPTER cannot own model selection, so the decision point sits above the port, waiting. The primer's sentence: lesson 0006 reserves model selection for policy; it does not yet implement model-selection policy.">
-    <p class="qz-prompt">Q1. <code>main.ts</code> declares <code>const MODEL = "claude-opus-4-8"</code> and passes it into the adapter's constructor. What does this establish about model routing?</p>
-    <button class="qz-opt" type="button">The routing engine exists and reads this constant as its single default route</button>
-    <button class="qz-opt" type="button">The adapter owns model selection whenever the wiring omits an explicit id</button>
-    <button class="qz-opt" type="button">Nothing routes yet — fixed wiring reserves the choice for a future policy</button>
-    <button class="qz-opt" type="button">Routing is implemented at compile time because the constant is type-checked</button>
+  <div class="qz" data-correct="2" data-why="A constant is configuration. No checked facts go in and no per-task choice comes out, so it is not a rule. The real move is that the adapter cannot own the choice.">
+    <p class="qz-prompt">Q1. <code>main.ts</code> sets <code>const MODEL</code> and passes it to the adapter. What does that establish?</p>
+    <button class="qz-opt" type="button">A routing engine exists and reads this constant as its default route</button>
+    <button class="qz-opt" type="button">The adapter owns the model choice whenever the wiring omits one</button>
+    <button class="qz-opt" type="button">Nothing routes yet, and the choice is reserved for a later rule</button>
+    <button class="qz-opt" type="button">Routing works at build time because the constant is type-checked</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="1" data-why="Interfaces are erased (lesson 0001, restated in 0006 §2): at runtime ModelGateway does not exist and cannot call, route, or wrap anything. The object executing is the AnthropicModelGateway instance the composition root injected — it holds the SDK client and does the translation. The interface's entire contribution happened at build time, in the type-checker.">
-    <p class="qz-prompt">Q2. Part A runs <code>gateway.complete(call)</code>. At that runtime moment, what is <code>interface ModelGateway</code> doing?</p>
-    <button class="qz-opt" type="button">Dispatching the call to whichever implementation the wiring registered</button>
-    <button class="qz-opt" type="button">Nothing — it was erased at build time; the injected adapter object runs</button>
-    <button class="qz-opt" type="button">Validating that the call's fields match the contract before it proceeds</button>
-    <button class="qz-opt" type="button">Holding the SDK client on behalf of both implementations that share it</button>
+  <div class="qz" data-correct="1" data-why="Interfaces are erased, as lesson 0001 showed. At run time the object doing the work is the adapter the composition root injected. The interface did its work in the type-checker.">
+    <p class="qz-prompt">Q2. Part A runs <code>gateway.complete(call)</code>. What is <code>interface ModelGateway</code> doing then?</p>
+    <button class="qz-opt" type="button">Sending the call on to whichever implementation the wiring registered</button>
+    <button class="qz-opt" type="button">Nothing, because it was erased and the injected adapter runs</button>
+    <button class="qz-opt" type="button">Checking that the call's fields match the contract before it proceeds</button>
+    <button class="qz-opt" type="button">Holding the SDK client for both of the implementations to share</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="0" data-why="Two layers, two owners, two lifetimes: the SDK's retry re-sends one HTTP operation inside one complete() call — mechanics the supervisor never sees. retry_later is a job-level rule output: this unit of work is parked, and the report says so. When both fire, the SDK exhausts its retries first, the adapter classifies, and only then does policy park the job.">
-    <p class="qz-prompt">Q3. The SDK retries a 429 internally (measured: 3 requests, 10.1 s); the supervisor returns <code>retry_later</code>. How do these two "retries" relate?</p>
-    <button class="qz-opt" type="button">Different layers: one re-sends an HTTP operation, one parks the whole job</button>
-    <button class="qz-opt" type="button">Same rule twice: the supervisor re-runs the SDK's retry at its own layer</button>
-    <button class="qz-opt" type="button">They conflict, so B1 disables the SDK's version to let policy take over</button>
-    <button class="qz-opt" type="button">The SDK's retry is policy delegated downward to run closer to the wire</button>
+  <div class="qz" data-correct="0" data-why="Two layers, two owners. The SDK re-sends one HTTP operation inside one call. retry_later parks a unit of work. When both fire, the SDK exhausts its attempts first, then the adapter classifies, then policy parks the job.">
+    <p class="qz-prompt">Q3. The SDK retries a 429 by itself, and the supervisor returns <code>retry_later</code>. How do these relate?</p>
+    <button class="qz-opt" type="button">Different layers. One re-sends a request, the other parks the job</button>
+    <button class="qz-opt" type="button">The same rule twice. The supervisor repeats the SDK's retry above it</button>
+    <button class="qz-opt" type="button">They conflict, so Part B turns the SDK's own retries off entirely</button>
+    <button class="qz-opt" type="button">The SDK's retry is policy, pushed down to run closer to the wire</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="3" data-why="The primer's definition: a deterministic rule converting validated facts into a permitted next action or terminal outcome. Booking zero tokens for a malformed reply converts a classified fact into a job outcome — policy. Building the client is wiring; the seconds-to-ms conversion is adaptation; serializing the request body is SDK mechanics.">
-    <p class="qz-prompt">Q4. By the operational definition, which of these is a Hermes <em>policy</em> decision?</p>
-    <button class="qz-opt" type="button">Constructing the Anthropic client with the mock's base URL and a test key</button>
-    <button class="qz-opt" type="button">Converting the wire's retry-after seconds into the port's milliseconds</button>
-    <button class="qz-opt" type="button">Serializing the request params into the JSON body the wire will carry</button>
-    <button class="qz-opt" type="button">Booking zero tokens and giving up when a reply fails the boundary parse</button>
+  <div class="qz" data-correct="3" data-why="A rule turns checked facts into a permitted action or a final outcome. Booking zero tokens for a bad reply is such a rule. Building a client is wiring, unit conversion is adaptation, and serialising a body is SDK mechanics.">
+    <p class="qz-prompt">Q4. By the definition in section 1, which of these is a Hermes policy decision?</p>
+    <button class="qz-opt" type="button">Building the Anthropic client with the mock's base URL and a key</button>
+    <button class="qz-opt" type="button">Turning the wire's retry-after seconds into the port's milliseconds</button>
+    <button class="qz-opt" type="button">Serialising the request parameters into the JSON body of the call</button>
+    <button class="qz-opt" type="button">Booking zero tokens and stopping when a reply fails the boundary parse</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
   <p class="score" data-score>Score: 0 / 0</p>
 </section>
 
-<h2>11 · Say it in your own words</h2>
+<h2>6 · Say it in your own words</h2>
 
-<p>In the chat, answer these four — no notes, no scrolling up:</p>
+<p>Answer these in the chat, with no notes and no scrolling up.</p>
 <ol>
-  <li>State the operational definition of a <strong>Hermes policy</strong>. Then name one line in
-  <code>supervisor.ts</code> that meets it and one line in <code>main.ts</code> that does not — and say what
-  the second one is instead.</li>
-  <li>Explain "mechanics below the port, policy above it" strictly as a statement about dependency and
-  responsibility. What may files above the port import? What may files below it speak? Name two things the
-  phrase does <em>not</em> claim (hint: the call stack is one of them).</li>
-  <li>A colleague says: "exercise 05 already routes between models — look, <code>main.ts</code> picks
-  <code>claude-opus-4-8</code>." Correct them using the wiring-versus-routing distinction, ending with the
-  primer's one-sentence version.</li>
-  <li>Trace B1's throttled call from the wire to the report, naming at each hop the layer and the kind of work
-  (mechanics / adaptation / contract / policy) — and identify the single hop that is policy.</li>
+  <li>Define a Hermes policy. Name one line in <code>supervisor.ts</code> that meets your definition, and
+  one line in <code>main.ts</code> that does not. Say what the second line is instead.</li>
+  <li>Explain "policy above the port, mechanics below it" as a claim about imports and duties. Name two
+  things the phrase does not claim.</li>
+  <li>A colleague says exercise 05 already routes between models, because <code>main.ts</code> picks one.
+  Correct them.</li>
 </ol>
 
-<p>And the compression — if you keep only five sentences from this primer: <em>⑴ Hermes is a deterministic,
-typed, observable control system around probabilistic model calls: validated TaskSpec → bounded planning →
-evidence → approved tools → evaluation → durable trace — and exercise 05 implements exactly one organ of it,
-the model boundary, with a one-call policy seed above it. ⑵ A Hermes policy is a deterministic rule turning
-validated facts into a permitted next action or terminal outcome — which excludes wiring (constructing
-objects), adaptation (translating vocabularies), boundary validation (proving bytes), and SDK mechanics
-(executing operations). ⑶ "Above/below the port" describes imports and responsibility, not secrecy or the
-call stack: above speaks only Hermes vocabulary; below may speak provider vocabulary but must translate before
-crossing. ⑷ Lesson 0006 reserves model selection for policy; it does not yet implement model-selection policy
-— the model id is a constant in the composition root. ⑸ The port is an erased compile-time contract and the
-adapter is the runtime object that honors it — which is why the same supervisor runs against Anthropic's SDK
-and against an in-process fake that proves the vocabulary stayed Hermes-owned.</em></p>
+<h2>7 · Keep these five sentences</h2>
 
-<h2>Primary source</h2>
-
-<p><strong>Read next:</strong> the two pages this primer compresses — <code>MISSION.md</code> (the loop and
-the guiding principle, verbatim) and <code>wiki/course/hermes-integration.md</code> (the S1–S9 scenario and
-the two-roles split: Hermes orchestrates, Claude Code implements — this course builds the Hermes side). The
-durable, compact form of this primer's architecture lives at <code>wiki/course/course-architecture.md</code>
-— later lessons link there instead of re-explaining. For the roadmap ground truth on what is planned versus
-provisional: <code>ROADMAP.md</code>, Phase 1 table.</p>
+<p>If you keep only five sentences, keep these. A Hermes policy turns checked facts into a permitted
+action or a final outcome. Wiring builds objects and decides nothing. The adapter translates words and
+decides nothing. The supervisor decides what a result means for the job, and it is the only part that
+does.</p>
 
 <footer>
-  <p><strong>Stuck or curious?</strong> Ask your teacher — the agent that opened this lesson — anything: why
-  the supervisor rather than the adapter must own the meaning of <code>throttled</code>, what the first real
-  routing rule might need before it could exist (hint: validated task requirements arrive in 0007), or why
-  "the fake is a second implementation" is a carefully narrower claim than "the fake proves provider
-  interoperability."</p>
-  <p><strong>Back to the sequence:</strong> this supplement changes nothing about what ships next. Lesson 0007,
-  <em>The TaskSpec Is a Contract</em> — lab <code>06-taskspec</code> — remains the next step: lesson 0005's
-  parse meets S1's rule, and invalid work is rejected before a single token is spent.</p>
+  <p><strong>Version pin.</strong> Every excerpt and measured number comes from exercise 05 with
+  <code>@anthropic-ai/sdk</code> 0.113.0 and <code>zod</code> 4.4.3. The numbers were measured during
+  lesson 0006 against the exercise 01 mock.</p>
+  <p><strong>Read next.</strong> <a href="0006b-the-hermes-control-plane.html">The Hermes Control
+  Plane</a> answers the wider question of what a Hermes job is. The compact reference for this page is
+  <code>wiki/course/course-architecture.md</code>, and the map note is
+  <code>wiki/lessons/lesson-0006a-what-counts-as-policy.md</code>.</p>
+  <p><strong>Back to the sequence.</strong> Lesson 0007, <em>The TaskSpec Is a Contract</em>, remains the
+  next step. Invalid work gets rejected before a token is spent.</p>
 </footer>
 
 </body>
