@@ -14,8 +14,8 @@
 <header class="lesson-head">
   <p class="kicker">Hermes · Phase 1 · Supplement 0006a to Lesson 0006 · ~20 minutes</p>
   <h1>What Counts as Policy</h1>
-  <p class="lede">Lesson 0006 put Hermes policy above the port and the SDK below it. Which of the things
-  in exercise 05 is actually policy?</p>
+  <p class="lede">Lesson 0006 put Hermes policy above the port and the SDK below it. Which parts of
+  exercise 05 are policy, and which only look like it?</p>
 </header>
 
 <div class="callout mission">
@@ -31,20 +31,20 @@
 turns checked facts into an action Hermes may take, or into a final outcome.</p>
 
 <div class="callout">
-  <strong>Three things that sentence claims.</strong>
   The rule is deterministic, so the same facts always give the same decision.
-  The facts are checked, either by Zod at run time or by the port's types at build time.
-  The output is always permitted, so it is never whatever an exception happened to unwind to.
+  Zod checks the facts at run time, or the port's types guarantee them at build time.
+  The output is always an action Hermes may take, or a state the job ends in.
+  It is never whatever an exception happened to unwind to.
 </div>
 
-<p>The word is only useful if it rules things out. Four other kinds of work look like policy and are not.
-The wire protocol sits underneath all four.</p>
+<p>Four other kinds of work look like policy. None of them is. A fifth, the wire protocol, sits below all
+four and decides nothing at all.</p>
 
 <table>
   <tr><th>The work</th><th>What it does</th><th>In exercise 05</th><th>Policy?</th></tr>
   <tr>
     <td>port contract</td>
-    <td>Names the facts allowed to cross the seam.</td>
+    <td>Names the facts allowed to cross the port.</td>
     <td><code>gateway.ts</code>: <code>ModelCall</code>, <code>ModelReply</code>, <code>GatewayResult</code></td>
     <td>No. It decides nothing. It says what decisions can be about.</td>
   </tr>
@@ -70,7 +70,7 @@ The wire protocol sits underneath all four.</p>
     <td>wire protocol</td>
     <td>Carries the bytes.</td>
     <td><code>POST /v1/messages</code> to the mock on port 8787</td>
-    <td>No. It is unchanged by every architecture above it.</td>
+    <td>No. Every design above it leaves the bytes unchanged.</td>
   </tr>
 </table>
 
@@ -102,13 +102,14 @@ flowchart TD
     W -.->|"constructs"| S
 </pre>
 <figcaption>Diagram 1. The call direction, with what each file owns. Imports point at the port from both
-sides, so this is not the import graph. Wiring stands beside the path and takes no part in a call.</figcaption>
+sides, so this is not the import graph. Wiring builds the objects before any call and takes no part in
+one.</figcaption>
 </figure>
 
 <h2>2 · Wiring is not routing</h2>
 
-<p>One sentence in lesson 0006 invites a misreading: routing is policy, decided above. Here is what
-<code>main.ts</code> actually contains.</p>
+<p>Lesson 0006 says that routing is policy, decided above the port. That sentence is easy to over-read.
+In exercise 05, <code>main.ts</code> contains this:</p>
 
 <pre><code>const MODEL = "claude-opus-4-8";
 return new AnthropicModelGateway(client, MODEL);</code></pre>
@@ -116,31 +117,32 @@ return new AnthropicModelGateway(client, MODEL);</code></pre>
 <p><code>main.ts</code> is the <dfn>composition root</dfn>. It is the one file that knows the concrete
 classes and bolts them together. The model name is a constant, and nothing picks it at run time.</p>
 
-<p>The injection still does real work. The adapter cannot hardcode a model, so whoever builds it chooses.
-That places the decision point above the port. It does not create a <dfn>routing policy</dfn>, which
-would be a rule that picks a model per task from that task's needs. No such rule exists here, and no
-roadmap row schedules one.</p>
+<p>The injection still does real work. The adapter cannot hardcode a model, so whoever builds the adapter
+chooses. That places the decision point above the port. It does not create a <dfn>routing policy</dfn>,
+which would be a rule that picks a model per task from that task's needs. No such rule exists here, and
+no roadmap row schedules one.</p>
 
 <div class="callout">
-  <strong>The sentence to remember.</strong>
-  Lesson 0006 reserves model choice for policy. It does not yet implement a rule that makes the choice.
+  <strong>Reserved is not implemented.</strong>
+  Lesson 0006 reserves the model choice for policy. It does not yet implement a rule that makes the
+  choice.
 </div>
 
 <h2>3 · What exists today</h2>
 
-<p>Every claim about a capability carries a label. <em>Implemented</em> runs in exercise 05 today.
-<em>Seeded</em> means a field or seam exists so a later subsystem has somewhere to attach.
-<em>Planned</em> is grounded in <code>ROADMAP.md</code>, where Phase 1 numbers above 0007 are provisional.</p>
+<p>Three labels appear in the table below. <em>Implemented</em> runs in exercise 05 today.
+<em>Seeded</em> means a field or seam exists, so a later subsystem has somewhere to attach.
+<em>Planned</em> rests on <code>ROADMAP.md</code>, where Phase 1 numbers above 0007 stay provisional.</p>
 
 <table>
   <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
-  <tr><td>Model call crosses the port</td><td>implemented</td><td><code>gateway.ts</code> and <code>anthropic-gateway.ts</code></td></tr>
+  <tr><td>A model call crosses the port</td><td>implemented</td><td><code>gateway.ts</code> and <code>anthropic-gateway.ts</code></td></tr>
   <tr><td>Failures arrive as data, not exceptions</td><td>implemented</td><td>Part B. Measured: <code>retry-after: 5</code> became <code>retryAfterMs: 5000</code></td></tr>
   <tr><td>One call's result becomes a job outcome</td><td>implemented</td><td><code>supervisor.ts</code>. Five decisions, one per result kind</td></tr>
   <tr><td>The same policy runs with no server</td><td>implemented</td><td>Part C. Measured at 0.6 ms with the mock stopped</td></tr>
   <tr><td>The provider's request id survives</td><td>seeded</td><td>The adapter keeps it. The trace subsystem is lesson 0011</td></tr>
   <tr><td>An abort signal crosses the port</td><td>seeded</td><td>Part B proves it. Budget rules arrive in lesson 0009</td></tr>
-  <tr><td>Invalid work is rejected before a token is spent</td><td>planned</td><td>Lesson 0007, the one firm next step</td></tr>
+  <tr><td>A validated TaskSpec rejects invalid work</td><td>planned</td><td>Lesson 0007, the next firm step</td></tr>
   <tr><td>A rule picks the model for a task</td><td>planned</td><td>No roadmap row names it yet</td></tr>
   <tr><td>Budgets, approval gates, durable trace</td><td>planned</td><td>Lessons 0009, 0010 and 0011, all provisional</td></tr>
 </table>
@@ -152,22 +154,22 @@ roadmap row schedules one.</p>
   <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
 
   <div class="cl" data-cats="SDK mechanics|wiring|adaptation|boundary validation|Hermes policy">
-    <div class="cl-item" data-cat="1" data-why="Building an object and choosing its configuration is the composition root's job. No facts become an action. An object is built.">
+    <div class="cl-item" data-cat="1" data-why="The composition root builds objects and chooses their configuration. No fact becomes an action here. Construction is wiring.">
       <p><code>new Anthropic({ baseURL, apiKey, maxRetries: 0 })</code> in <code>main.ts</code>.</p>
     </div>
-    <div class="cl-item" data-cat="2" data-why="The wire speaks seconds and the port speaks milliseconds. The meaning is kept and no action is chosen, so this is translation.">
+    <div class="cl-item" data-cat="2" data-why="The wire speaks seconds and the port speaks milliseconds. The adapter keeps the meaning and chooses no action, so this is translation.">
       <p>The wire's <code>retry-after: 5</code> becomes the port's <code>retryAfterMs: 5000</code>.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="The SDK re-sends one HTTP operation inside one complete() call. Measured in exercise 02 as three requests over 10.1 seconds. The supervisor never learns it happened.">
-      <p>After a 429, the request is sent again once the wait has passed.</p>
+    <div class="cl-item" data-cat="0" data-why="The SDK re-sends one HTTP operation inside one call. Exercise 02 measured three requests over 10.1 seconds. The supervisor never learns that it happened.">
+      <p>After a 429, the request goes out again once the wait has passed.</p>
     </div>
-    <div class="cl-item" data-cat="4" data-why="A checked fact becomes a job outcome: throttled means park the job. This is a rule, and it lives in supervisor.ts.">
+    <div class="cl-item" data-cat="4" data-why="A checked fact becomes a job outcome. Throttled means the supervisor parks the job. That is a rule, and it lives in supervisor.ts.">
       <p>A <code>throttled</code> failure produces the job outcome <code>retry_later</code>.</p>
     </div>
-    <div class="cl-item" data-cat="3" data-why="Zod proves unchecked bytes before they may cross the port. It decides no action, and it renames nothing.">
+    <div class="cl-item" data-cat="3" data-why="Zod proves unchecked bytes before they may cross the port. It chooses no action and it renames nothing.">
       <p><code>WireReplySchema.safeParse(message)</code> inside the adapter.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="Which implementation the supervisor receives is settled where objects are built. Part C swaps in the fake and the supervisor cannot tell.">
+    <div class="cl-item" data-cat="1" data-why="The composition root settles which implementation the supervisor receives. Part C swaps in the fake and the supervisor cannot tell the difference.">
       <p>Whether <code>superviseOneCall</code> gets the Anthropic adapter or the fake.</p>
     </div>
   </div>
@@ -180,7 +182,7 @@ roadmap row schedules one.</p>
 <section class="exercise" data-scored>
   <h3>Four questions</h3>
 
-  <div class="qz" data-correct="2" data-why="A constant is configuration. No checked facts go in and no per-task choice comes out, so it is not a rule. The real move is that the adapter cannot own the choice.">
+  <div class="qz" data-correct="2" data-why="A constant is configuration. No checked fact goes in and no per-task choice comes out, so no rule exists. The real move is that the adapter cannot own the choice.">
     <p class="qz-prompt">Q1. <code>main.ts</code> sets <code>const MODEL</code> and passes it to the adapter. What does that establish?</p>
     <button class="qz-opt" type="button">A routing engine exists and reads this constant as its default route</button>
     <button class="qz-opt" type="button">The adapter owns the model choice whenever the wiring omits one</button>
@@ -189,16 +191,16 @@ roadmap row schedules one.</p>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="1" data-why="Interfaces are erased, as lesson 0001 showed. At run time the object doing the work is the adapter the composition root injected. The interface did its work in the type-checker.">
+  <div class="qz" data-correct="1" data-why="TypeScript erases interfaces, as lesson 0001 showed. At run time the adapter that the composition root injected does the work. The interface did its work in the type-checker.">
     <p class="qz-prompt">Q2. Part A runs <code>gateway.complete(call)</code>. What is <code>interface ModelGateway</code> doing then?</p>
-    <button class="qz-opt" type="button">Sending the call on to whichever implementation the wiring registered</button>
+    <button class="qz-opt" type="button">It passes the call to whichever implementation the wiring registered</button>
     <button class="qz-opt" type="button">Nothing, because it was erased and the injected adapter runs</button>
-    <button class="qz-opt" type="button">Checking that the call's fields match the contract before it proceeds</button>
-    <button class="qz-opt" type="button">Holding the SDK client for both of the implementations to share</button>
+    <button class="qz-opt" type="button">It checks that the call's fields match the contract before proceeding</button>
+    <button class="qz-opt" type="button">It holds the SDK client for both of the implementations to share</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="0" data-why="Two layers, two owners. The SDK re-sends one HTTP operation inside one call. retry_later parks a unit of work. When both fire, the SDK exhausts its attempts first, then the adapter classifies, then policy parks the job.">
+  <div class="qz" data-correct="0" data-why="Two layers own two different jobs. The SDK re-sends one HTTP operation inside one call. retry_later parks a whole unit of work. When both fire, the SDK exhausts its attempts, then the adapter classifies, then the supervisor parks the job.">
     <p class="qz-prompt">Q3. The SDK retries a 429 by itself, and the supervisor returns <code>retry_later</code>. How do these relate?</p>
     <button class="qz-opt" type="button">Different layers. One re-sends a request, the other parks the job</button>
     <button class="qz-opt" type="button">The same rule twice. The supervisor repeats the SDK's retry above it</button>
@@ -207,7 +209,7 @@ roadmap row schedules one.</p>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="3" data-why="A rule turns checked facts into a permitted action or a final outcome. Booking zero tokens for a bad reply is such a rule. Building a client is wiring, unit conversion is adaptation, and serialising a body is SDK mechanics.">
+  <div class="qz" data-correct="3" data-why="A rule turns checked facts into a permitted action or a final outcome. Booking zero tokens for a bad reply does that. Building a client is wiring, unit conversion is adaptation, and serialisation is SDK mechanics.">
     <p class="qz-prompt">Q4. By the definition in section 1, which of these is a Hermes policy decision?</p>
     <button class="qz-opt" type="button">Building the Anthropic client with the mock's base URL and a key</button>
     <button class="qz-opt" type="button">Turning the wire's retry-after seconds into the port's milliseconds</button>
@@ -235,19 +237,18 @@ roadmap row schedules one.</p>
 
 <p>If you keep only five sentences, keep these. A Hermes policy turns checked facts into a permitted
 action or a final outcome. Wiring builds objects and decides nothing. The adapter translates words and
-decides nothing. The supervisor decides what a result means for the job, and it is the only part that
-does.</p>
+decides nothing. The supervisor decides what a result means for the job, and nothing else does.</p>
 
 <footer>
   <p><strong>Version pin.</strong> Every excerpt and measured number comes from exercise 05 with
-  <code>@anthropic-ai/sdk</code> 0.113.0 and <code>zod</code> 4.4.3. The numbers were measured during
-  lesson 0006 against the exercise 01 mock.</p>
+  <code>@anthropic-ai/sdk</code> 0.113.0 and <code>zod</code> 4.4.3. Lesson 0006 measured the numbers
+  against the exercise 01 mock.</p>
   <p><strong>Read next.</strong> <a href="0006b-the-hermes-control-plane.html">The Hermes Control
   Plane</a> answers the wider question of what a Hermes job is. The compact reference for this page is
   <code>wiki/course/course-architecture.md</code>, and the map note is
   <code>wiki/lessons/lesson-0006a-what-counts-as-policy.md</code>.</p>
   <p><strong>Back to the sequence.</strong> Lesson 0007, <em>The TaskSpec Is a Contract</em>, remains the
-  next step. Invalid work gets rejected before a token is spent.</p>
+  next step. Hermes rejects invalid work there before it spends a token.</p>
 </footer>
 
 </body>

@@ -243,6 +243,16 @@ function lint(path, registry) {
   const add = (sev, rule, line, msg, quote) =>
     findings.push({ sev, rule, line, msg, quote });
 
+  // Quiz feedback lives in data-why attributes. It is prose the reader reads
+  // after answering, so it is graded like any other prose. Without this the
+  // old 0006a hid roughly 800 unchecked words from every rule below.
+  if (isHtml) {
+    for (const m of src.matchAll(/\sdata-why="([^"]*)"/g)) {
+      const text = decode(m[1]).replace(/\s+/g, " ").trim();
+      if (text) blocks.push({ text, line: lineOf(src, m.index) });
+    }
+  }
+
   const prose = blocks.map((b) => b.text).join(" ");
   const totalWords = words(prose).length;
   const lessonNo = (/^(\d{4}[a-z]?)-/.exec(basename(path)) || [])[1] || "";

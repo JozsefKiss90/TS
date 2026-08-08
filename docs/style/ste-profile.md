@@ -338,14 +338,14 @@ bullet list into one 62-word sentence. The linter splits on block boundaries fir
 |---|---|---|---|
 | Lesson | Words | Errors | Warnings |
 |---|---|---|---|
-| 0001 | 1,262 | 19 | 4 |
-| 0002 | 1,372 | 18 | 8 |
-| 0003 | 1,368 | 18 | 13 |
-| 0004 | 1,562 | 19 | 11 |
-| 0005 | 2,574 | 33 | 16 |
-| 0006 | 3,375 | 55 | 24 |
-| **0006a** | **1,320** | **0** | **8** |
-| 0006b | 6,669 | 85 | 64 |
+| 0001 | 1,607 | 21 | 10 |
+| 0002 | 1,613 | 19 | 12 |
+| 0003 | 1,647 | 19 | 16 |
+| 0004 | 1,881 | 21 | 12 |
+| 0005 | 2,917 | 35 | 17 |
+| 0006 | 3,860 | 60 | 33 |
+| **0006a** | **1,579** | **0** | **6** |
+| 0006b | 7,942 | 105 | 71 |
 
 Word counts here are lower than section 1's, because the linter excludes code blocks and diagrams and
 counts prose only.
@@ -356,6 +356,11 @@ options concatenated into one 45-word sentence; markdown tables were not split i
 read as one 107-word sentence; and *wiring*, *routing* and *streaming* were treated as participles when
 this course uses them as nouns. The other lessons' counts moved because of those fixes, not because
 their text changed.
+
+A second pass on 0006a closed the largest remaining gap. Quiz feedback lives in `data-why` attributes,
+and the linter had never seen it. It is now graded like any other prose, which is why every lesson's word
+count rose: 0006b gained 1,273 previously invisible words and 20 errors. That prose is what a learner
+reads immediately after answering, so leaving it ungraded made the earlier numbers flattering.
 
 ## 9 · What this profile cannot do
 
