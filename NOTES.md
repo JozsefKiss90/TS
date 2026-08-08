@@ -102,6 +102,49 @@ The user asked for two structural additions to the course:
 - **Integration:** pointer callouts added to lesson 0006 (extends the 0006a callout with the reading order 0006 §1 → 0006b → 0006a → rest) and 0006a (new callout before the version pin); lesson-0006 map note gained a 0006b blockquote; ROADMAP Phase 1 gained a second supplement line; module-graph note links the map; course-architecture.md gained the "two views, two records" note; exercise 05 README gained one sentence. No status or sequence changed — **0007 remains ▶**; no runtime code touched anywhere.
 - **Defect found while validating (same procedure as 0006a's grep fix):** lesson 0006's shipped sequence diagram never rendered — headless-browser verification (Edge, vendored mermaid 11.16.0) showed a "Syntax error" bomb where the diagram should be. Root cause: a **semicolon inside the `Note over` text** ("No exception crossed; the supervisor…") — mermaid's lexer treats `;` as a statement separator even inside note text, so the remainder parsed as a new actor expecting an arrow (confirmed with `mermaid.parse`: *Expecting SOLID_ARROW…, got NEWLINE*). Fixed by replacing the semicolon with an em dash in `lessons/0006-the-model-gateway.html` and the twin diagram in `wiki/lessons/lesson-0006-the-model-gateway.md`; 0006 now renders flowchart + sequence cleanly (3× repeat runs). House rule earned: **no semicolons in unquoted Mermaid text** (sequence messages/notes, state labels); quoted flowchart labels are safe. All five 0006b diagrams and 0006a's three verified clean the same way (5× repeat runs each).
 
+## Update 2026-08-08 — readability regime (user request: the lessons are unreadable)
+
+The user reported lesson 0006 was barely finishable and 0006a impossible, and asked for an
+ASD-STE100-compliant style plus consideration of the `no-ai-slop` plugin. Measurement confirmed a
+monotonic drift across all eight shipped lessons: mean sentence length 15.6 → 27.0 words, body 1,339 →
+7,217 words, em-dashes 26 → 185, sentences over 35 words 5 → 44.
+
+- **The root cause is this workspace's own procedure**, not carelessness. Article VII answered every
+  confusion report by amending an Article, and all nine Article III standards *add* required content.
+  None limited length, sentence complexity, or vocabulary, so a confusion report could only ever produce
+  more apparatus. Full argument: `wiki/course/course-pedagogy.md` row 14.
+- **`docs/style/ste-profile.md` is binding** via new Article VIII. It is **derived from** ASD-STE100
+  Issue 9 (15 Jan 2025) and **not compliant** — the ~900-word approved dictionary is ASD copyright and
+  cannot be vendored here, and it targets aircraft maintenance procedures. Never describe it as
+  compliant. **Open action:** request the free official Issue 9 copy from `asd-ste100.org` and reconcile
+  the profile against it; until then no rule cites an ASD rule number.
+- **`wiki/terms/` is now the Technical Names registry** — ASD-STE100's own mechanism for domain
+  vocabulary, mapped onto infrastructure that already existed. A word is legal only if it is ordinary
+  English, a registered term defined at first use in ≤20 words, or a literal `<code>` identifier. This
+  is the rule that answers the user's main complaint.
+- **`no-ai-slop` (Peter Yang, MIT) is vendored, not installed** — the plugin installs globally and this
+  needed project scope. Rules at `docs/style/vendor/no-ai-slop.md`. Its *preserve voice*, *minimum
+  effective edit* and *cut proportionally* principles are **rejected** for lessons: they are written for
+  personal essays, and the word budget is the whole point. Its pattern list, banned words and two-mode
+  (detect, then edit) workflow are adopted whole.
+- **Article III.8 conflict decided by the user, 2026-08-08:** `no-ai-slop` bans summary-recap
+  conclusions; III.8 requires the closing compression. The compression stays, bounded to 5 sentences ×
+  25 words with no undefined terms. Lesson 0006a's 178-word "compression" fails and will be rewritten.
+- **Constitution amended:** new **Article VIII**; III.7 changed from *deconfuse coinages* to *do not
+  coin*; III.8 bounded; III.9 labels confined to one table; II.4 given a 2,000-word number; and **VII
+  amended so a repair may subtract** — the ratchet now turns both ways.
+- **Enforcement surfaces:** `.claude/skills/lesson-authoring/` auto-loads the profile on any lesson task,
+  so no manual setup is required; `.claude/output-styles/lesson-prose.md` is opt-in per session with
+  `keep-coding-instructions: true`, so engineering behaviour is untouched; `tools/lesson-lint.mjs` is
+  **not built yet** — until it exists, check the mechanical rules by hand and say so. Never claim a lint
+  that did not run.
+- **Rewrite authorised.** The user explicitly asked for the shipped lessons to be rewritten, which is
+  Article VII's explicit-user-request exception to "shipped lessons are history". Agreed scope: all eight
+  lessons; 0006b demoted to a reference page under `docs/hermes_os/architecture/`; 0006 + 0006a re-cut
+  into short lessons rather than translated sentence by sentence. **Not started.**
+- A worked before/after sample of 0006a §2 sits at `.scratch/lesson-clarity/sample-0006a-section2.html`.
+  It predates the profile's final section 6 and has not been rechecked against it.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

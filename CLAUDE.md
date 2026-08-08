@@ -18,8 +18,10 @@ The course builds the **Hermes Spec-to-Evidence Loop** — the control plane of 
 | `ROADMAP.md` | The plan: phases, gates, statuses | Gates bind; unshipped lesson rows are provisional |
 | `NOTES.md` | User teaching preferences + dated history of every decision | Preferences bind; updates are the record |
 | `wiki/GLOSSARY.md` | Glossary frontmatter schema and indexes | Yes |
+| `docs/style/ste-profile.md` | Prose rules: vocabulary, sentences, budgets | Yes — enforced by Article VIII |
+| `docs/style/vendor/no-ai-slop.md` | Banned prose patterns, vendored (MIT) | Yes, through the profile |
 
-**Before authoring a lesson, read:** the latest `NOTES.md` updates, `wiki/course/course-spine.md`, `wiki/course/hermes-integration.md`, and the lesson's `ROADMAP.md` row.
+**Before authoring a lesson, read:** `docs/style/ste-profile.md`, the latest `NOTES.md` updates, `wiki/course/course-spine.md`, `wiki/course/hermes-integration.md`, and the lesson's `ROADMAP.md` row. The `lesson-authoring` skill loads these automatically; read them anyway if it did not fire.
 
 ## Article I — What every lesson ships
 
@@ -36,7 +38,7 @@ The shipped skeleton of lessons 0001–0004 is the standard:
 1. **Header:** kicker (`Hermes · Phase N · Lesson NNNN · ~45–60 min`), title, and a lede that states the lesson's **main question** in one sentence.
 2. **Mission callout** immediately after the header: the win in one sentence, the spine thread(s) it advances (`wiki/course/course-spine.md` § *The recurring threads*), and the integration-scenario step(s) **S1–S9** it builds toward (`wiki/course/hermes-integration.md`). A lesson that cannot name its scenario step is off-spine — do not author it.
 3. **Numbered `h2` sections:** 2–4 concept sections → the lab exercise → a classification exercise → Quiz → *Say it in your own words* → *Primary source* footer with the next-lesson pointer.
-4. **One tangible win, ~45–60 minutes.** If the material wants more, split the lesson.
+4. **One tangible win, ~45–60 minutes, 2,000 words of lesson body.** The word count is the enforceable form of the time estimate; before it existed, lessons reached 7,811 words while still claiming 45–60 minutes. If the material wants more, split the lesson. Compressing the prose and keeping the scope is not an alternative.
 
 ## Article III — Explanation standards
 
@@ -48,9 +50,9 @@ Earned from the lessons 0001–0004 review and supplement; the full defect recor
 4. **Type + value pairing.** Every new type appears twice: as an (abridged) declaration and as a typical runtime value beside it.
 5. **Collision table.** The first time a word is overloaded across levels (e.g. "message": request property / response object / stream event / `MessageStream`), disambiguate with a term-vs-meaning table before proceeding.
 6. **Seen-instance rule.** A new abstraction (e.g. discriminated union) is taught from an instance the learner has already met in an earlier lesson, explicitly cross-referenced, before it is applied to the new material.
-7. **Deconfuse coinages.** Any coined phrase ("two SDK surfaces", "the six") is immediately followed by what it does *not* mean.
-8. **New-vs-reprise + compression.** Each lesson enumerates its genuinely new ideas (at most five) as distinct from reprise, and closes with an N-statement compression ("if you keep only five sentences…").
-9. **Present-vs-planned labeling.** Any capability of the wider system a lesson references (a policy, subsystem, or loop stage) is labeled **implemented** (runs in this lesson's lab), **seeded** (a field or seam exists for it), or **planned** (cited to `ROADMAP.md`/`MISSION.md`, never written in the present tense as if shipped). That scale grades **lab code only**: when the referenced system has its own governance record (PDR/ADRs — for Hermes OS, the `hermes-os` repo), claims about *it* are graded against that record as **accepted · scaffolded · planned · proposed clarification · open decision · illustrative only**, citing the governing document — a document merely mentioning a concept never earns "implemented". Architecture context beyond the lesson's slice links to `wiki/course/course-architecture.md` (course-side) or `docs/hermes_os/architecture/hermes-job-control-plane.md` (system-of-record) instead of being re-explained or, worse, implied. (Earned from the lesson-0006 primer, `course-pedagogy` row 12; extended by supplement 0006b, row 13.)
+7. **Do not coin.** *(Amended 2026-08-08. Previously: "deconfuse coinages" — any coined phrase was to be followed by what it does not mean. That treated the symptom and licensed the cause.)* Name an idea in ordinary words, or register it as a Technical Name at `wiki/terms/<slug>.md` and define it at first use in 20 words or fewer. A word that is neither ordinary English, a registered Technical Name, nor a literal `<code>` identifier is deleted. Coinages that failed this rule: *policy seed*, *honest ledger*, *deconfusion*, *spine thread*, *wire truth*, *the six*, *the three graphs*. Where an external system genuinely overloads a word, III.5's collision table still applies.
+8. **New-vs-reprise + compression, bounded.** Each lesson enumerates its genuinely new ideas (at most five) as distinct from reprise, and closes with an N-statement compression ("if you keep only five sentences…"). *(Bound added 2026-08-08.)* The compression is **at most five sentences, at most 25 words each, using no Technical Name the lesson did not define**. Lesson 0006a's ran to 178 words with a 46-word sentence, which is the lesson repeated rather than compressed. The vendored `no-ai-slop` rules ban summary-recap conclusions; this bounded compression is the one recorded exception, because it is retrieval practice rather than rhetoric.
+9. **Present-vs-planned labeling.** Any capability of the wider system a lesson references (a policy, subsystem, or loop stage) is labeled **implemented** (runs in this lesson's lab), **seeded** (a field or seam exists for it), or **planned** (cited to `ROADMAP.md`/`MISSION.md`, never written in the present tense as if shipped). That scale grades **lab code only**: when the referenced system has its own governance record (PDR/ADRs — for Hermes OS, the `hermes-os` repo), claims about *it* are graded against that record as **accepted · scaffolded · planned · proposed clarification · open decision · illustrative only**, citing the governing document — a document merely mentioning a concept never earns "implemented". Architecture context beyond the lesson's slice links to `wiki/course/course-architecture.md` (course-side) or `docs/hermes_os/architecture/hermes-job-control-plane.md` (system-of-record) instead of being re-explained or, worse, implied. *(Amended 2026-08-08:* these labels appear **once, in one table, near the end of the lesson**. They do not thread through the prose. Inline labelling is what turned lesson 0006a into a document that argues with itself in parentheses.*)* (Earned from the lesson-0006 primer, `course-pedagogy` row 12; extended by supplement 0006b, row 13; bounded by row 14.)
 
 ## Article IV — Evidence and verification
 
@@ -75,6 +77,30 @@ Earned from the lessons 0001–0004 review and supplement; the full defect recor
 ## Article VII — Supplements are defect signals
 
 If a shipped lesson needs a post-hoc review or supplement to be understood, the constitution failed. The response is: add the gap to `wiki/course/course-pedagogy.md`, amend the Article that should have prevented it, record the why as a dated `NOTES.md` update, and apply the fix from the next lesson forward. Shipped lessons are history — retro-edit only on explicit user request. (`lessons_review.md` and the signature-trace supplement are the founding instances of this procedure.)
+
+**Amended 2026-08-08 — the response may be subtraction.** Every one of rows 1–13 was closed by requiring more text, because this Article offered no other move. Three constraints now apply:
+
+1. **Consider cutting or splitting first.** Adding required content is the last resort, not the first.
+2. **An amendment states what it removes or replaces.** An Article that only adds must say why nothing could be cut instead.
+3. **A repair may not raise a lesson's word budget** without the user explicitly raising it.
+
+A supplement is still a defect signal. Two supplements for one lesson — 0006a and 0006b, 12,500 words between them — is a signal that the lesson should have been split, not annotated. That is row 14.
+
+## Article VIII — Readability is a shipping requirement
+
+*(Added 2026-08-08 at user request, on evidence that lessons 0001–0006b drift monotonically: mean sentence length 15.6 → 27.0 words, body length 1,339 → 7,217 words, em-dashes 26 → 185.)*
+
+`docs/style/ste-profile.md` is binding. It is derived from ASD-STE100 Issue 9 and is not compliant with it; the profile explains why, and must not be described as compliant.
+
+1. **A lesson that fails the profile does not ship, however correct its content is.** Correctness was never the defect. Reading cost was.
+2. **The term gate is the core rule.** A word appears in course material only if it is ordinary English, a Technical Name registered at `wiki/terms/<slug>.md` and defined at first use in 20 words or fewer, or a literal `<code>` identifier. `wiki/terms/` is this workspace's Technical Names registry.
+3. **Budgets bind:** 2,000 words of lesson body, at most six new Technical Names, zero sentences over 25 words, at most two em-dashes, one to three diagrams.
+4. **Teaching starts within 100 words** of the `<h1>`. Provenance, version pins, claim-labelling schemes and reading-order advice belong in the footer.
+5. **Delete writing about the writing.** Any sentence whose subject is the lesson, the section, or the word being used.
+6. **Verification is stated, not implied.** Run `tools/lesson-lint.mjs` and report the result. Where a rule was judged rather than measured, say which. Never claim a lesson passed a check that did not run.
+7. **This Article governs course material only** — `lessons/*.html`, `wiki/**/*.md`, and teaching explanations in chat. It does not govern tool use, code, commit messages, `NOTES.md`, or learning records.
+
+Enforcement surfaces, in order of reliability: `tools/lesson-lint.mjs` (mechanical), the `lesson-authoring` skill (loads the profile on any lesson task), and the `Lesson prose` output style (session-wide, opt-in). The linter is the only one that cannot be forgotten.
 
 ## Agent skills
 
