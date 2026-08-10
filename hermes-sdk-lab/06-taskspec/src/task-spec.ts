@@ -118,6 +118,7 @@ export function admitTaskSpec(raw: unknown): Admission {
   //
   // Do not throw. A bad spec is an expected outcome, not a crash.
   // ───────────────────────────────────────────────────────────────────
+
   const parsed = TaskSpecSchema.safeParse(raw);
 
   if (!parsed.success) {
