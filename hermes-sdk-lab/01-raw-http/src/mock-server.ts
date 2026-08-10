@@ -11,6 +11,12 @@
  *   `"stream": true` in the body          → 200 text/event-stream (SSE)
  * Since exercise 04 its own contract can drift (JSON path only):
  *   `x-mock-scenario: drift` header       → 200 whose BODY shape quietly changed
+ * Since exercise 07 it speaks tool use (JSON path only):
+ *   `"tools": [...]` in the body          → 200 stop_reason=tool_use + a tool_use block
+ *   a tool_result in the last message     → 200 stop_reason=end_turn, quoting it
+ *   a tool_result that pairs with nothing → 400 invalid_request_error
+ * A request with no `tools` key takes exactly the path it took before, so
+ * exercises 01 to 06 are unaffected.
  *
  * The response and error SHAPES are faithful to the real API (verified against
  * current docs); the error message WORDING is a handcrafted approximation.
@@ -58,6 +64,74 @@ let requestCounter = 0;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// ─── tool use (exercise 07) ────────────────────────────────────────────────
+// The real API decides WHICH tool to ask for by reading the conversation.
+// The mock cannot reason, so it always asks for the first declared tool and
+// invents an input from that tool's own JSON Schema. The SHAPES below are
+// faithful to the API; the CHOICE is a stand-in. The lesson says so.
+
+/** Does this message carry a tool_result block? Then the loop is on turn 2. */
+function carriesToolResult(message: unknown): boolean {
+  if (!isRecord(message) || !Array.isArray(message["content"])) return false;
+  return message["content"].some((block) => isRecord(block) && block["type"] === "tool_result");
+}
+
+/** The ids a message OFFERS: every tool_use block the assistant wrote. */
+function toolUseIds(message: unknown): Set<string> {
+  const ids = new Set<string>();
+  if (!isRecord(message) || !Array.isArray(message["content"])) return ids;
+  for (const block of message["content"]) {
+    if (isRecord(block) && block["type"] === "tool_use" && typeof block["id"] === "string") {
+      ids.add(block["id"]);
+    }
+  }
+  return ids;
+}
+
+/**
+ * ④ The pairing rule. Every tool_result must answer a tool_use in the
+ * message before it. The real API rejects a mismatch, and so does this
+ * mock: without the check, a client could drop the assistant's turn and
+ * never learn that it mattered.
+ */
+function unpairedToolResultId(messages: unknown[]): string | null {
+  const last = messages[messages.length - 1];
+  if (!carriesToolResult(last)) return null;
+  const offered = toolUseIds(messages[messages.length - 2]);
+  const content = isRecord(last) && Array.isArray(last["content"]) ? last["content"] : [];
+  for (const block of content) {
+    if (!isRecord(block) || block["type"] !== "tool_result") continue;
+    const id = block["tool_use_id"];
+    if (typeof id !== "string" || !offered.has(id)) return typeof id === "string" ? id : "(missing)";
+  }
+  return null;
+}
+
+/** Every tool_result's content, joined — the mock quotes it back in its answer. */
+function toolResultText(message: unknown): string {
+  if (!isRecord(message) || !Array.isArray(message["content"])) return "";
+  return message["content"]
+    .filter((block) => isRecord(block) && block["type"] === "tool_result")
+    .map((block) => String((block as Record<string, unknown>)["content"] ?? ""))
+    .join(" ");
+}
+
+/** Invent an input that satisfies the tool's declared required properties. */
+function inventToolInput(schema: unknown): Record<string, unknown> {
+  const properties = isRecord(schema) && isRecord(schema["properties"]) ? schema["properties"] : {};
+  const required = isRecord(schema) && Array.isArray(schema["required"])
+    ? schema["required"]
+    : Object.keys(properties);
+  const input: Record<string, unknown> = {};
+  for (const key of required) {
+    if (typeof key !== "string") continue;
+    const property = properties[key];
+    const type = isRecord(property) ? property["type"] : "string";
+    input[key] = type === "number" || type === "integer" ? 1 : type === "boolean" ? true : "atlas";
+  }
+  return input;
 }
 
 function sendJson(
@@ -307,6 +381,39 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
+  // ④ `tools` is part of the request contract too (exercise 07). Each entry
+  //    declares a name and an input_schema, and declaring them changes what
+  //    the ANSWER may contain — a reply can now ask instead of finishing.
+  const tools = parsed["tools"];
+  if (tools !== undefined) {
+    if (!Array.isArray(tools)) {
+      sendError(res, 400, requestId, "invalid_request_error", "tools: expected an array");
+      return;
+    }
+    for (const tool of tools) {
+      if (!isRecord(tool) || typeof tool["name"] !== "string" || tool["name"].length === 0) {
+        sendError(res, 400, requestId, "invalid_request_error", "tools: each tool needs a name");
+        return;
+      }
+      if (!isRecord(tool["input_schema"])) {
+        sendError(res, 400, requestId, "invalid_request_error", `tools.${tool["name"]}: input_schema is required`);
+        return;
+      }
+    }
+  }
+
+  const unpaired = unpairedToolResultId(messages);
+  if (unpaired !== null) {
+    sendError(
+      res,
+      400,
+      requestId,
+      "invalid_request_error",
+      `messages: tool_result "${unpaired}" answers no tool_use in the preceding message`,
+    );
+    return;
+  }
+
   // ④ still holds: `stream: true` is part of the request contract, and it
   // changes the response's DELIVERY, not the gates above or the Message itself.
   if (parsed["stream"] === true) {
@@ -330,6 +437,44 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       input_tokens: Math.max(1, Math.ceil(JSON.stringify(messages).length / 4)),
     },
   };
+
+  // The tool branch. Turn 1 asks for a tool; turn 2 answers, because the
+  // last message now carries the result. Note the id: the client must send
+  // it back as tool_use_id, or the API cannot pair answer to question.
+  const lastMessage: unknown = messages[messages.length - 1];
+  if (Array.isArray(tools) && tools.length > 0 && !carriesToolResult(lastMessage)) {
+    const first = tools[0] as Record<string, unknown>;
+    const toolUse = {
+      type: "tool_use" as const,
+      id: `toolu_mock_${String(requestCounter).padStart(4, "0")}`,
+      name: first["name"] as string,
+      input: inventToolInput(first["input_schema"]),
+    };
+    // A tool_use reply is still one Message. The content array simply holds
+    // a second block, and stop_reason commits to "tool_use".
+    const asking = {
+      ...body,
+      content: [{ type: "text", text: "I need the graph health report first." }, toolUse],
+      stop_reason: "tool_use",
+    };
+    sendJson(res, 200, requestId, asking);
+    console.log(
+      `  ${requestId} → 200 stop_reason=tool_use — asked for ${toolUse.name}(${JSON.stringify(toolUse.input)}) ` +
+        `id=${toolUse.id}`,
+    );
+    return;
+  }
+
+  if (carriesToolResult(lastMessage)) {
+    // The mock quotes the tool's output so you can see it crossed the wire.
+    const answered = {
+      ...body,
+      content: [{ type: "text", text: `Audit complete. The tool reported: ${toolResultText(lastMessage)}` }],
+    };
+    sendJson(res, 200, requestId, answered);
+    console.log(`  ${requestId} → 200 stop_reason=end_turn — answered from the tool_result`);
+    return;
+  }
 
   // Simulated contract drift (exercise 04): same 200, same headers, same
   // request-id — but the body no longer matches the shape your types claim.

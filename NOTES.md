@@ -319,6 +319,85 @@ its step and never to *explain* it, so 22 bare codes shipped across five lessons
   Article VII the new rule records what it displaces.
 - **Pending:** 0005 and 0006b hold the remaining bare codes and will gloss them when rewritten.
 
+## Update 2026-08-11 — lesson 0008 shipped, and the shared mock learned tool use
+
+Lesson 0008 (*Tool Use, the Loop's Heartbeat*) and lab `07-tool-loop` are in. 1,680 words, 0 errors,
+6 warnings from `tools/lesson-lint.mjs`. Three new Technical Names (`tool_use`, `tool_result`, `tool
+loop`) against a budget of six, zero em-dashes, two diagrams.
+
+- **The mock server grew a tool branch, and that was the right place for it.** `01-raw-http/src/mock-server.ts`
+  is shared by every exercise, and it already grew once per lesson (streaming in 03, drift in 04). The
+  change is additive: no `tools` key means the old code path, byte for byte. Verified by re-running
+  exercises 04 and 06 against it — 06 still reports 65 tokens and the same three rejections.
+- **The mock cannot reason, so it always asks for the first declared tool** and invents arguments from
+  that tool's own JSON Schema. Article IV.3 disclosure is in the lesson footer and the lab README.
+- **Wire truth cost one throwaway proxy again.** A logging proxy on 8788 in front of the mock captured
+  both requests of one iteration. The measurement that came out of it is the lesson's best number:
+  `input_tokens` 23 on request 1, **110** on request 2, for the same job. That is what statelessness
+  costs, and asserting it would have been weaker than showing it.
+- **`z.toJSONSchema()` removed a whole section I had planned.** A tool needs two descriptions of its
+  input: JSON Schema for the model, and a runtime check for Hermes. Zod 4.4.3 derives the first from the
+  second, so the lab declares one schema per tool. That is lesson 0005's single-source-of-truth move at a
+  third boundary, and it saved explaining why two copies were allowed to drift.
+- **I broke the TODO convention deliberately.** 0007's session flagged `TODO (Part B)` banners sitting
+  above finished code as confusing, and asked for a decision. No decision was recorded, so 0008 ships no
+  TODO banner at all: the code is complete, and the exercise is five run-observe-modify steps in the
+  README. If you prefer the old shape, say so and I will restore it.
+- **The honest half of `allowedTools`.** The spec decides which tools are declared, so an unlisted tool
+  never reaches the model. That is not enforcement, because the reply is model output and can name
+  anything. `runTool` checks the name again, and Part B measures the refusal travelling back as a
+  `tool_result` with `is_error` set. The approval gate is still lesson 0010's, and the status table says so.
+- **Judged rather than measured, as Article VIII.6 requires:** SENT-3 (passive voice) is not implemented,
+  so I read for it. SENT-2, PARA-2, PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to
+  BAN-14 and BAN-18 were judged by eye. The six remaining SENT-5 warnings are all classification-exercise
+  labels (*Choosing which tool to ask for…*). They are noun phrases naming a step, not clauses opening
+  with a participle, so I kept them.
+- **Pre-existing debt paid, not deferred:** `wiki/course/course-module-graph.md` failed TERM-7 with seven
+  bare scenario codes on one line. It is now a table with a gloss per step, and it passes.
+- **`pnpm --recursive typecheck` is still blocked** by `02-model-client-sdk/src/cilent2.ts` (misspelled
+  filename, syntax error, committed in `359dcc9`). Exercise 07 typechecks on its own, as do 01 and 06.
+  Still your file, still untouched.
+
+### What the two-axis review caught, and what I did about it
+
+The review ran before the commit and found five factual errors in shipped-quality prose. The linter
+grades style, not truth, so this is the second lesson running where `/code-review` was the only thing
+that could have caught them. All five are fixed.
+
+- **An exercise step with no failure to read.** Step 6 tells you to delete the line that pushes the
+  model's turn, then read the failure. There was none: the mock validated only the first message's role,
+  so a `tool_result` answering nothing returned 200. The real API rejects that. The mock now enforces the
+  pairing rule, and the step produces `request rejected (400): … tool_result "toolu_…" answers no
+  tool_use in the preceding message`. That is a better step than the one I wrote.
+- **An id nobody would ever see.** Both wire blocks quoted `toolu_mock_0004`, because I captured them
+  through a proxy after four earlier requests. A fresh mock hands out `toolu_mock_0001`. Recaptured, and
+  the README now says to restart the mock before comparing ids.
+- **Cost attributed to the wrong thing.** I wrote that each call resends the transcript *and the tools
+  array*, then offered 23 → 110 input tokens as the measurement. The mock estimates from `messages`
+  alone, so that rise is the transcript only. Both facts are true and only one is measured, so the
+  lesson now says which is which.
+- **Two comments that contradicted the code.** `fake-gateway.ts` claimed "no change to its code" while
+  carrying a new line, and `anthropic-gateway.ts` claimed no domain file *contains* the wire's strings
+  when several comments do. Now: one line added and why, and no line of domain *code* says them.
+- **"Iteration" meant two things.** Part A was "one iteration end to end" and reported `iterations: 2`.
+  The report field is now `modelCalls`, the constant is `MAX_MODEL_CALLS`, and an iteration is one tool
+  call answered. TERM-3 applies to code as much as to prose.
+
+Three requested changes I declined, with reasons, so the next reviewer does not re-raise them:
+
+- **`MAX_MODEL_CALLS` as scope creep into 0009.** A loop with no termination is not shippable. 0009 still
+  owns budgets, deadlines and the `AbortController`. The constant's comment now says it exists to make
+  the code correct rather than to teach budgeting.
+- **Duplicate ④ in the mock.** That file already marks the request contract, `stream` and drift as ④,
+  because they are all responsibility ④.
+- **The classification exercise's gerund labels** (*Choosing which tool to ask for…*). They are the six
+  remaining SENT-5 warnings. They name a step; they do not open a clause with a participle.
+
+Two smells were worth fixing on their own merits. The Zod issue formatter had reached three copies, so
+it moved to `issues.ts` and all three boundaries import it. And `defineTool` now closes over each tool's
+own schema, so a tool body reads `input.graph` instead of coercing an unknown, with no type assertion
+anywhere in the file.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

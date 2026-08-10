@@ -30,7 +30,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 ---
 
-## Phase 1 — The manual bounded loop — *open; next up: 0008*
+## Phase 1 — The manual bounded loop — *open; next up: 0009*
 
 **Goal:** implement the Hermes loop by hand — bounded, permissioned, budgeted, traceable — before any framework touches it.
 **Entry decision:** provider neutrality vs Claude-only — **decided in lesson 0006 (2026-07-29): provider-neutral port, exactly one live adapter.** Neutrality is a property of the seam (Hermes-owned vocabulary in `gateway.ts`); provider choice is policy above the port; the `FakeModelGateway` is the second implementation that keeps the contract honest. Rationale in NOTES.md.
@@ -40,7 +40,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 |---|---|---|---|---|
 | 0006 | [The Model Gateway](lessons/0006-the-model-gateway.html) | `05-model-gateway` | wrap the SDK behind a port: mechanics below, policy above; the provider-neutrality decision lands; `FakeModelGateway` exists from day one | ✅ |
 | 0007 | [The TaskSpec Is a Contract](lessons/0007-the-taskspec-is-a-contract.html) | `06-taskspec` | a Zod-validated TaskSpec — invalid work rejected before a token is spent, measured at zero requests; `.default()` splits input from output types; cross-field rules become refinements | ✅ |
-| 0008 | Tool Use — the Loop's Heartbeat | `07-tool-loop` | `tool_use` / `tool_result` blocks, `stop_reason: "tool_use"`, one manual iteration end to end | ▶ |
+| 0008 | [Tool Use, the Loop's Heartbeat](lessons/0008-tool-use-the-loops-heartbeat.html) | `07-tool-loop` | `tool_use` / `tool_result` blocks, `stop_reason: "tool_use"`, one manual iteration end to end; the transcript becomes Hermes's, and `allowedTools` gets its first reader | ✅ |
 | 0009 | Bounds and Termination | `07-tool-loop` | iteration caps, token budgets, deadlines; lesson 0004's mid-stream abort becomes budget *enforcement* | ○ |
 | 0010 | Approval Gates and Permissions | `07-tool-loop` | which tool calls run, which wait for a human; permissions as data, not vibes | ○ |
 | 0011 | The Trace Is What Happened | `07-tool-loop` | a durable, replayable record of every run; resume and diagnose; trace graph stays separate from knowledge and workflow | ○ |
@@ -48,7 +48,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 *Provisional shape: labs `07-tool-loop` onward evolve one codebase across lessons rather than starting fresh each time. Expect this table to compress or split as sessions reveal pace.*
 
-*Lesson maps in the wiki: [[lesson-0006-the-model-gateway]] · [[lesson-0007-the-taskspec-is-a-contract]].*
+*Lesson maps in the wiki: [[lesson-0006-the-model-gateway]] · [[lesson-0007-the-taskspec-is-a-contract]] · [[lesson-0008-tool-use-the-loops-heartbeat]].*
 
 *Supplement (2026-07-29): [0006a — Hermes Architecture Primer: Where the Model Gateway Fits](lessons/0006a-hermes-architecture-primer.html) — the Spec-to-Evidence Loop drawn end to end, "policy" defined operationally, and an implemented/seeded/planned ledger for exercise 05 (a one-call policy seed; no routing, budgets, permissions, or trace yet). Durable reference: [wiki/course/course-architecture.md](wiki/course/course-architecture.md). Defect record: [[course-pedagogy]] row 12. Adds no capability and shifts no lesson — 0007 remains next.*
 

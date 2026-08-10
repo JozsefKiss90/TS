@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0008 — Tool Use, the Loop's Heartbeat</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 1 · Lesson 0008 · lab exercise 07-tool-loop · ~45–60 min</p>
+  <h1>Tool Use, the Loop's Heartbeat</h1>
+  <p class="lede">Exercise 06 sent one request and read one answer. What should the supervisor do when the
+  answer is a question?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S5 (the loop iterates) is the job supervisor's core. The model asks for a tool, Hermes
+  decides whether to run it, and the result goes back. Exercise 06 could never reach that step, because
+  it made exactly one call. Today the boundary rule covers a third input: the arguments a model chose.
+  The spec's <code>allowedTools</code> field gets its first reader.
+</div>
+
+<h2>1 · The reply that asks a question</h2>
+
+<p>Open exercise 06's <code>supervisor.ts</code>. It calls <code>gateway.complete</code> once, reads the
+outcome, and returns a report. One job is one request and one answer.</p>
+
+<p>An audit cannot work that way. The model has no access to the atlas graph. It can write about a health
+report it never saw, or it can ask for one. The API lets it ask, and Hermes answers in the next
+request.</p>
+
+<p>The model still runs nothing. A reply can request a tool by name. Hermes owns the code, the decision,
+and the result.</p>
+
+<table>
+  <tr><th>Layer</th><th>Changed?</th><th>Evidence</th></tr>
+  <tr><td>the endpoint ①</td><td>no</td><td>one <code>POST /v1/messages</code> per model call</td></tr>
+  <tr><td>the six responsibilities ①–⑥</td><td>no</td><td>the SDK still runs all six, below the port</td></tr>
+  <tr><td>the request body ④</td><td>yes</td><td>a <code>tools</code> array, and a <code>messages</code> array that grows</td></tr>
+  <tr><td>the reply's content ④</td><td>yes</td><td>a second kind of block, and a fourth <code>stop_reason</code></td></tr>
+  <tr><td>the port</td><td>yes</td><td><code>ModelCall.transcript</code> replaces exercise 06's <code>prompt</code></td></tr>
+  <tr><td>who runs a tool</td><td>no</td><td>Hermes does. The provider never did and still does not</td></tr>
+</table>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>A reply can ask for a tool instead of finishing.</li>
+    <li>The answer travels back as a block keyed to the question.</li>
+    <li>The API remembers nothing, so Hermes resends the whole conversation.</li>
+    <li>A short tool list is an offer, and an offer is not enforcement.</li>
+  </ul>
+  <p>Reprise: narrowing a union on its tag, the boundary parse of lesson 0005, and
+  <code>allowedTools</code> from lesson 0007.</p>
+</div>
+
+<h2>2 · Three blocks on the wire</h2>
+
+<p>One word does six jobs from here on, so settle the six before reading any wire.</p>
+
+<table>
+  <tr><th>Where you read "tool"</th><th>What it means there</th></tr>
+  <tr><td><code>tools</code>, in the request</td><td>the list Hermes declares this job may use</td></tr>
+  <tr><td>a <code>tool_use</code> block</td><td>one request from the model, naming a tool and its arguments</td></tr>
+  <tr><td>a <code>tool_result</code> block</td><td>Hermes's answer to one such request</td></tr>
+  <tr><td><code>allowedTools</code>, in the spec</td><td>the names the operator permitted for this job</td></tr>
+  <tr><td><code>tools.ts</code></td><td>the catalogue: descriptions, schemas, and the code that runs</td></tr>
+  <tr><td><code>from: "tools"</code></td><td>the transcript turn that carries results back</td></tr>
+</table>
+
+<p>Hermes declares its tools in the request. Each entry carries a name, a description, and an
+<code>input_schema</code>, which is JSON Schema. The description and the schema are all the model has to
+work from, so both are part of the interface.</p>
+
+<pre><code>"tools": [{
+  "name": "graph_health",
+  "description": "Report health counters for one graph: nodes, orphans and stale edges.",
+  "input_schema": {"type": "object",
+                   "properties": {"graph": {"type": "string", "minLength": 1,
+                                            "description": "The graph to inspect…"}},
+                   "required": ["graph"]}
+}]</code></pre>
+
+<p>The lab writes that schema once, in Zod, and derives three readers from it. The call to
+<code>z.toJSONSchema()</code> returns a plain object at startup, and <code>offerTools</code> keeps the
+three fields above. The same Zod schema then parses the arguments that come back, and types the tool's
+own body. That is lesson 0005's single source of truth, aimed at a third boundary.</p>
+
+<p>A <dfn>tool_use</dfn> block is the model's request to run one named tool, with arguments. It arrives
+inside an ordinary assistant message, next to any text.</p>
+
+<pre><code>"content": [
+  {"type": "text", "text": "I need the graph health report first."},
+  {"type": "tool_use", "id": "toolu_mock_0001",
+   "name": "graph_health", "input": {"graph": "atlas"}}
+],
+"stop_reason": "tool_use"</code></pre>
+
+<p>A <dfn>tool_result</dfn> block carries what the tool returned, keyed to the request it answers. The
+<code>tool_use_id</code> repeats the id above. Without that key the provider cannot pair the two.</p>
+
+<pre><code>{"role": "user", "content": [
+  {"type": "tool_result", "tool_use_id": "toolu_mock_0001",
+   "content": "graph=atlas nodes=1284 orphans=3 stale_edges=2", "is_error": false}
+]}</code></pre>
+
+<p>Read the role on that message. The wire has no tool role, so a result rides inside a user turn, and
+the conversation still alternates. The domain calls the turn <code>from: "tools"</code>, and
+<code>anthropic-gateway.ts</code> is the only file that knows the wire's spelling.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    participant SUP as runTask
+    participant CAT as tools.ts
+    participant PORT as the port
+    participant API as the API
+    SUP->>PORT: transcript + tools declared from allowedTools
+    PORT->>API: POST /v1/messages
+    API-->>PORT: stop_reason tool_use + tool_use block
+    PORT-->>SUP: stop wants_tool + ToolCall
+    SUP->>CAT: runTool(call, allowedTools)
+    CAT-->>SUP: ToolOutcome (output, failed)
+    SUP->>PORT: the same transcript, two turns longer
+    PORT->>API: POST /v1/messages, with tool_result
+    API-->>PORT: stop_reason end_turn + text
+</pre>
+<figcaption>Diagram 1. One tool call, answered. Part A makes two model calls for one job.</figcaption>
+</figure>
+
+<h2>3 · The loop, and what it costs</h2>
+
+<p>The <dfn>tool loop</dfn> repeats until a reply stops asking. In the lab it is one call inside a
+<code>for</code>, and two turns join the transcript each time round. A turn is a value of this type,
+declared in <code>gateway.ts</code>:</p>
+
+<pre><code>export type Turn =
+  | { from: "operator"; text: string }
+  | { from: "model"; text: string; calls: ToolCall[] }
+  | { from: "tools"; results: ToolOutcome[] };</code></pre>
+
+<p>Part A's transcript, at the moment of the second request:</p>
+
+<pre><code>[ { from: "operator", text: "Summarize the atlas graph health check…" },
+  { from: "model",    text: "I need the graph health report first.",
+                      calls: [{ id: "toolu_mock_0001", name: "graph_health",
+                                input: { graph: "atlas" } }] },
+  { from: "tools",    results: [{ id: "toolu_mock_0001", failed: false,
+                                  output: "graph=atlas nodes=1284 orphans=3 stale_edges=2" }] } ]</code></pre>
+
+<p>Three arms, narrowed on <code>from</code>, which is the union shape you met in lesson 0005 and again
+in lesson 0006. The adapter turns each arm into a message, and only the adapter knows which role.</p>
+
+<pre><code>const result = await gateway.complete({ transcript, maxTokens: spec.maxTokens, tools }, options);
+// …failure handling unchanged from exercise 06…
+transcript.push({ from: "model", text: reply.text, calls: reply.calls });
+if (reply.stop !== "wants_tool") return report("landed", modelCall, [ … ]);
+
+const results = reply.calls.map((call) =&gt; runTool(call, spec.allowedTools));
+transcript.push({ from: "tools", results });</code></pre>
+
+<p>The model's turn is pushed before the tools run. Drop it and the next request answers a question the
+provider has no record of. One turn carries every result, in the order the model asked, because a reply
+may hold several <code>tool_use</code> blocks.</p>
+
+<p>The transcript belongs to Hermes. The API keeps no memory between requests, so every model call
+resends the whole conversation, and the tools array with it. Part A measures what the transcript costs.
+Request 1 reports <code>input_tokens: 23</code> and request 2 reports 110, for the same job. The mock
+estimates from the messages alone, so that rise is the transcript. A real provider bills the tool
+declarations as well.</p>
+
+<p><code>allowedTools</code> now has two readers. It decides which tools are declared, so an unlisted
+tool never reaches the model. It is also checked again when a call comes back, because a reply is model
+output and can name anything at all. Part B measures that second check.</p>
+
+<pre><code>graph_writeback → refused        // in the catalogue, absent from allowedTools
+turns sent per model call: [ 1, 3 ]
+  model call 1: operator
+  model call 2: operator → model → tools</code></pre>
+
+<p>The refusal travels as a <code>tool_result</code> with <code>is_error</code> set, and the model tries
+something else. A refused tool is an answer, not a crash.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    START["transcript: the instruction"] --> CALL["gateway.complete"]
+    CALL --> STOP{"reply.stop"}
+    STOP -->|"completed"| DONE["report: landed"]
+    STOP -->|"wants_tool"| NAME{"name in allowedTools,<br/>arguments parse?"}
+    NAME -->|"no"| ERR["ToolOutcome failed<br/>is_error on the wire"]
+    NAME -->|"yes"| RUN["run it — ToolOutcome"]
+    ERR --> GROW["push both turns"]
+    RUN --> GROW
+    GROW --> CAP{"model calls &lt;= MAX_MODEL_CALLS"}
+    CAP -->|"yes"| CALL
+    CAP -->|"no"| GAVE["report: gave_up"]
+</pre>
+<figcaption>Diagram 2. Where the loop can end. Lesson 0009 replaces the literal cap with the spec's
+budget.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>A model call can request a tool</td><td>implemented</td><td><code>gateway.ts</code>, and the adapter's boundary parse</td></tr>
+  <tr><td>Hermes runs the tool and answers</td><td>implemented</td><td><code>tools.ts</code>, measured in Parts A and B</td></tr>
+  <tr><td>A tool list per job</td><td>implemented</td><td><code>offerTools(spec.allowedTools)</code></td></tr>
+  <tr><td>Real evidence behind a tool</td><td>prepared</td><td><code>graph_health</code> answers from canned data. Phase 2 serves the graph over MCP</td></tr>
+  <tr><td>A bound on the loop</td><td>prepared</td><td><code>MAX_MODEL_CALLS</code> is a literal. Lesson 0009 makes it a budget and a deadline</td></tr>
+  <tr><td>An operator approves a tool call</td><td>planned</td><td>No code queues anything for a human. That is lesson 0010</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and the measured table live in <code>07-tool-loop/README.md</code>. The arc:</p>
+
+<ol>
+  <li>Run Part A with the mock's terminal visible. Read its two log lines.</li>
+  <li>Add <code>"graph_writeback"</code> to the spec's <code>allowedTools</code>, then run Part A
+  again.</li>
+  <li>Set <code>allowedTools</code> to <code>["graph_delete"]</code>, a name nothing implements. Predict
+  the two lines Part A prints before you run it.</li>
+  <li>Run Part C, and say what its 65 tokens have in common with exercise 06.</li>
+  <li>Add a third tool to the catalogue: one Zod schema, one description, one body.</li>
+  <li>Comment out the line that pushes the model's turn. Read the 400, and say which check caught
+  it.</li>
+</ol>
+
+<h2>5 · Exercise: who owns each step?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each step with the layer that performs it</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the model|Hermes, above the port|the adapter, below the port|nobody yet">
+    <div class="cl-item" data-cat="0" data-why="Measured in Part A. The reply named graph_health and supplied the graph argument. The model only chooses.">
+      <p>Choosing which tool to ask for, and with what arguments.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="tools.ts holds the implementations. runTool checks the name against allowedTools, parses the arguments, then dispatches.">
+      <p>Running the tool and producing its output.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="The domain says from: 'tools'. anthropic-gateway.ts turns that into a user message carrying tool_result blocks.">
+      <p>Deciding that a tool result travels in a <code>user</code> message.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="offerTools reads the spec. A tool the spec does not list is never declared, so the model cannot ask for it.">
+      <p>Deciding which tools the model is told about.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="Nothing queues a call for a human. Lesson 0010 adds the approval gate that step S5 describes.">
+      <p>Holding a tool call until an operator approves it.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="STOP_MAP translates tool_use to wants_tool. No line of domain code spells the wire's word.">
+      <p>Translating <code>stop_reason</code> into <code>wants_tool</code>.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="1" data-why="The API is stateless, so every model call resends the transcript and the input half of the bill grows with it. The mock estimates from the messages alone.">
+    <p class="qz-prompt">Q1. Part A measured <code>input_tokens</code> at 23, then 110. Why did it rise?</p>
+    <button class="qz-opt" type="button">The tool's output is billed at a higher rate than ordinary text</button>
+    <button class="qz-opt" type="button">The second request resent the whole transcript, the tool result included</button>
+    <button class="qz-opt" type="button">The provider adds a surcharge to any request that declares a tool</button>
+    <button class="qz-opt" type="button">The second call raised maxTokens, so the ceiling moved with it</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="Measured in Part B. The reply is model output, so it can name anything. runTool checks the name against allowedTools again and returns a failed outcome.">
+    <p class="qz-prompt">Q2. A reply asks for a tool the spec never permitted. What does the lab do?</p>
+    <button class="qz-opt" type="button">The adapter drops the block, because the schema rejects the name</button>
+    <button class="qz-opt" type="button">The supervisor throws, because a bad name is an unexpected outcome</button>
+    <button class="qz-opt" type="button">Nothing catches it, because the tool list was already filtered</button>
+    <button class="qz-opt" type="button">It refuses the call and reports the refusal as a failed tool result</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The wire has no tool role. The block rides in a user message, and tool_use_id is what pairs it with the request it answers.">
+    <p class="qz-prompt">Q3. Which message role carries a <code>tool_result</code> block, and what pairs it?</p>
+    <button class="qz-opt" type="button">The user role, paired by the tool_use_id it repeats</button>
+    <button class="qz-opt" type="button">The tool role, paired by the position of the block</button>
+    <button class="qz-opt" type="button">The assistant role, paired by the name of the tool</button>
+    <button class="qz-opt" type="button">The user role, paired by the request id of the call</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="A tool_use block is a request, not an action. Hermes holds the implementations and decides. Part C shows the other side: a job with no permitted tools sends no tools key at all.">
+    <p class="qz-prompt">Q4. What does the provider do when a reply contains a <code>tool_use</code> block?</p>
+    <button class="qz-opt" type="button">It runs the named tool and includes the output in the same reply</button>
+    <button class="qz-opt" type="button">It waits for the tool to answer, holding the request open</button>
+    <button class="qz-opt" type="button">Nothing. It has returned a reply, and the next move is Hermes's</button>
+    <button class="qz-opt" type="button">It retries the call until the client declares a matching tool</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Explain why the transcript lives in Hermes rather than at the provider.</li>
+  <li>A reviewer says the name check in <code>runTool</code> is redundant, because unlisted tools are
+  never declared. Answer in two sentences.</li>
+  <li>Name the three boundaries a tool call crosses, and say what parses each one.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A reply can ask for a tool,
+<code>stop_reason</code> reads <code>tool_use</code>, and Hermes runs the tool rather than the provider.
+The answer goes back as a <code>tool_result</code> block, keyed by <code>tool_use_id</code>, inside a
+user message. The API remembers nothing, so every model call resends the transcript and pays for it
+again. The spec decides which tools are declared, and Hermes checks the name again when the call comes
+back.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the Anthropic <a href="https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview">tool
+use overview</a>, then its page on <a href="https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons">handling
+stop reasons</a>. Compare the loop they describe with the one in <code>supervisor.ts</code>, and note
+which bounds they leave to you.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and number here was verified against
+  <code>@anthropic-ai/sdk</code> 0.113.0 and <code>zod</code> 4.4.3, by live runs against the exercise 01
+  mock. The wire capture came from a logging proxy in front of it. The mock cannot reason, so it always
+  asks for the first declared tool and invents arguments from that tool's schema. The block shapes are
+  faithful to the API. The choice of tool is a stand-in. The three new terms have notes under
+  <code>wiki/terms/</code>.</p>
+  <p><strong>Next.</strong> Lesson 0009, <em>Bounds and Termination</em>, in the same lab. The iteration
+  cap becomes a token budget and a deadline, and lesson 0004's mid-stream abort becomes the thing that
+  enforces them.</p>
+</footer>
+
+</body>
+</html>

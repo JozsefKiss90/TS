@@ -1,0 +1,7 @@
+{
+  "title": "Audit the atlas graph, from memory",
+  "owner": "themis",
+  "instruction": "Summarize the atlas graph health check in three bullet points.",
+  "costCeilingTokens": 2000,
+  "outputPath": "vault/audits/atlas-no-tools.md"
+}
