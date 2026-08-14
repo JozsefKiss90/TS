@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0009 — Bounds and Termination</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 1 · Lesson 0009 · lab exercise 07-tool-loop · ~45–60 min</p>
+  <h1>Bounds and Termination</h1>
+  <p class="lede">Lesson 0008's loop stopped at a hard-coded 4. Who owns the bounds, and what stops a
+  reply that is already being generated?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S6 (the budget is enforced) is the cost guarantee. The job declares a call cap, a token
+  ceiling and a deadline, and the supervisor enforces all three. Responsibility ⑥, cancellation, stops
+  being a cost lever and becomes the enforcement mechanism. You predicted this design after lesson 0004:
+  an in-flight stop must act on an estimate, because the true count arrives last. Today the lab measures
+  your prediction.
+</div>
+
+<h2>1 · The bounds move into the spec</h2>
+
+<p>A literal in code is a bound nobody declared. Lesson 0008's <code>MAX_MODEL_CALLS</code> kept the loop
+correct, but no operator chose it and no spec file could change it. It is gone. The schema from lesson
+0007 now carries every bound the loop obeys.</p>
+
+<pre><code>maxTokens:         z.number().int().positive().max(4096).default(1024),
+costCeilingTokens: z.number().int().positive(),
+maxModelCalls:     z.number().int().positive().max(20).default(4),
+deadlineMs:        z.number().int().positive().default(60_000),</code></pre>
+
+<p>Four limits, and they divide cleanly. The provider enforces <code>maxTokens</code>, per call: a reply
+that reaches it stops with the wire's <code>max_tokens</code> stop reason. Hermes enforces the other
+three, across the whole job. The two new fields default rather than demand, because a spec that says
+nothing must still terminate. Here is Part E's spec file, and what an admitted spec becomes:</p>
+
+<pre><code>// specs/tight-budget.json — 6 keys in     // the admitted TaskSpec — 8 keys out
+{ "title": "Audit the atlas graph under a tight budget",
+  "owner": "themis",
+  "instruction": "Summarize the atlas…",
+  "maxTokens": 128,
+  "costCeilingTokens": 190,               // maxModelCalls: 4   (default)
+  "allowedTools": ["graph_health"],       // deadlineMs: 60000  (default)
+  "outputPath": "vault/audits/…" }</code></pre>
+
+<p>The report changed with the spec. <dfn>Termination</dfn> is the guarantee that a job ends after
+finitely many model calls, with a classified outcome. The outcome union gains two arms, so a bound that
+fires is named, not buried in a note:</p>
+
+<pre><code>outcome: "landed" | "retry_later" | "gave_up" | "over_budget" | "out_of_time"</code></pre>
+
+<table>
+  <tr><th>Layer</th><th>Changed?</th><th>Evidence</th></tr>
+  <tr><td>the six responsibilities, ① endpoint to ⑥ cancellation</td><td>no</td><td>the SDK still runs all six, below the port</td></tr>
+  <tr><td>the request body</td><td>yes</td><td><code>"stream": true</code> joins every call the adapter builds</td></tr>
+  <tr><td>the delivery</td><td>yes</td><td>lesson 0004's event grammar, on every call</td></tr>
+  <tr><td>the assembled <code>Message</code></td><td>no</td><td>byte-equal to the JSON path, measured in lesson 0004</td></tr>
+  <tr><td>the port</td><td>yes</td><td>an <code>onProgress</code> option, and partial text on the aborted arm</td></tr>
+  <tr><td>who enforces the bounds</td><td>yes</td><td>Hermes. The provider only ever enforced <code>maxTokens</code></td></tr>
+</table>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>Every bound comes from the spec, and every exit is a classified outcome.</li>
+    <li>Enforcement runs at three moments: before a call, during it, and after it.</li>
+    <li>The true cost arrives too late to enforce, so the in-flight check acts on an estimate.</li>
+    <li>One <code>AbortController</code> serves every bound, so cancellation becomes enforcement.</li>
+    <li>An aborted generation still lands, because the partial text is kept.</li>
+  </ul>
+  <p>Reprise: the event grammar and the abort from lesson 0004, the boundary parse from lesson 0005,
+  the spec from lesson 0007, and the loop from lesson 0008.</p>
+</div>
+
+<h2>2 · Enforcement has three moments</h2>
+
+<p>The gateway streams every call now. The reason is a single sentence: a bound that is only checked
+after a reply lands cannot stop the reply. Streaming gives the supervisor a view into a running call,
+and the port carries that view as a third discriminated union, narrowed on <code>kind</code>:</p>
+
+<pre><code>export type CallProgress =
+  | { kind: "call_started"; inputTokens: number }   // e.g. { kind: "call_started", inputTokens: 110 }
+  | { kind: "text"; chars: number };                // e.g. { kind: "text", chars: 22 }</code></pre>
+
+<p>Read what the union does not offer: output tokens. The wire explains why. Part E's second call opened
+with this frame, captured through the logging proxy:</p>
+
+<pre><code>event: message_start
+data: {"type":"message_start","message":{…,"content":[],"stop_reason":null,
+       "usage":{"input_tokens":110,"output_tokens":1,…}}}</code></pre>
+
+<p>The input count is true from the first frame, because the provider has read the request. The output
+count is a placeholder, because those tokens do not exist yet. The truth arrives in the last frame of a
+finished reply:</p>
+
+<pre><code>event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use",…},
+       "usage":{"output_tokens":42}}</code></pre>
+
+<p>So the supervisor enforces at three moments. Before a call, it refuses to start one when the ledger
+has reached the ceiling. During a call, it adds booked spend, the call's true input, and an estimated
+output: one token per three characters seen. Text averages about four characters per token, so dividing
+by three errs high, and erring high stops a generation early rather than late. After a call, the true
+counts arrive and the ledger books them.</p>
+
+<p>An aborted call never receives its <code>message_delta</code>, so its true cost never arrives. Part E
+booked 191 tokens against a ceiling of 190, and the report says the number is an estimate. The check
+before the next call is what makes the small overshoot safe: a job at its ceiling never starts
+another call.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    participant SUP as runTask
+    participant PORT as the gateway
+    participant API as the API
+    SUP->>SUP: before — ledger under the ceiling?
+    SUP->>PORT: complete(call) with onProgress
+    API-->>PORT: message_start with input_tokens 110
+    PORT-->>SUP: call_started — estimate 175, alert at 80%
+    API-->>PORT: three text deltas, 46 chars
+    PORT-->>SUP: text — estimate reaches 191
+    SUP->>API: during — abort() mid-generation
+    Note over PORT,API: no message_delta — the true<br/>output count never arrives
+    PORT-->>SUP: aborted, partialText kept
+</pre>
+<figcaption>Diagram 1. Part E's second call. The truth arrives too late, so the abort acts on the
+estimate.</figcaption>
+</figure>
+
+<h2>3 · One controller, every bound</h2>
+
+<p>Lesson 0004 taught the abort as a cost lever: the remainder of an aborted stream is never generated
+and never billed. Lesson 0009 pulls that trigger from policy. The supervisor arms one
+<code>AbortController</code> per job, and three hands can fire it:</p>
+
+<pre><code>const bounds = new AbortController();
+const deadline = setTimeout(() => { boundHit = "deadline"; bounds.abort(); }, spec.deadlineMs);
+const signal = options?.signal
+  ? AbortSignal.any([options.signal, bounds.signal])
+  : bounds.signal;</code></pre>
+
+<p>The static method <code>AbortSignal.any</code> takes an array of signals and returns one that aborts
+when any of them does. The operator's signal and the job's own bounds merge into one line to the
+gateway. The SDK tears the request down when that line fires, as measured in lesson 0004. The abort itself
+does not say why it happened. The supervisor knows, because it fired the controller, and
+<code>boundHit</code> records which bound pulled the trigger.</p>
+
+<p>What the abort interrupts is not lost. A <dfn>partial artifact</dfn> is the output kept from a
+generation that was stopped before it finished. The gateway accumulates the streamed text and returns it
+on the aborted arm, and the report carries it toward S8 (outputs land). Part E kept 46 of 82 characters.
+Part F, with a 2400 ms deadline, ended at 2424 ms and kept 24. The remainder was never generated and
+never billed.</p>
+
+<pre><code>outcome: 'over_budget',   tokensSpent: 191,
+notes: [ 'budget alert: estimated spend passed 80% of 190',
+         'ceiling 190 reached mid-generation; spend is estimated — the true count never arrived',
+         'partial artifact kept (46 chars): Audit complete. The tool reported: graph=atlas' ]</code></pre>
+
+<p>Part D closes the triangle offline. The fake answers instantly, so there is no mid-generation to
+watch, and the cap works between calls. A spec with <code>maxModelCalls: 2</code> ran against a fake
+scripted with three tool-hungry replies. The report says <code>gave_up</code> after two calls, and the
+third scripted reply was never requested.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    START["transcript: the instruction"] --> PRE{"ledger under ceiling,<br/>calls under cap?"}
+    PRE -->|"ceiling reached"| OB["report: over_budget"]
+    PRE -->|"cap reached"| GAVE["report: gave_up"]
+    PRE -->|"yes"| CALL["gateway.complete, streaming"]
+    CALL --> WATCH{"estimate crosses ceiling,<br/>or deadline passes?"}
+    WATCH -->|"budget"| OB2["abort — over_budget,<br/>partial kept"]
+    WATCH -->|"deadline"| OT["abort — out_of_time,<br/>partial kept"]
+    WATCH -->|"reply finishes"| BOOK["book true usage"]
+    BOOK --> STOP{"reply.stop"}
+    STOP -->|"completed"| DONE["report: landed"]
+    STOP -->|"wants_tool"| RUN["run tools, grow transcript"]
+    RUN --> PRE
+</pre>
+<figcaption>Diagram 2. Every exit is a classified outcome. Failure arms from lesson 0008 are
+unchanged.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>Call cap, budget and deadline from the spec</td><td>implemented</td><td><code>task-spec.ts</code>, enforced in <code>supervisor.ts</code>, measured in Parts D, E and F</td></tr>
+  <tr><td>Mid-generation abort with partial kept</td><td>implemented</td><td>the gateway's aborted arm carries the streamed text</td></tr>
+  <tr><td>The partial artifact lands at <code>outputPath</code></td><td>prepared</td><td>it lands in the report's notes. Nothing writes files yet</td></tr>
+  <tr><td>The 80% alert reaches an operator</td><td>prepared</td><td>it is a report note. No operator channel exists</td></tr>
+  <tr><td>An operator approves a tool call</td><td>planned</td><td>lesson 0010</td></tr>
+  <tr><td>The abort appears in a durable trace</td><td>planned</td><td>lesson 0011</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and the measured table live in <code>07-tool-loop/README.md</code>, steps 7 to 10. The
+arc:</p>
+
+<ol>
+  <li>Run Part D. Set <code>maxModelCalls</code> to 1, predict the report, then run again.</li>
+  <li>Run Part E with the mock's terminal visible. Match its last delta against the partial artifact
+  in the report.</li>
+  <li>Raise the tight budget's ceiling to 250. Predict which bound fires now, then run.</li>
+  <li>Lower the deadline to 300 ms, and say where the abort lands before you run.</li>
+</ol>
+
+<h2>5 · Exercise: which moment enforces it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each check at the moment it runs</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="before a call|during a call|after a call|the provider, per call">
+    <div class="cl-item" data-cat="0" data-why="The pre-call check. A job whose ledger has reached the ceiling never starts another call, and reports over_budget.">
+      <p>Refusing to start a call because the ledger reached the ceiling.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="Measured in Part E. The estimate crossed 190 three deltas in, and the controller fired mid-generation.">
+      <p>Aborting a generation because the estimate crossed the ceiling.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="Only a finished reply carries true usage, in its final frame. The ledger books truth, never estimates, for completed calls.">
+      <p>Booking a call's true token counts into the ledger.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="maxTokens rides in the request body, and the provider stops generation at that count. The wire reports stop_reason max_tokens.">
+      <p>Stopping one reply at the spec's <code>maxTokens</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="The loop's own condition. Call number maxModelCalls + 1 is never made, whatever the model still wants.">
+      <p>Ending the job because the call cap is spent.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The alert fires the first time the estimate passes 80% of the ceiling. In Part E that happened at call_started, from the input count alone.">
+      <p>Raising the alert at 80% of the ceiling.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="A bound checked only after a reply lands cannot stop the reply. Streaming gives the supervisor progress to act on while the tokens are still being generated.">
+    <p class="qz-prompt">Q1. Why does the gateway stream every call since this lesson?</p>
+    <button class="qz-opt" type="button">Streaming is cheaper, because deltas bill at a lower rate than one body</button>
+    <button class="qz-opt" type="button">The mock can only speak the tool grammar over its streaming path</button>
+    <button class="qz-opt" type="button">Enforcement needs to see inside a call, or it can only act between calls</button>
+    <button class="qz-opt" type="button">The SDK retries streamed requests, and retries make the loop terminate</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="True output_tokens arrive only in message_delta, and an aborted call never receives that frame. The supervisor books input truth plus a deliberately high output estimate.">
+    <p class="qz-prompt">Q2. Part E reports 191 tokens spent against a ceiling of 190. Why is the number an estimate?</p>
+    <button class="qz-opt" type="button">The mock rounds its token counts up, so every report overshoots by one</button>
+    <button class="qz-opt" type="button">The aborted call's final frame never arrived, so its true output count does not exist</button>
+    <button class="qz-opt" type="button">The ledger adds the tools array on every call, and its size is unknown</button>
+    <button class="qz-opt" type="button">The abort raced the last delta, so one chunk was counted two times</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The failure data says aborted and nothing else. The supervisor fired the controller itself, so boundHit records whether the budget, the deadline, or nobody pulled the trigger.">
+    <p class="qz-prompt">Q3. The gateway returns <code>kind: "aborted"</code>. How does the supervisor pick between <code>over_budget</code>, <code>out_of_time</code> and <code>gave_up</code>?</p>
+    <button class="qz-opt" type="button">It remembers which bound fired the controller, because the abort itself does not say</button>
+    <button class="qz-opt" type="button">It reads the reason from the failure, because the adapter classifies the cause</button>
+    <button class="qz-opt" type="button">It compares the ledger to the ceiling, and the larger number names the outcome</button>
+    <button class="qz-opt" type="button">It asks the provider, whose error body names the bound that was breached</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="maxTokens bounds one reply and rides the request, so the provider enforces it. The ceiling spans every call of the job, which only Hermes can see.">
+    <p class="qz-prompt">Q4. Why can the provider enforce <code>maxTokens</code> but never <code>costCeilingTokens</code>?</p>
+    <button class="qz-opt" type="button">The ceiling is measured in dollars, and the provider only counts tokens</button>
+    <button class="qz-opt" type="button">The provider enforces nothing, and both bounds belong to the supervisor</button>
+    <button class="qz-opt" type="button">The ceiling arrives in the spec file, which the provider refuses to parse</button>
+    <button class="qz-opt" type="button">The API is stateless per call, and the ceiling spans calls only Hermes can see</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Explain why the in-flight budget check acts on an estimate, and which way the estimate must
+  err.</li>
+  <li>A reviewer proposes checking the budget only between calls, to avoid estimates entirely. Say
+  what that design loses, in two sentences.</li>
+  <li>Name the three bounds a spec declares for the loop, and the outcome each one produces when it
+  fires.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. Every bound a job obeys comes from its
+spec: a call cap, a token ceiling, and a deadline. Enforcement runs before a call, during it, and after
+it, and every exit is a classified outcome. The wire reports input tokens first and output tokens last,
+so the in-flight check acts on an estimate that errs high. One <code>AbortController</code> serves the
+budget, the deadline, and the operator, and an aborted generation still yields a partial artifact.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the Anthropic <a href="https://platform.claude.com/docs/en/build-with-claude/streaming">streaming
+documentation</a> and find where <code>usage</code> appears in <code>message_start</code> and in
+<code>message_delta</code>. Then compare its abort guidance with <code>supervisor.ts</code>, and note
+that the provider offers no budget of this kind: the ceiling is yours to enforce.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and number here was verified against
+  <code>@anthropic-ai/sdk</code> 0.113.0 and <code>zod</code> 4.4.3, by live runs against the exercise 01
+  mock. The wire frames came from a logging proxy in front of it. The mock's token counts are estimates
+  and its canned output is 42 tokens. The measured ledgers are exact for this mock and illustrative for
+  a real provider. The SSE grammar and block shapes are faithful to the API. The two new terms have
+  notes under <code>wiki/terms/</code>.</p>
+  <p><strong>Next.</strong> Lesson 0010, <em>Approval Gates and Permissions</em>, in the same lab. The
+  loop can stop itself now. Next it learns to wait: which tool calls run, and which queue for a
+  human.</p>
+</footer>
+
+</body>
+</html>

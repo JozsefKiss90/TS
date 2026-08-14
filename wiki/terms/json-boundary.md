@@ -17,10 +17,10 @@ tags:
 
 # JSON boundary
 
-The seam where serialized bytes enter (or leave) your typed code — an HTTP response body, a model's output, a tool result, a config file, a CLI argument. Inside the boundary, [[type-erasure|erased static types]] carry guarantees the compiler already enforced; **at** the boundary there is only `unknown`, and every claim about shape must be proven by [[runtime-validation]]. The boundary rule: validate once where bytes enter, trust the types inside — not everywhere, not never, exactly at the edge.
+The seam where serialized bytes enter or leave your typed code. An HTTP response body, a model's output, a tool result, a config file and a CLI argument are all boundaries. Inside one, [[type-erasure|erased static types]] carry what the compiler already checked. At one there is only `unknown`, and every claim about shape needs [[runtime-validation]]. The rule: parse once where bytes enter, then trust the types inside.
 
-**In [[lesson-0005-validate-the-boundary|lesson 0005]]:** the mock's drift scenario shows what an unguarded boundary costs — a 200 whose body quietly stopped matching the types crossed `JSON.parse` and the `as` assertion untouched, and surfaced as a corrupt budget ledger (`"1142"` claimed vs 53 actual tokens), far from the boundary that let it in.
+**In [[lesson-0005-validate-the-boundary|lesson 0005]]:** the mock's drift scenario measures what an unguarded boundary costs. A 200 whose body stopped matching the types crossed `JSON.parse` and the `as` assertion untouched. It surfaced far away, as a ledger claiming 1142 tokens against 53 spent.
 
-**Why it matters for Hermes:** every guarantee Hermes OS makes is enforced at one of these seams — the Job Envelope (S1), the Context Pack (S2), tool arguments and results (S5), model output throughout. "No envelope, no dispatch" *is* a parse at a JSON boundary. The Python/TypeScript border is itself one.
+**Why it matters for Hermes:** every guarantee Hermes OS makes is enforced at one of these seams. The Job Envelope is one, at step S1 (the envelope is parsed). The Context Pack is another, at S2 (evidence is checked). Tool arguments and results are two more, at S5 (the loop iterates). "No envelope, no dispatch" is a parse at a JSON boundary.
 
 **Related:** [[runtime-validation]] · [[type-erasure]] · [[zod-schema]] · [[safe-parse]] · [[request-contract]]

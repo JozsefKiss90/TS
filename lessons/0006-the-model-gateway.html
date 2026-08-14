@@ -28,7 +28,7 @@
 
 <h2>1 · The cost of copying the client</h2>
 
-<p>Open exercise 02's <code>client.ts</code> and read it as a supervisor would. One file builds the
+<p>Open exercise 02's <code>client.ts</code>. One file builds the
 client, catches three error classes, and reads <code>message.usage</code> into a ledger. Lessons 0008 to
 0011 would repeat all of it in every file that wants a model call.</p>
 
@@ -39,12 +39,12 @@ client, catches three error classes, and reads <code>message.usage</code> into a
   <li>Code that names <code>Anthropic.Message</code> couples to the provider at every call site.</li>
 </ul>
 
-<p>One seam fixes all three. It changes less than that claim suggests, so read the layers first.</p>
+<p>One interface fixes all three.</p>
 
 <table>
   <tr><th>Layer</th><th>Changed?</th><th>Evidence</th></tr>
   <tr><td>the wire</td><td>no</td><td>Part A sends exercise 02's request unchanged</td></tr>
-  <tr><td>the six responsibilities ①–⑥</td><td>no</td><td>the SDK still runs all six, below the port</td></tr>
+  <tr><td>the six responsibilities ①–⑥</td><td>no</td><td>endpoint, auth, version, shape, errors, cancellation. The SDK still runs all six, below the port</td></tr>
   <tr><td>the types the domain sees</td><td>yes</td><td><code>supervisor.ts</code> imports <code>gateway.ts</code>, nothing else</td></tr>
   <tr><td>the failure surface</td><td>yes</td><td>the supervisor switches on <code>failure.kind</code>, no <code>try/catch</code></td></tr>
   <tr><td>testability</td><td>yes</td><td>Part C runs the supervisor in 0.6 ms, mock stopped</td></tr>
@@ -94,10 +94,10 @@ export interface ModelGateway {
 
 <table>
   <tr><th>Syntax</th><th>Meaning</th><th>At runtime?</th></tr>
-  <tr><td><code>interface ModelGateway</code></td><td>a contract in the domain's words</td><td>nothing. TypeScript erases every interface</td></tr>
+  <tr><td><code>interface ModelGateway</code></td><td>an interface in the domain's words</td><td>nothing. TypeScript erases every interface</td></tr>
   <tr><td><code>implements ModelGateway</code></td><td>a build-time claim on a class</td><td>nothing of the claim. The class survives</td></tr>
   <tr><td><code>gateway.complete(call)</code></td><td>a call through the port's signature</td><td>whichever implementation the wiring chose</td></tr>
-  <tr><td><code>options?.signal</code></td><td>the supervisor's kill switch crosses</td><td>a real <code>AbortSignal</code>, owned by the web platform</td></tr>
+  <tr><td><code>options?.signal</code></td><td>the supervisor's cancellation signal crosses</td><td>a real <code>AbortSignal</code>, owned by the web platform</td></tr>
 </table>
 
 <p>A signature tells TypeScript what may be called. The implementation does the runtime work. One
@@ -119,7 +119,7 @@ domain's interface, and the domain imports no concrete class. One command checks
   },                                       // the port speaks milliseconds: translation,
 }                                          // not passthrough</code></pre>
 
-<p>Read what the vocabulary did. <code>end_turn</code> became <code>completed</code>, and
+<p>Three spellings change at the port. <code>end_turn</code> became <code>completed</code>, and
 <code>input_tokens</code> became <code>inputTokens</code>. A <code>RateLimitError</code> became
 <code>{ kind: "throttled" }</code>. No provider spelling survives above the line.</p>
 
@@ -150,8 +150,8 @@ x-api-key: … · anthropic-version: 2023-06-01 · content-type: application/jso
 
 HTTP/1.1 200 OK · request-id: req_mock_0001 · stop_reason=end_turn input_tokens=11</code></pre>
 
-<p>The port added nothing to it. No header, no envelope, no extra hop. The network cannot see build-time
-architecture. An <dfn>adapter</dfn> is a class that implements a port by translating one concrete
+<p>The port added nothing to it. The adapter sends no extra header and no second request. TypeScript
+erases the port before the adapter builds this request. An <dfn>adapter</dfn> is a class that implements a port by translating one concrete
 dependency into the port's words. This one translates three things.</p>
 
 <ol>
@@ -164,8 +164,8 @@ dependency into the port's words. This one translates three things.</p>
 </ol>
 
 <p>SDK error classes are runtime values, which is why <code>instanceof</code> works on them. The port's
-interfaces are erased. The adapter rethrows any error it cannot classify, because a bug must stay
-loud.</p>
+interfaces are erased. The adapter rethrows any error it cannot classify, because a bug must reach the
+caller.</p>
 
 <pre><code>B1 throttled → { outcome: 'retry_later', tokensSpent: 0,
                  notes: ['provider asked for 5000 ms of backoff'] }
@@ -176,8 +176,8 @@ B3 malformed → { outcome: 'gave_up',     tokensSpent: 0, notes: [
                  'usage.output_tokens: [invalid_type] Invalid input: expected number, received string' ] }</code></pre>
 
 <p>B3 sends exercise 04's drifted bytes. They once produced a ledger of <code>"1142"</code> against a
-real spend of 53. Here they never reach a ledger. Your lesson 0005 recall made the argument: a plausible
-silent error is more dangerous than a conspicuous false alarm.</p>
+real spend of 53. Here they never reach a ledger. A plausible silent error is more dangerous than a
+conspicuous false alarm. You made that argument in lesson 0005.</p>
 
 <figure class="diagram">
 <pre class="mermaid">
@@ -213,12 +213,12 @@ second provider.</p>
 A's, except that <code>request</code> reads <code>(none)</code>. The scripted throttle drives the
 <code>retry_later</code> branch B1 drove over the wire.</p>
 
-<p>One question has stood open since session 1. Decided: a provider-neutral port with exactly one live
-adapter. The port's words name text, a stop cause, two usage numbers and a failure kind, so neutrality
+<p>Hermes ships a provider-neutral port with one live adapter. That question had stood open since
+session 1. The port's words name text, a stop cause, two usage numbers and a failure kind, so neutrality
 cost nothing. No benchmark asks for a second live adapter, and MISSION rules out speculative work.
 Provider choice arrives later, above the port, as a routing decision.</p>
 
-<p>A port built against one provider can grow that provider's shape. The fake answers that risk from day
+<p>A port built against one provider can copy that provider's vocabulary. The fake answers that risk from day
 one, and proves nothing about a real second provider.</p>
 
 <table>
@@ -255,17 +255,17 @@ one, and proves nothing about a real second provider.</p>
     <div class="cl-item" data-cat="0" data-why="Measured in B1. The supervisor turned a throttled failure into the outcome retry_later. That is a decision.">
       <p>A throttled job is parked and retried after the provider's backoff window.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="The SDK's own retry machinery, measured in exercise 02 at 3 requests over 10.1 s. Responsibility ⑤.">
+    <div class="cl-item" data-cat="1" data-why="The SDK's own retry machinery, measured in exercise 02 at 3 requests over 10.1 s. Responsibility ⑤, errors.">
       <p>A 429 is retried automatically while honoring the <code>retry-after</code> header.</p>
     </div>
-    <div class="cl-item" data-cat="2" data-why="The contract both implementations satisfy, owned by gateway.ts, which imports nothing. It decides nothing.">
+    <div class="cl-item" data-cat="2" data-why="The interface both implementations satisfy, owned by gateway.ts, which imports nothing. It decides nothing.">
       <p>The <code>GatewayResult</code> union: proof on one arm, classified failure on the other.</p>
     </div>
     <div class="cl-item" data-cat="1" data-why="Translation three. Exception classes are provider vocabulary, so the adapter flattens them into data once.">
       <p>An <code>instanceof</code> chain turns <code>RateLimitError</code> into <code>{ kind: "throttled" }</code> data.</p>
     </div>
     <div class="cl-item" data-cat="3" data-why="Watch the mock's terminal during Part A. The same request and gates ②③④ as exercise 02.">
-      <p><code>POST /v1/messages</code> with gates ② auth, ③ version, ④ request contract.</p>
+      <p><code>POST /v1/messages</code> with gates ② auth, ③ version, ④ the request shape.</p>
     </div>
     <div class="cl-item" data-cat="0" data-why="S4 reserves model choice for policy above the port. The id reaches the adapter as configuration.">
       <p>Which model id serves this job.</p>
@@ -307,7 +307,7 @@ one, and proves nothing about a real second provider.</p>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="2" data-why="Decided this lesson. The port's words name nothing provider-shaped. One live adapter exists because nothing asks for a second, and the fake keeps the contract in check.">
+  <div class="qz" data-correct="2" data-why="Decided this lesson. The port's words name nothing provider-shaped. One live adapter exists because nothing asks for a second, and the fake keeps the port in check.">
     <p class="qz-prompt">Q4. Which statement records the provider-neutrality decision as this lesson landed it?</p>
     <button class="qz-opt" type="button">Two live adapters ship today, so the port is proven against real providers</button>
     <button class="qz-opt" type="button">The port stays Claude-shaped until Phase 4 benchmarks justify abstracting</button>

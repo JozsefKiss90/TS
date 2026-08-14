@@ -11,10 +11,13 @@
  *   `"stream": true` in the body          → 200 text/event-stream (SSE)
  * Since exercise 04 its own contract can drift (JSON path only):
  *   `x-mock-scenario: drift` header       → 200 whose BODY shape quietly changed
- * Since exercise 07 it speaks tool use (JSON path only):
+ * Since exercise 07 it speaks tool use:
  *   `"tools": [...]` in the body          → 200 stop_reason=tool_use + a tool_use block
  *   a tool_result in the last message     → 200 stop_reason=end_turn, quoting it
  *   a tool_result that pairs with nothing → 400 invalid_request_error
+ * Since lesson 0009 the STREAMING path speaks tool use too: the same tool
+ * decision, delivered as SSE. A tool_use block streams as content_block_start
+ * followed by input_json_delta events, per the real event grammar.
  * A request with no `tools` key takes exactly the path it took before, so
  * exercises 01 to 06 are unaffected.
  *
@@ -188,18 +191,27 @@ function chunkText(text: string, parts: number): string[] {
   return chunks;
 }
 
+/** The content a streamed reply will carry: text, or a tool_use request. */
+type StreamBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
+
 /**
  * The streaming answer: the SAME Message as the JSON path, delivered as
  * Server-Sent Events. The event grammar is the real API's (shapes verified
  * against current docs):
  *
  *   message_start → ping → content_block_start → content_block_delta ×N
- *   → content_block_stop → message_delta → message_stop
+ *   → content_block_stop (per block) → message_delta → message_stop
  *
  * message_start carries a Message SKELETON (empty content, null stop_reason);
  * the deltas are patches against it; message_delta retrofits stop_reason and
  * final usage. A client that accumulates all of it ends up holding exactly
  * the Message the non-streaming path would have returned in one piece.
+ *
+ * A text block streams as text_delta chunks. A tool_use block (lesson 0009)
+ * streams as a content_block_start carrying id+name with an EMPTY input,
+ * then input_json_delta chunks that spell the arguments out as partial JSON.
  *
  * The socket stays open the whole time — ⑥ cancellation now has a target
  * MID-RESPONSE, not just mid-wait.
@@ -209,6 +221,8 @@ async function streamMessage(
   requestId: string,
   model: string,
   messages: unknown[],
+  blocks: StreamBlock[],
+  stopReason: string,
 ): Promise<void> {
   // SSE is not JSON: the content-type announces a held-open event stream,
   // and there is no content-length — the total size is unknown at this point.
@@ -243,38 +257,63 @@ async function streamMessage(
   sendSse(res, "ping", { type: "ping" });
   console.log(`  ${requestId} ⋯ ping (on the wire — but will your client ever see it?)`);
 
-  sendSse(res, "content_block_start", {
-    type: "content_block_start",
-    index: 0,
-    content_block: { type: "text", text: "" },
-  });
-
-  const firstBlock = fixture.content[0];
-  const chunks = chunkText(firstBlock?.text ?? "", STREAM_CHUNK_COUNT);
-  for (const chunk of chunks) {
-    await delay(STREAM_CHUNK_DELAY_MS);
-    if (res.destroyed) return; // aborted MID-STREAM — the rest is never generated
-    sendSse(res, "content_block_delta", {
-      type: "content_block_delta",
-      index: 0,
-      delta: { type: "text_delta", text: chunk },
-    });
-    console.log(`  ${requestId} ⋯ content_block_delta ${JSON.stringify(chunk)}`);
+  let deltasSent = 0;
+  for (const [index, block] of blocks.entries()) {
+    if (block.type === "text") {
+      sendSse(res, "content_block_start", {
+        type: "content_block_start",
+        index,
+        content_block: { type: "text", text: "" },
+      });
+      const chunks = chunkText(block.text, STREAM_CHUNK_COUNT);
+      for (const chunk of chunks) {
+        await delay(STREAM_CHUNK_DELAY_MS);
+        if (res.destroyed) return; // aborted MID-STREAM — the rest is never generated
+        sendSse(res, "content_block_delta", {
+          type: "content_block_delta",
+          index,
+          delta: { type: "text_delta", text: chunk },
+        });
+        deltasSent += 1;
+        console.log(`  ${requestId} ⋯ content_block_delta ${JSON.stringify(chunk)}`);
+      }
+    } else {
+      // A tool_use block: the start event names the tool; the arguments
+      // arrive afterwards, as partial JSON. Mid-stream, a client knows WHAT
+      // was asked for before it knows the full arguments.
+      sendSse(res, "content_block_start", {
+        type: "content_block_start",
+        index,
+        content_block: { type: "tool_use", id: block.id, name: block.name, input: {} },
+      });
+      const json = JSON.stringify(block.input);
+      const pieceLength = Math.ceil(json.length / 3);
+      for (let at = 0; at < json.length; at += pieceLength) {
+        await delay(STREAM_CHUNK_DELAY_MS);
+        if (res.destroyed) return;
+        sendSse(res, "content_block_delta", {
+          type: "content_block_delta",
+          index,
+          delta: { type: "input_json_delta", partial_json: json.slice(at, at + pieceLength) },
+        });
+        deltasSent += 1;
+        console.log(`  ${requestId} ⋯ input_json_delta ${JSON.stringify(json.slice(at, at + pieceLength))}`);
+      }
+    }
+    sendSse(res, "content_block_stop", { type: "content_block_stop", index });
   }
-
-  sendSse(res, "content_block_stop", { type: "content_block_stop", index: 0 });
 
   // message_delta retrofits what the skeleton could not know yet.
   sendSse(res, "message_delta", {
     type: "message_delta",
-    delta: { stop_reason: fixture.stop_reason, stop_sequence: null },
+    delta: { stop_reason: stopReason, stop_sequence: null },
     usage: { output_tokens: fixture.usage.output_tokens },
   });
   sendSse(res, "message_stop", { type: "message_stop" });
   res.end();
   console.log(
-    `  ${requestId} ⋯ message_delta (stop_reason=${fixture.stop_reason}) → message_stop — ` +
-      `${chunks.length} deltas over ~${RESPONSE_DELAY_MS + chunks.length * STREAM_CHUNK_DELAY_MS} ms`,
+    `  ${requestId} ⋯ message_delta (stop_reason=${stopReason}) → message_stop — ` +
+      `${deltasSent} deltas over ~${RESPONSE_DELAY_MS + deltasSent * STREAM_CHUNK_DELAY_MS} ms`,
   );
 }
 
@@ -416,8 +455,31 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   // ④ still holds: `stream: true` is part of the request contract, and it
   // changes the response's DELIVERY, not the gates above or the Message itself.
+  // The tool decision is the SAME one the JSON path makes below; only the
+  // delivery differs. A request with no tools streams the fixture, as before.
   if (parsed["stream"] === true) {
-    await streamMessage(res, requestId, parsed["model"], messages);
+    const last: unknown = messages[messages.length - 1];
+    let blocks: StreamBlock[];
+    let stopReason = fixture.stop_reason;
+    if (Array.isArray(tools) && tools.length > 0 && !carriesToolResult(last)) {
+      const first = tools[0] as Record<string, unknown>;
+      blocks = [
+        { type: "text", text: "I need the graph health report first." },
+        {
+          type: "tool_use",
+          id: `toolu_mock_${String(requestCounter).padStart(4, "0")}`,
+          name: first["name"] as string,
+          input: inventToolInput(first["input_schema"]),
+        },
+      ];
+      stopReason = "tool_use";
+    } else if (carriesToolResult(last)) {
+      blocks = [{ type: "text", text: `Audit complete. The tool reported: ${toolResultText(last)}` }];
+      stopReason = "end_turn";
+    } else {
+      blocks = fixture.content;
+    }
+    await streamMessage(res, requestId, parsed["model"], messages, blocks, stopReason);
     return;
   }
 

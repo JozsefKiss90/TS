@@ -1,0 +1,9 @@
+{
+  "title": "Audit the atlas graph, two calls at most",
+  "owner": "themis",
+  "instruction": "Summarize the atlas graph health check in three bullet points.",
+  "costCeilingTokens": 2000,
+  "maxModelCalls": 2,
+  "allowedTools": ["graph_health"],
+  "outputPath": "vault/audits/atlas-capped.md"
+}

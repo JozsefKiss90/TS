@@ -33,10 +33,14 @@ export class FakeModelGateway implements ModelGateway {
     // is the only honest record of what THIS iteration sent.
     this.calls.push({ ...call, transcript: [...call.transcript] });
 
+    // The fake answers instantly, so there is no mid-generation to report:
+    // it never calls onProgress, and an abort can only land between calls,
+    // with nothing partial to keep. In-flight bounds are exercised against
+    // the mock; the fake exercises the bounds that act between calls.
     if (options?.signal?.aborted) {
       return {
         ok: false,
-        failure: { kind: "aborted" },
+        failure: { kind: "aborted", partialText: "" },
       };
     }
 

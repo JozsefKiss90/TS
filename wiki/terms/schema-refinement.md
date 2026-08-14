@@ -7,8 +7,9 @@ type: glossary-term
 lesson: "0007"
 phase: 1
 category: validation
-status: introduced
+status: demonstrated
 introduced: 2026-08-08
+demonstrated: 2026-08-15
 tags:
   - glossary
   - validation

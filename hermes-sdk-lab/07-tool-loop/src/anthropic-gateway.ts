@@ -7,7 +7,12 @@
  *
  *   1. call    — Hermes's Turn[] → the SDK's messages[], ToolSpec[] → tools[]
  *   2. reply   — the SDK's Message → boundary-parsed → text + ToolCall[]
- *   3. failure — the SDK's typed exceptions → GatewayFailure DATA (unchanged)
+ *   3. failure — the SDK's typed exceptions → GatewayFailure DATA
+ *
+ * Lesson 0009 changed the DELIVERY, not the translations: every call now
+ * streams, so the supervisor can watch progress and abort mid-generation.
+ * The helper assembles the same Message the JSON path would have returned,
+ * and the boundary parse runs on that assembled Message as before.
  *
  * Two files import "@anthropic-ai/sdk": this one and main.ts. The domain
  * files (gateway.ts, supervisor.ts, tools.ts, fake-gateway.ts) import none
@@ -26,6 +31,7 @@ import Anthropic, {
 import { z } from "zod";
 import { formatIssues } from "./issues.js";
 import type {
+  CallProgress,
   GatewayFailure,
   GatewayResult,
   ModelCall,
@@ -121,14 +127,20 @@ export class AnthropicModelGateway implements ModelGateway {
 
   async complete(
     call: ModelCall,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; onProgress?: (progress: CallProgress) => void },
   ): Promise<GatewayResult> {
+    // Since lesson 0009 every call STREAMS. The reason is enforcement: a
+    // bound that is only checked after the reply lands cannot stop the
+    // reply. The helper assembles the same Message the JSON path returns
+    // (measured in lesson 0004), so translation 2 below did not change.
     let message;
+    let partialText = "";
+    let requestId: string | null = null;
     try {
       // Translation 1: ModelCall → request params. `tools` is omitted
       // entirely when the job permits none, so a job with an empty
       // allowedTools cannot receive a tool_use reply at all.
-      message = await this.client.messages.create(
+      const stream = this.client.messages.stream(
         {
           model: this.model,
           max_tokens: call.maxTokens,
@@ -145,9 +157,32 @@ export class AnthropicModelGateway implements ModelGateway {
         },
         options?.signal ? { signal: options.signal } : {},
       );
+
+      // Progress, translated to the port's words. message_start carries the
+      // call's input_tokens; each text delta carries a few characters. The
+      // true output_tokens arrive only in message_delta, at the very end —
+      // which is why CallProgress cannot offer them.
+      stream.on("streamEvent", (event) => {
+        if (event.type === "message_start") {
+          options?.onProgress?.({
+            kind: "call_started",
+            inputTokens: event.message.usage.input_tokens,
+          });
+        }
+      });
+      stream.on("text", (delta) => {
+        partialText += delta;
+        options?.onProgress?.({ kind: "text", chars: delta.length });
+      });
+
+      message = await stream.finalMessage();
+      // The assembled Message has no _request_id (lesson 0004); the id
+      // lives on the stream itself.
+      requestId = stream.request_id ?? null;
     } catch (err) {
-      // Translation 3: exceptions → data. See classifyFailure below.
-      return { ok: false, failure: classifyFailure(err) };
+      // Translation 3: exceptions → data. See classifyFailure below. An
+      // abort keeps whatever text had already streamed in.
+      return { ok: false, failure: classifyFailure(err, partialText) };
     }
 
     // Translation 2: the reply crosses Hermes's boundary — parse, don't
@@ -176,7 +211,7 @@ export class AnthropicModelGateway implements ModelGateway {
         inputTokens: wire.usage.input_tokens,
         outputTokens: wire.usage.output_tokens,
       },
-      requestId: message._request_id ?? null,
+      requestId,
     };
     return { ok: true, reply };
   }
@@ -184,11 +219,12 @@ export class AnthropicModelGateway implements ModelGateway {
 
 /**
  * Translation 3: the SDK's typed error CLASSES (runtime values that survive
- * compilation) become the port's failure DATA. Unchanged since exercise 05.
+ * compilation) become the port's failure DATA. One change since exercise 05:
+ * an abort carries the text that had streamed in before it fired.
  */
-function classifyFailure(err: unknown): GatewayFailure {
+function classifyFailure(err: unknown, partialText: string): GatewayFailure {
   if (err instanceof APIUserAbortError) {
-    return { kind: "aborted" };
+    return { kind: "aborted", partialText };
   }
 
   if (err instanceof RateLimitError) {

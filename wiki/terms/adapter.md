@@ -21,8 +21,8 @@ A class that `implements` a [[port]] by translating between the domain's vocabul
 2. The SDK's `Message` passes through [[safe-parse]] and becomes a `ModelReply`. Lesson 0005's check found its permanent home here.
 3. The SDK's [[typed-error]] classes become `GatewayFailure` data. Measured: `RateLimitError` crossed the port as `{ kind: "throttled", retryAfterMs: 5000 }`.
 
-The adapter rethrows any error it cannot classify, because a bug must stay loud.
+The adapter rethrows any error it cannot classify, because a bug must reach the caller.
 
-**Why it matters for Hermes:** this is the "below the port" half of S4. The six responsibilities keep running unchanged inside the wrapped client. The supervisor receives failures it can classify, instead of exceptions that unwind its stack.
+**Why it matters for Hermes:** this is the "below the port" half of S4 (model calls). The six responsibilities keep running unchanged inside the wrapped client. The supervisor receives failures it can classify, instead of exceptions that unwind its stack.
 
 **Related:** [[port]] · [[fake]] · [[model-gateway]] · [[typed-error]] · [[safe-parse]] · [[sdk]]

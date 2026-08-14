@@ -1,6 +1,6 @@
-# 07-tool-loop — one call becomes a loop
+# 07-tool-loop — one call becomes a loop, and the loop gets its bounds
 
-The companion lesson is [`lessons/0008-tool-use-the-loops-heartbeat.html`](../../lessons/0008-tool-use-the-loops-heartbeat.html) — read it first; this file is the command reference and the measured results.
+Two lessons share this exercise. Lesson 0008, [`0008-tool-use-the-loops-heartbeat.html`](../../lessons/0008-tool-use-the-loops-heartbeat.html), built the loop (Parts A–C). Lesson 0009, [`0009-bounds-and-termination.html`](../../lessons/0009-bounds-and-termination.html), bounded it (Parts D–F). Read the lesson first; this file is the command reference and the measured results.
 
 ## Setup
 
@@ -22,7 +22,7 @@ pnpm install
 | `src/main.ts` | wiring and the three parts | rewritten |
 | `src/task-spec.ts` | the contract for the work — comments, plus the formatter moving to `issues.ts` | near enough, from 06 |
 | `src/fake-gateway.ts` | the port's second implementation — one line added, to snapshot the transcript | near enough, from 06 |
-| `specs/*.json` | two job files: one permits a tool, one permits none | **new** |
+| `specs/*.json` | five job files: two from lesson 0008, and one per bound from lesson 0009 | **new** |
 
 The mock server in `01-raw-http/src/mock-server.ts` also grew a tool branch, including the pairing rule: a `tool_result` that answers no `tool_use` in the preceding message is a 400. The change is additive, so a request with no `tools` key takes exactly the path it took before, and exercises 01 to 06 still produce their old numbers.
 
@@ -35,6 +35,9 @@ pnpm mock       # terminal 1 — exercise 01's mock server (port 8787)
 pnpm job a      # terminal 2 — Part A: one tool call, answered
 pnpm job b      # Part B: the loop with a fake, and a tool the job never permitted
 pnpm job c      # Part C: a job that permits no tools
+pnpm job d      # Part D (lesson 0009): the call cap, offline, with a fake
+pnpm job e      # Part E (lesson 0009): the budget aborts a generation mid-delta
+pnpm job f      # Part F (lesson 0009): the deadline aborts a generation on the clock
 ```
 
 ## What to observe — measured against this mock (SDK 0.113.0, zod 4.4.3)
@@ -52,6 +55,19 @@ Numbers below come from a **fresh** mock. Restart it before comparing ids: `tool
 | B: transcript growth | `turns sent per model call: [ 1, 3 ]` — call 1 sends `operator`, call 2 sends `operator → model → tools` |
 | C: no permitted tools | `declared: 0 tool(s)`, `modelCalls: 1`, `tokensSpent: 65` — the same single call, and the same 65 tokens, as exercise 06 |
 
+## What lesson 0009 changed, and what it measured
+
+The gateway now **streams every call** (`client.messages.stream` instead of `create`), because a bound that is only checked after a reply lands cannot stop the reply. The mock's streaming path learned the same tool decision its JSON path already made, so Parts A–C produce their old numbers through the new delivery — 217, 95 and 65 tokens, re-measured above. The spec gained `maxModelCalls` (default 4) and `deadlineMs` (default 60000), and `costCeilingTokens` is now enforced rather than merely declared. Every abort keeps the partial text.
+
+| Experiment | Measured result (fresh mock, SDK 0.113.0, zod 4.4.3) |
+|---|---|
+| D: the call cap | `maxModelCalls: 2` from `capped.json`; the fake was scripted for 3 asking replies and answered **2**; `outcome: 'gave_up'`, 60 tokens |
+| E: the budget | ceiling 190; call 1 books 65 (true); call 2's `message_start` reports `input_tokens: 110`; the 80% alert fires at estimated 175; the abort fires after **46 of 82 chars**, `outcome: 'over_budget'`, ledger **191 (estimated)** |
+| E: the partial artifact | `Audit complete. The tool reported: graph=atlas` — kept and reported; the remaining 36 chars were never generated |
+| F: the deadline | `deadlineMs: 2400`; the job ended at ~**2424 ms**, mid-generation of call 2; `outcome: 'out_of_time'`, 24 chars kept, ledger 183 (estimated) |
+| The estimate's error | booked 191 against a ceiling of 190: the pre-request check lets a call start below the ceiling, and the ceiling is crossed during it by at most one estimate step |
+| Wire truth | `message_start` carries `"usage":{"input_tokens":110,"output_tokens":1,…}` — input is true from the first frame, output is a placeholder. The true count (`"usage":{"output_tokens":42}`) arrives only in `message_delta`. An aborted call never receives that frame |
+
 ## The exercise
 
 1. Run Part A with the mock's terminal visible. Read the two log lines: the first reply asked, the second answered.
@@ -61,6 +77,13 @@ Numbers below come from a **fresh** mock. Restart it before comparing ids: `tool
 5. In `tools.ts`, add a third tool to the catalogue: one Zod schema, one description, one body. Permit it in the spec and run Part A.
 6. In `supervisor.ts`, comment out the line that pushes the model's turn into the transcript. Read the 400 that comes back, and say which check caught it.
 
+Lesson 0009's steps:
+
+7. Run Part D. Set `maxModelCalls` to 1 in `specs/capped.json`, predict the report, then run again.
+8. Run Part E with the mock's terminal visible. Match the mock's last delta against the partial artifact in the report.
+9. Raise `costCeilingTokens` in `specs/tight-budget.json` to 250. Predict which bound fires now, then run.
+10. Lower `deadlineMs` in `specs/tight-deadline.json` to 300. Say where the abort lands before you run: no delta has arrived by then, so the partial is empty.
+
 ## Notes
 
 - **The model never runs anything.** A `tool_use` block is a request. Hermes chooses whether to honor it, runs the code, and sends the result back. The provider executes nothing.
@@ -69,7 +92,8 @@ Numbers below come from a **fresh** mock. Restart it before comparing ids: `tool
 - **The transcript is Hermes's, not the provider's.** The API keeps no memory between requests, so every model call resends everything.
 - **Offering a short tool list is not enforcement.** The reply is model output, so `runTool` checks the name against `allowedTools` again before dispatching. Lesson 0010 adds the operator's approval gate on top.
 - **Tool arguments get the boundary treatment.** They arrive as model output, so each tool parses them with its own Zod schema before its body runs. `defineTool` puts the parse inside the tool, which is why the body reads `input.graph` rather than coercing an unknown.
-- **`MAX_MODEL_CALLS` is a literal, and a placeholder.** It exists so the loop terminates at all. Lesson 0009 replaces it with the spec's budget, a deadline, and an `AbortController`.
-- **The mock approximates.** It cannot reason, so it always asks for the first declared tool and invents arguments from that tool's own JSON Schema. The block shapes are faithful to the API. The choice of tool is a stand-in.
+- **Every bound comes from the spec now.** Lesson 0008's `MAX_MODEL_CALLS` literal is gone: `maxModelCalls`, `costCeilingTokens` and `deadlineMs` are the operator's, and every exit is a classified outcome.
+- **In-flight enforcement acts on an estimate.** A call's `input_tokens` are true from `message_start`; its output is estimated at one token per three characters until `message_delta` delivers the truth. An aborted call never gets that frame, so its spend stays an estimate, and the report says so.
+- **The mock approximates.** It cannot reason, so it always asks for the first declared tool and invents arguments from that tool's own JSON Schema. Its token counts are estimates and its canned output is 42 tokens. The block shapes and the SSE grammar are faithful to the API. The choice of tool is a stand-in.
 - Everything stays mock-first: no live API calls, no credentials.
 - Ops reminder: a `pnpm mock` left running from a previous session serves **old** code and holds port 8787.

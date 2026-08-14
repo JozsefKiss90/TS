@@ -1,0 +1,9 @@
+{
+  "title": "Audit the atlas graph under a tight budget",
+  "owner": "themis",
+  "instruction": "Summarize the atlas graph health check in three bullet points.",
+  "maxTokens": 128,
+  "costCeilingTokens": 190,
+  "allowedTools": ["graph_health"],
+  "outputPath": "vault/audits/atlas-tight-budget.md"
+}

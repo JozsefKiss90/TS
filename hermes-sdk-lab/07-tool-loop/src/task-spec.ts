@@ -1,10 +1,9 @@
 /**
  * The TASK SPEC — Hermes's contract for the WORK.
  *
- * Carried forward from exercise 06. The schema, the two derived types and
- * the gate all behave exactly as they did. Two things changed: the comments,
- * because `allowedTools` finally has a reader, and the issue formatter,
- * which moved to issues.ts once a third boundary wanted the same three lines.
+ * Carried forward from exercise 06. Lesson 0009 added two fields, both with
+ * defaults: maxModelCalls and deadlineMs. Every bound the loop enforces now
+ * comes from this file, which means every bound is the operator's to set.
  *
  * Lesson 0005 parsed bytes arriving from a provider. This file parses bytes
  * arriving from an operator: a JSON file on disk, written by a human or by
@@ -30,12 +29,18 @@ import { formatIssues } from "./issues.js";
  *                         from the spec, so both must be non-empty.
  *   instruction         — the transcript's first turn. The only field the
  *                         model ever sees verbatim.
- *   maxTokens           — becomes ModelCall.maxTokens, per iteration.
- *                         Bounded at 4096 so a typo cannot buy a huge
- *                         generation.
- *   costCeilingTokens   — the job's whole budget, across every iteration.
- *                         Lesson 0009 enforces it; today it is declared and
- *                         reported, and the refinement below relies on it.
+ *   maxTokens           — becomes ModelCall.maxTokens, per call. Bounded at
+ *                         4096 so a typo cannot buy a huge generation. The
+ *                         provider enforces it: a reply that reaches it
+ *                         stops with the wire's max_tokens stop_reason.
+ *   costCeilingTokens   — the job's whole budget, across every call.
+ *                         Declared in lesson 0007; ENFORCED since lesson
+ *                         0009, by the supervisor.
+ *   maxModelCalls       — how many model calls one job may make. Replaces
+ *                         lesson 0008's MAX_MODEL_CALLS literal: the bound
+ *                         now belongs to the operator, not to the code.
+ *   deadlineMs          — wall-clock time the whole job may take. Enforced
+ *                         by an AbortController armed when the job starts.
  *   allowedTools        — the tool policy. Exercise 07 reads it twice: to
  *                         decide which tools are declared, and to check the
  *                         name that comes back. Empty by default, because a
@@ -53,6 +58,12 @@ export const TaskSpecSchema = z
     maxTokens: z.number().int().positive().max(4096).default(1024),
 
     costCeilingTokens: z.number().int().positive(),
+
+    // The two bounds lesson 0009 added. Both default rather than demand,
+    // because a bound with a safe default beats an unbounded loop: a spec
+    // file that says nothing still terminates.
+    maxModelCalls: z.number().int().positive().max(20).default(4),
+    deadlineMs: z.number().int().positive().default(60_000),
 
     // Default-empty, not default-permissive. The safe default for a
     // permission list is the one that grants nothing.

@@ -1,10 +1,12 @@
 /**
  * The PORT — Hermes's side of the model boundary.
  *
- * Exercise 06 carried this file forward from 05 without a change. This
- * exercise changes it, and the change is the lesson: one call becomes a
- * conversation, so the port has to carry a transcript instead of a single
- * prompt.
+ * Exercise 06 carried this file forward from 05 without a change. Lesson
+ * 0008 rewrote it: one call became a conversation, so the port carries a
+ * transcript instead of a single prompt. Lesson 0009 added two things: a
+ * CallProgress channel, so the supervisor can watch a call while it runs,
+ * and partial text on the aborted arm, so a stopped generation still lands
+ * as a partial artifact.
  *
  * Everything here is still Hermes's vocabulary. No SDK import, no wire
  * spelling: the adapter translates `Turn` into the API's `messages` and
@@ -94,10 +96,14 @@ export interface ModelReply {
 /**
  * Every way a call can fail, as DATA the supervisor can classify — the same
  * design safeParse taught in lesson 0005.
+ *
+ * The aborted arm changed in lesson 0009: an aborted generation is not empty.
+ * Whatever text arrived before the abort comes back as `partialText`, so the
+ * supervisor can keep it as a partial artifact (S8).
  */
 export type GatewayFailure =
   | { kind: "throttled"; retryAfterMs: number | null }
-  | { kind: "aborted" }
+  | { kind: "aborted"; partialText: string }
   | { kind: "transport"; detail: string }
   | { kind: "rejected"; status: number; detail: string }
   | { kind: "malformed_reply"; issues: string[] };
@@ -108,9 +114,29 @@ export type GatewayResult =
   | { ok: false; failure: GatewayFailure };
 
 /**
- * The port itself, unchanged in shape. `AbortSignal` may cross it because
- * it is a web platform standard, not an SDK type.
+ * What the gateway can report WHILE a call runs (lesson 0009). Another
+ * discriminated union, narrowed on `kind`, like Turn and GatewayResult.
+ *
+ *   call_started — the reply began. Carries the call's input_tokens, which
+ *                  the wire reports up front, in message_start.
+ *   text         — one chunk of reply text arrived. Carries its length.
+ *
+ * Note what is MISSING: output tokens. The wire reports the true count only
+ * at the end, in message_delta. A supervisor that wants to stop a call
+ * mid-generation has to act on an estimate.
+ */
+export type CallProgress =
+  | { kind: "call_started"; inputTokens: number }
+  | { kind: "text"; chars: number };
+
+/**
+ * The port itself. `AbortSignal` may cross it because it is a web platform
+ * standard, not an SDK type. `onProgress` is how enforcement sees inside a
+ * call: without it, every bound could only act between calls.
  */
 export interface ModelGateway {
-  complete(call: ModelCall, options?: { signal?: AbortSignal }): Promise<GatewayResult>;
+  complete(
+    call: ModelCall,
+    options?: { signal?: AbortSignal; onProgress?: (progress: CallProgress) => void },
+  ): Promise<GatewayResult>;
 }

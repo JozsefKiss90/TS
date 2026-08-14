@@ -1,0 +1,9 @@
+{
+  "title": "Audit the atlas graph before the clock runs out",
+  "owner": "themis",
+  "instruction": "Summarize the atlas graph health check in three bullet points.",
+  "costCeilingTokens": 2000,
+  "deadlineMs": 2400,
+  "allowedTools": ["graph_health"],
+  "outputPath": "vault/audits/atlas-tight-deadline.md"
+}

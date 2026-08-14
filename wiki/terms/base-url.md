@@ -16,10 +16,10 @@ tags:
 
 # Base URL
 
-The host-and-scheme half of an [[endpoint]], treated as **configuration** rather than contract: the API fixes the path (`/v1/messages`) but a client lets you override where it points. The official SDK exposes this as the `baseURL` option / `ANTHROPIC_BASE_URL` environment variable.
+The host and scheme half of an [[endpoint]], treated as configuration. The API fixes the path, `/v1/messages`. A client lets you override where the request points. The official SDK exposes this as the `baseURL` option, or as the `ANTHROPIC_BASE_URL` environment variable.
 
-**In [[lesson-0002-raw-http-against-a-mock|lesson 0002]]:** `client.ts` reads `ANTHROPIC_BASE_URL` and falls back to `http://localhost:8787` — the [[test-double]]. The same seam is how exercise 02 will aim the genuine `@anthropic-ai/sdk` at the mock without changing a line of SDK code.
+**In [[lesson-0002-raw-http-against-a-mock|lesson 0002]]:** `client.ts` reads `ANTHROPIC_BASE_URL` and falls back to `http://localhost:8787`, the [[test-double]]. The same option aims the real `@anthropic-ai/sdk` at the mock in exercise 02, with no change to SDK code.
 
-**Why it matters for Hermes:** a deliberately designed seam is what makes a system testable. The base URL is the first of many: Hermes' [[model-gateway]] interface is the same idea one level up — swap the real dependency for a fake at a boundary you control.
+**Why it matters for Hermes:** a configuration point the caller controls is what makes a system testable. The base URL is the first one in the course. Hermes' [[model-gateway]] interface is the same idea one level up. It swaps the real dependency for a fake at a boundary the domain owns.
 
 **Related:** [[endpoint]] · [[test-double]] · [[sdk]] · [[model-gateway]]

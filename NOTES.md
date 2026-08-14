@@ -398,6 +398,166 @@ it moved to `issues.ts` and all three boundaries import it. And `defineTool` now
 own schema, so a tool body reads `input.graph` instead of coercing an unknown, with no type assertion
 anywhere in the file.
 
+## Update 2026-08-11 — lesson 0005 rewritten to the profile
+
+The 2026-08-08 readability rewrite reached lesson 0005. It went from 2,917 words, 37 errors and 17
+warnings to **1,997 words, 0 errors and 2 warnings**. Its four term notes and its lesson-map note were
+rewritten with it, and all five now pass. Scope was not cut: the lesson still teaches the same five new
+ideas and keeps both diagrams, the wire capture, the layer table, the signature table and the "parse"
+collision table.
+
+- **Where the 920 words went.** Metadiscourse first (*Account for the layers before reaching for the
+  fix*, *Three measured facts to sit with*, *One overloaded word to pin down before it bites*), then
+  reasons repeated below the table that already stated them, then the exercise arc restating the lab
+  README. Nothing measured was dropped.
+- **91 em-dashes to 0.** The limit is 2. Every one marked a second idea, so each became a sentence or a
+  comma. The same pass removed 9 clause-joining semicolons.
+- **The two renames of 2026-08-08 rode along, as planned.** *Contract* now names only the TaskSpec:
+  responsibility ④ is the request and response shape, and the drifted wire block says "the API allows
+  four words" rather than "the contract says". No status label needed renaming, because 0005 had no
+  status table at all.
+- **Article III.9 was unpaid here and is now paid.** The lesson referenced S1, S2 and Phase 1 capability
+  with no labels anywhere. There is now one table of six rows near the end, three implemented and three
+  planned, per PARA-6.
+- **TERM-7 glosses added:** `S1 (the envelope is parsed)` and `S2 (evidence is checked)`. That clears two
+  of the bare codes the 2026-08-08 note listed as pending. 0006b holds the rest.
+- **One factual error found while rewriting, not by the linter.** The old §3 code block said the
+  `ZodSafeParseResult` union was "10 lines" in `parse.d.cts`. It spans lines 3 to 13, and the block shows
+  each member folded onto one line. The comment now says so.
+- **A linter behaviour worth knowing before the next rewrite.** The sentence splitter needs a capital
+  after a full stop, so a sentence opening with `z.infer`, `parse` or `[[a-wiki-link]]` merges into the
+  one before it and reads as a single over-long sentence. Four SENT-1 errors were this, not real length.
+  Start such sentences with an ordinary word.
+- **Judged rather than measured, as Article VIII.6 requires:** SENT-3 (passive voice) is not implemented,
+  so I read for it. SENT-2, PARA-2, PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to
+  BAN-14 and BAN-18 were judged by eye. The two remaining SENT-6 warnings are *the two cannot drift
+  apart* and *the check and the type cannot drift apart*, which are verb phrases rather than noun
+  clusters, so I kept them.
+- **Not touched:** the lab `04-validate-the-boundary` and its README. No lesson claim about them changed,
+  and every number in the lesson still matches the README's measured table.
+- **Still to rewrite:** lessons 0001 to 0004, and 0006b, which remains slated for demotion to a reference
+  page.
+
+## Update 2026-08-12 — lesson 0006's judgment pass, and the renames it had missed
+
+The 2026-08-08 rewrite left 0006 mechanically clean. A detect pass over the rules the linter cannot
+decide found 14 defects in the HTML, and the linter found 9 errors in the cluster the rewrite never
+revisited. All are now fixed. The lesson holds at 1,993 words, and its map note and four term notes pass.
+
+- **The renames of 2026-08-08 never reached 0006.** The pending list named lessons 0001 to 0005 and
+  0006b, so 0006 looked done. It still called the port a *contract* in four places, and `fake.md` in two
+  more. *Contract* now names the TaskSpec alone here too. Responsibility ④ reads *the request shape*.
+  Check a lesson's whole cluster after a rename, not the file the lint command names.
+- **Three banned metaphors survived a rewrite that was looking for them.** *One seam fixes all three*,
+  *the supervisor's kill switch*, and *a bug must stay loud*. The fourth was *the network cannot see
+  build-time architecture*, which TERM-6 quotes almost verbatim as a failing example. The lesson now says
+  TypeScript erases the port before the adapter builds the request.
+- **The circled numbers were unreadable, and the user chose to pay for a key.** `①–⑥` and `②③④` are
+  lessons 0002 and 0003's notation, glossed nowhere in 0006. The layer table's first row now names all
+  six, and the `⑤` feedback reads *errors*. TERM-7 exists for bare `S4`; the same defect in a different
+  notation is not checked.
+- **The budget paid for it, as amended Article VII requires.** The key and the four rewritten sentences
+  cost about 16 words. Two deletions covered them: *read it as a supervisor would*, and *It changes less
+  than that claim suggests, so read the layers first*. Both were reader guidance under BAN-13.
+- **`wiki/terms/model-gateway.md` is still broken and is out of scope.** 3 errors and 2 warnings: two
+  sentences of 39 and 38 words, 3 em-dashes, 2 clause-joining semicolons, *property of the seam*, and
+  *keeps the contract honest*. It carries `lesson: "0001"`, so the 0006 rewrite never touched it, but
+  most of its body is about 0006. It needs a rewrite when 0001 does.
+- **The per-edit lint hook reports intermediate states.** Fixing two errors in one file with two Edit
+  calls makes the first call fail loudly. Re-run the linter before believing it.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 is not implemented, so I read for passive
+  voice. SENT-2, PARA-2, PARA-4, PARA-5, PARA-6, TERM-1, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14
+  and BAN-18 were judged by eye. Two calls went the other way and are recorded here. The classification
+  items keep the passive, because naming the actor answers the exercise. *The line*, *the port* and *the
+  boundary parse* stay, because the lede asks where the line goes and section 2 answers with the port.
+- **Two defects surfaced during the edit pass, not the detect pass**, both in `fake.md`: *altitude* for
+  the layer, and *policy tests shed the network*. Fixed under TERM-6 rather than deferred.
+- **Not touched:** the lab `05-model-gateway`, `ROADMAP.md` and `course-module-graph.md`. No status
+  changed and no lesson claim about the lab changed.
+
+### The eight notes lesson 0006 links, rewritten the same day (user request)
+
+The four term notes of a lesson are not the whole reading path. Lesson 0006's cluster links eight more
+notes through its `**Related:**` lines, and seven of them failed the profile. All eight pass now:
+`model-gateway`, `base-url`, `type-erasure`, `typed-error`, `sdk`, `test-double`, `cancellation`, and
+`safe-parse`, which lesson 0005's rewrite had already fixed. 16 errors and 7 warnings to 0 and 1.
+
+- **`model-gateway.md` was the worst note in the registry and the most read.** 39-word and 38-word
+  sentences, 3 em-dashes, 2 clause-joining semicolons, *property of the seam*, and *keeps the contract
+  honest*. It carries `lesson: "0001"`, which is why three passes over lesson 0006 skipped it while most
+  of its body described lesson 0006.
+- **Five more banned metaphors, all in notes written before the profile existed:** *the same seam* and *a
+  deliberately designed seam* in `base-url`, *an SDK you can't see through is magic* twice in `sdk`, *the
+  ancestor of* and *one altitude up* in `test-double`, and *the transport tears the request down* with
+  *the SDK plumbs it* in `cancellation`. Each is now a statement of what the code does.
+- **The rename reached four more notes.** *Contract* is gone from `test-double` and `base-url` as a name
+  for an interface. `test-double` now links `[[request-contract|request and response shape]]`, which
+  keeps the slug alive and shows the new name.
+- **TERM-7 in a term note, not just a lesson.** `cancellation.md` now reads `S6 (budget limits)`, and
+  `⑥` is glossed as cancellation where the note cites it.
+- **One warning kept on purpose.** `cancellation.md` opens with *Stopping an in-flight request on
+  purpose*. SENT-5 bans a participle that opens a clause. This is a noun phrase defining a noun, which
+  is the house form for every definition line in `wiki/terms/`. Changing it would change 56 notes.
+- **Frontmatter untouched in all eight.** No `status`, `introduced` or `demonstrated` date moved. This
+  was a prose rewrite, and Article V.2 governs promotion.
+- **Where the next hop stops, and why it should wait.** Those eight notes link 13 more that still fail,
+  23 errors between them: `api`, `messages-api`, `api-key-authentication`, `api-version-header`,
+  `request-contract`, `error-boundary`, `retry-with-backoff`, `request-options`, `declaration-file`,
+  `narrowing`, `discriminated-union`, `runtime-validation` and `stop-reason`. They belong to lessons 0001
+  to 0004, which are themselves unrewritten. `request-contract.md` is the clearest case: the 2026-08-08
+  entry schedules its slug rename for when lesson 0001 is rewritten. Rewriting these notes first would
+  put them out of step with the lessons that introduce them.
+
+## Update 2026-08-15 — lesson 0009 shipped: the loop gets its bounds, and the gateway streams
+
+Lesson 0009 (*Bounds and Termination*) continues lab `07-tool-loop` with Parts D–F. 1,974 words, 0
+errors, 6 warnings from `tools/lesson-lint.mjs`; the map note and both term notes pass with 0/0. Two new
+Technical Names against a budget of six: `termination` and `partial-artifact`. Zero em-dashes in prose,
+two diagrams, both render-verified in headless Edge against the vendored mermaid.
+
+- **The design decision of the session: the gateway now streams every call.** A bound checked only after
+  a reply lands cannot stop the reply, and S6's "abort mid-generation" is unachievable on the JSON path.
+  The adapter moved from `messages.create` to `messages.stream` + `finalMessage()`; the boundary parse
+  runs on the assembled Message unchanged. `requestId` now comes from `stream.request_id` (the 0004
+  finding that `finalMessage()` carries no `_request_id` paid off here).
+- **The mock's streaming path learned tool use** — the same decision as its JSON tool branch, delivered
+  as SSE with real grammar (`content_block_start` type `tool_use`, then `input_json_delta` chunks). The
+  change is additive: no-tools streams are frame-identical to before. Regressions re-run: exercise 03
+  (all parts, incl. the 41/164-char abort), 04 (drift), 06 (65 tokens), and 07 Parts A–C (217/95/65).
+  The pairing-rule 400 fires before the stream branch, so 0008's exercise step 6 still works.
+- **Every bound now comes from the spec.** `MAX_MODEL_CALLS` is gone; `maxModelCalls` (default 4) and
+  `deadlineMs` (default 60000) joined the schema, both defaulting so a silent spec still terminates.
+  `costCeilingTokens`, declared in 0007, is enforced at three moments: before a call (refuse to start),
+  during (abort on estimate), after (book truth). Outcomes gained `over_budget` and `out_of_time`.
+- **The user's 2026-07-27 carry-forward became the lesson's spine.** They derived after lesson 0004 that
+  in-stream budget aborts must act on a conservative estimate because true `output_tokens` arrive only
+  in `message_delta`. The mission callout quotes the prediction back; the wire section proves it with
+  captured frames (`message_start` carries `input_tokens: 110` truth, `message_delta` carries
+  `output_tokens: 42`, an aborted call receives neither). Estimator: one token per three chars, erring
+  high on purpose.
+- **Measured, not asserted:** Part D's fake was scripted for 3 asking replies and answered 2; Part E
+  aborted at 46/82 chars and booked 191 estimated tokens against a ceiling of 190 (the honest overshoot
+  is taught, not hidden); Part F's 2400 ms deadline landed at ~2424 ms with 24 chars kept. The port
+  gained `CallProgress` (a third `kind`-discriminated union) and `partialText` on the aborted arm.
+- **One `AbortController` per job serves every bound**; `AbortSignal.any` merges it with the operator's
+  signal. The supervisor tracks `boundHit` because the abort itself cannot say why it fired — quiz Q3.
+- **Recall debt from TWO lessons paid.** The user's say-it answers for lessons 0007 (record 0010) and
+  0008 (record 0011) sat uncollected-into-evaluations; both sets are correct at mechanism level, and the
+  0007 answer on refinement placement literally predicted this lesson's enforcement design. Evaluations
+  appended to both records; **promoted to `demonstrated` (6):** [[task-spec]], [[admissibility-check]],
+  [[schema-refinement]], [[tool-use-block]], [[tool-result-block]], [[tool-loop]].
+- **Judged rather than measured, per Article VIII.6:** SENT-3 (passive) read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. The six
+  SENT-5 warnings are classification labels (*Refusing to start a call…*) — noun phrases naming a
+  check, the same kept pattern as 0008's.
+- **Ops notes:** verification ran on a private mock (`PORT=8899`) plus a logging proxy on 8898; both
+  stopped afterwards, nothing holds 8787. A first proxy draft died on Node 22's `req.on("close")`
+  firing at body-end — teeing SSE needs `res.on("close")` + `writableFinished`. The per-edit lint hook
+  again reported intermediate states mid-fix; the fresh linter run is the truth.
+- Still your file, still untouched: `02-model-client-sdk/src/cilent2.ts` keeps `pnpm -r typecheck` red.
+- Bookkeeping: ROADMAP row 0009 ✅ with the streaming win named, 0010 flipped to ▶; module graph synced
+  (phase banner, Phase 1 detail, artifact graph, S6 row).
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

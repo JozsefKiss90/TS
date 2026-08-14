@@ -13,7 +13,7 @@ tags:
 
 # Lesson 0006 — The Model Gateway
 
-Phase 1 opens by drawing the line S4 requires: mechanics below, policy above. The [[sdk]] goes behind a [[port]] that Hermes owns, `gateway.ts`. The [[adapter]] `AnthropicModelGateway` translates calls down, replies up through the [[safe-parse|boundary parse]], and [[typed-error]] exceptions into failure data. The [[fake]] `FakeModelGateway` runs the same supervisor offline in 0.6 ms.
+Phase 1 opens by drawing the line S4 (model calls) requires: mechanics below, policy above. The [[sdk]] goes behind a [[port]] that Hermes owns, `gateway.ts`. The [[adapter]] `AnthropicModelGateway` translates calls down, replies up through the [[safe-parse|boundary parse]], and [[typed-error]] exceptions into failure data. The [[fake]] `FakeModelGateway` runs the same supervisor offline in 0.6 ms.
 
 The provider question, open since session 1, landed here. Hermes gets a provider-neutral port with exactly one live adapter. Neutrality is a property of the interface, not a count of adapters.
 
@@ -62,11 +62,11 @@ Measured against SDK 0.113.0 and zod 4.4.3:
 - An abort at 100 ms returned `{ kind: 'aborted' }`. Drifted bytes were refused with both issues, and zero tokens were booked.
 - With the mock stopped, the fake ran the same supervisor, including the retry-later branch, in 0.6 ms.
 
-The wire itself is untouched. A port is build-time architecture, and the network cannot see it.
+The wire itself is untouched. A port is build-time architecture, and TypeScript erases it before the adapter builds a request.
 
 ## Hermes anchoring
 
-Scenario step **S4**: model calls go through the ModelGateway, and the supervisor classifies typed failures. The port seeds **S6**, because the supervisor's `AbortSignal` crosses it. It seeds **S7**, because the adapter keeps the provider's `requestId`. The decision recorded in `NOTES.md` on 2026-07-29 stands: neutral port, one live adapter, the [[fake]] as the second implementation.
+Scenario step **S4**: model calls go through the ModelGateway, and the supervisor classifies typed failures. The port prepares **S6** (budget limits), because the supervisor's `AbortSignal` crosses it. It prepares **S7** (the trace), because the adapter keeps the provider's `requestId`. The decision recorded in `NOTES.md` on 2026-07-29 stands: neutral port, one live adapter, the [[fake]] as the second implementation.
 
 ## What the 2026-08-08 rewrite cut
 

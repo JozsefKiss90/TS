@@ -17,10 +17,10 @@ tags:
 
 # Test double
 
-A stand-in that honors the same contract as a real dependency, so the code under test cannot tell the difference — and you control both sides. A double can enforce the contract's **shape** (required fields, headers, error envelopes) but never the truths behind it (genuine keys, real rate limits, the actual model catalog).
+A stand-in that answers the same calls as a real dependency, so the code under test cannot tell the difference. You control both sides of the exchange. A double can enforce the shape a caller must send: required fields, headers and error envelopes. It cannot enforce the truths behind that shape, such as real keys, real rate limits, or the provider's model catalog.
 
-**In [[lesson-0002-raw-http-against-a-mock|lesson 0002]]:** `mock-server.ts` doubles the [[messages-api]] — it validates [[api-key-authentication]] presence, the [[api-version-header]], and the [[request-contract]], then returns a canned response with the real `Message` shape.
+**In [[lesson-0002-raw-http-against-a-mock|lesson 0002]]:** `mock-server.ts` doubles the [[messages-api]]. It checks [[api-key-authentication]], the [[api-version-header]] and the [[request-contract|request and response shape]]. It then returns a canned response with the real `Message` shape.
 
-**Why it matters for Hermes:** mock-first is a settled curriculum decision, and this double is the ancestor of Phase 1's `FakeModelGateway` — built in lesson 0006 as a [[fake]]: the same doubling move one altitude up, at the [[port]] instead of the wire.
+**Why it matters for Hermes:** mock-first is a settled curriculum decision. Phase 1's `FakeModelGateway` came from this double, and lesson 0006 built it as a [[fake]]. The fake makes the same move one level up, at the [[port]] rather than at the wire.
 
 **Related:** [[messages-api]] · [[model-gateway]] · [[fake]] · [[base-url]] · [[request-contract]] · [[error-boundary]]
