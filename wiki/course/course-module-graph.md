@@ -37,7 +37,7 @@ flowchart TD
 flowchart TD
     L1["0001 Trace One Request ✅<br/>the six responsibilities"]
     L2["0002 Raw HTTP Against a Mock ✅<br/>lab 01-raw-http"]
-    L3["0003 The SDK Absorbs the Six ✅<br/>lab 02-model-client-sdk"]
+    L3["0003 The SDK Absorbs the Six Responsibilities ✅<br/>lab 02-model-client-sdk"]
     L4["0004 The Response Becomes a Process ✅<br/>lab 03-streaming-and-cancellation"]
     L5["0005 Validate the Boundary ✅<br/>lab 04-validate-the-boundary"]
     L1 -->|"do the six by hand"| L2

@@ -4,7 +4,7 @@ aliases:
   - exponential backoff
   - maxRetries
 type: glossary-term
-lesson: "0001"
+lesson: "0003"
 phase: 0
 category: sdk-layer
 status: demonstrated
@@ -17,10 +17,10 @@ tags:
 
 # Retry with exponential backoff
 
-Re-sending a failed request after waiting progressively longer between attempts. **Client policy, not wire behavior**: the [[api]] just returns the 429 or 500; the [[sdk]] chooses to retry connection errors and 408/409/429/5xx responses — twice by default, configurable via `maxRetries` — and also applies a default request timeout (10 minutes in the TypeScript SDK). Raw `fetch` gives you none of this.
+Re-sending a failed request after waiting longer between attempts. This is client policy, not an API rule. The [[api]] returns the 429 or 500. The [[sdk]] chooses to retry connection errors and 408, 409, 429 and 5xx responses, twice by default, under `maxRetries`.
 
-**In [[lesson-0001-trace-one-request|lesson 0001]]:** the classification item "a 429 or 500 is automatically retried" — SDK layer — and quiz Q1.
+**First seen in [[lesson-0001-trace-one-request|lesson 0001]]:** the classification item on automatic retries, and quiz Q1. **In [[lesson-0003-the-sdk-absorbs-the-six|lesson 0003]]:** measured against the mock. Three requests over ten seconds honored `retry-after: 5`, and timeouts are retried too.
 
-**Why it matters for Hermes:** hidden retries multiply cost and latency. A bounded loop must account for them in its budgets, or two "one-request" iterations can silently become six requests.
+**Why it matters for Hermes:** hidden retries multiply cost and latency. A bounded loop must account for them, or one request can silently become six.
 
 **Related:** [[error-boundary]] · [[sdk]] · [[cancellation]]

@@ -1,7 +1,7 @@
 ---
 term: stop_reason
 type: glossary-term
-lesson: "0001"
+lesson: ""
 phase: 0
 category: protocol
 status: demonstrated
@@ -14,10 +14,12 @@ tags:
 
 # stop_reason
 
-The [[messages-api]] response field that says **why generation ended** — natural end of turn, `max_tokens` hit, a stop sequence, or a tool call. Defined by the [[api]], so loop logic branching on it works identically in every language.
+The [[messages-api]] response field that says why generation ended: end of turn, `max_tokens`, a stop sequence, or a tool call. The [[api]] defines it, so loop logic branches on it identically in every language.
 
-**In [[lesson-0001-trace-one-request|lesson 0001]]:** a classification-exercise item — API contract, not [[sdk]] layer.
+**First seen in [[lesson-0001-trace-one-request|lesson 0001]]** as a classification item: an API rule, not an [[sdk]] choice. **In [[lesson-0002-raw-http-against-a-mock|lesson 0002]]:** the lab reads it out of the raw response body. On the streaming path it arrives only in `message_delta`, at the end, per lesson 0004.
 
-**Why it matters for Hermes:** the bounded loop's termination logic will branch on `stop_reason` on every iteration; it is the wire-level signal behind the [[model-gateway]]'s "continue, call a tool, or stop" decision.
+**Why it matters for Hermes:** the bounded loop's termination logic branches on `stop_reason` every iteration. It is the wire signal behind the [[model-gateway]]'s stop decision.
 
-**Related:** [[messages-api]] · [[model-gateway]] · [[api]]
+*Demoted to ordinary vocabulary on 2026-08-17: it is a literal code identifier, marked up as code wherever it appears. The note stays as a reference.*
+
+**Related:** [[messages-api]] · [[model-gateway]] · [[api]] · [[delta]]

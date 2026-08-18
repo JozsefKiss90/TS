@@ -3,7 +3,7 @@ term: Error boundary
 aliases:
   - typed errors
 type: glossary-term
-lesson: "0001"
+lesson: ""
 phase: 0
 category: sdk-layer
 status: introduced
@@ -15,10 +15,12 @@ tags:
 
 # Error boundary
 
-The place where transport and HTTP failures become program decisions. The [[api]] only hands you a status code (401, 429, 529…); raw `fetch` makes you write every branch yourself, while the [[sdk]] raises **typed error classes** (`Anthropic.RateLimitError`, …) you can `instanceof` against, after first applying its own [[retry-with-backoff|retry policy]].
+The place where transport and HTTP failures become program decisions. The [[api]] hands you a status code. Raw `fetch` makes you write every branch. The [[sdk]] raises [[typed-error|typed error classes]] after applying its own [[retry-with-backoff|retry policy]].
 
-**In [[lesson-0001-trace-one-request|lesson 0001]]:** responsibility ⑤ of the six — `if (!res.ok) throw` versus `catch (err) { if (err instanceof Anthropic.RateLimitError) … }`.
+**First seen in [[lesson-0001-trace-one-request|lesson 0001]]** as responsibility ⑤. **In [[lesson-0003-the-sdk-absorbs-the-six|lesson 0003]]:** the lab measures the typed classes against the mock, case by case.
 
-**Why it matters for Hermes:** which errors are retried, surfaced, or escalated is **policy**, and Hermes' policy must live in its own loop — visible and testable — not implicitly inside a library default.
+*Demoted to ordinary vocabulary on 2026-08-18: lessons use this phrase without a definition. The note stays as a reference.*
 
-**Related:** [[retry-with-backoff]] · [[sdk]] · [[api]]
+**Why it matters for Hermes:** which errors are retried, surfaced, or escalated is policy. Hermes keeps that policy in its own code, visible and testable, not inside a library default.
+
+**Related:** [[typed-error]] · [[retry-with-backoff]] · [[sdk]] · [[api]]

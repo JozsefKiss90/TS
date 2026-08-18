@@ -23,4 +23,4 @@ The seam where serialized bytes enter or leave your typed code. An HTTP response
 
 **Why it matters for Hermes:** every guarantee Hermes OS makes is enforced at one of these seams. The Job Envelope is one, at step S1 (the envelope is parsed). The Context Pack is another, at S2 (evidence is checked). Tool arguments and results are two more, at S5 (the loop iterates). "No envelope, no dispatch" is a parse at a JSON boundary.
 
-**Related:** [[runtime-validation]] · [[type-erasure]] · [[zod-schema]] · [[safe-parse]] · [[request-contract]]
+**Related:** [[runtime-validation]] · [[type-erasure]] · [[zod-schema]] · [[safe-parse]] · [[request-and-response-shape]]

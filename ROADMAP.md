@@ -22,7 +22,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 |---|---|---|---|---|
 | 0001 | [Trace One Request — API vs SDK](lessons/0001-trace-one-request-api-vs-sdk.html) | — | the six responsibilities (① endpoint ② auth ③ version ④ contract ⑤ errors ⑥ cancellation); response types are compile-time claims about runtime bytes | ✅ |
 | 0002 | [Raw HTTP Against a Mock](lessons/0002-raw-http-against-a-mock.html) | `01-raw-http` | every responsibility written by hand against a test double; the base-URL seam | ✅ |
-| 0003 | [The SDK Absorbs the Six](lessons/0003-the-sdk-absorbs-the-six.html) | `02-model-client-sdk` | the official SDK against the same mock — mechanics absorbed, policy left behind; typed errors, retries, declaration files | ✅ |
+| 0003 | [The SDK Absorbs the Six Responsibilities](lessons/0003-the-sdk-absorbs-the-six.html) | `02-model-client-sdk` | the official SDK against the same mock — mechanics absorbed, policy left behind; typed errors, retries, declaration files | ✅ |
 | 0004 | [The Response Becomes a Process](lessons/0004-the-response-becomes-a-process.html) | `03-streaming-and-cancellation` | SSE event grammar; the delta fold; cancellation becomes a cost lever | ✅ |
 | 0005 | [Validate the Boundary](lessons/0005-validate-the-boundary.html) | `04-validate-the-boundary` | Zod turns the assertion into a checked parse; `z.infer` as single source of truth — the debt open since lesson 0001 §3, and the close of Phase 0 | ✅ |
 

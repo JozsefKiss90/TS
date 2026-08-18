@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lesson 0003 — The SDK Absorbs the Six</title>
+<title>Lesson 0003 — The SDK Absorbs the Six Responsibilities</title>
 <link rel="stylesheet" href="../assets/course.css">
 <script src="../assets/quiz.js" defer></script>
 <script src="../assets/vendor/mermaid.min.js" defer></script>
@@ -12,86 +12,156 @@
 <body>
 
 <header class="lesson-head">
-  <p class="kicker">Hermes · Phase 0 · Lesson 0003 · lab exercise 02-model-client-sdk · ~45–60 minutes</p>
-  <h1>The SDK Absorbs the Six</h1>
-  <p class="lede">Exercise 01's raw client, rewritten with the official <code>@anthropic-ai/sdk</code> — pointed at
-  the very same mock. Every responsibility you built by hand is still there; your job today is to find where
-  each one went.</p>
+  <p class="kicker">Hermes · Phase 0 · Lesson 0003 · lab exercise 02-model-client-sdk · ~45–60 min</p>
+  <h1>The SDK Absorbs the Six Responsibilities</h1>
+  <p class="lede">You rewrite exercise 01's raw client with the official <code>@anthropic-ai/sdk</code>,
+  aimed at the same mock. Every responsibility you wrote by hand still exists. Find where each
+  one went.</p>
 </header>
 
 <div class="callout mission">
   <strong>Why this matters for Hermes</strong>
-  Phase 1's <code>AnthropicModelGateway</code> will wrap exactly this SDK — so what the gateway must add is
-  precisely <em>what the SDK does not do</em>. Today you map that boundary from below: the SDK gives you
-  mechanics (retries, typed errors, cancellation plumbing) but no <em>policy</em> (budgets, approval, runtime
-  validation of responses). This is also the sequence discipline in action: ordinary model-client SDK now,
-  Agent SDK not until Phase 5 — because after today, neither is magic.
+  Every model call Hermes makes uses this SDK's mechanics: authentication, retries, typed errors,
+  cancellation. Scenario step S4 (model calls) puts that layer below Hermes policy. The
+  six-responsibilities thread continues: the SDK absorbs all six, and the wire does not change.
 </div>
 
 <h2>1 · Nothing changes on the wire</h2>
 
-<p>Start the mock, send the SDK request, and watch the server's terminal: the same <code>POST /v1/messages</code>,
-passing the same gates ②③④, answered with the same canned fixture. The mock cannot tell exercise 02 from
-exercise 01 — <strong>an SDK does an API's chores; it does not change the API</strong>. Here is where each
-chore moved:</p>
+<p>Exercise 02 points the official SDK at exercise 01's mock through one option, <code>baseURL</code>.
+Start the mock, run the SDK client, and watch the server's terminal. The mock logs the same
+<code>POST /v1/messages</code> and answers with the same canned fixture. It cannot tell the two
+clients apart. An SDK does an API's chores. It does not change the API.</p>
+
+<p>The circled numbers below are lesson 0001's six responsibilities: ① endpoint, ② authentication,
+③ API version, ④ request and response shape, ⑤ errors, ⑥ cancellation.</p>
+
+<pre><code>POST /v1/messages HTTP/1.1                     ① the endpoint
+host: localhost:8899                           the capture server. Your mock is :8787
+accept: application/json
+user-agent: Anthropic/JS 0.113.0               the SDK names itself
+x-stainless-retry-count: 0
+x-stainless-timeout: 600
+   ... six more x-stainless-* telemetry headers ...
+anthropic-version: 2023-06-01                  ③ sent for you, pinned by the SDK release
+x-api-key: mock-key                            ② from the apiKey option
+content-type: application/json
+content-length: 102
+
+{"model":"claude-opus-4-8","max_tokens":1024,  ④ the request shape
+ "messages":[{"role":"user","content":"What is an SDK?"}]}</code></pre>
+
+<p>The body is byte-for-byte the raw client's body: the same 102 bytes, measured. The headers are a
+superset. The SDK adds its own name and telemetry, and the mock ignores every extra header.</p>
 
 <table>
-  <tr><th></th><th>Exercise 01 — you wrote…</th><th>Exercise 02 — it became…</th></tr>
-  <tr><td>① endpoint</td><td><code>fetch(`${BASE_URL}/v1/messages`)</code></td><td>the <code>baseURL</code> option; the path lives inside <code>client.messages.create</code></td></tr>
-  <tr><td>② auth</td><td><code>"x-api-key": API_KEY</code></td><td>the <code>apiKey</code> option, defaulting to <code>ANTHROPIC_API_KEY</code> from the environment</td></tr>
-  <tr><td>③ version</td><td><code>"anthropic-version": "2023-06-01"</code></td><td>nothing — sent automatically, pinned by the SDK release</td></tr>
-  <tr><td>④ contract</td><td>hand-built body + <code>JSON.stringify</code>, hand-written interface + <code>as</code></td><td>typed <code>MessageCreateParams</code> in, typed <code>Message</code> out (still an assertion — §3)</td></tr>
-  <tr><td>⑤ errors</td><td><code>if (!res.ok)</code> + hand-parsed envelope</td><td>typed error classes, plus automatic retry that <em>honors</em> <code>retry-after</code></td></tr>
-  <tr><td>⑥ cancellation</td><td><code>signal</code> in the fetch options</td><td><code>{ signal }</code> in the per-request options — plus a retried <code>timeout</code></td></tr>
+  <tr><th></th><th>Exercise 01, you wrote</th><th>Exercise 02, it became</th></tr>
+  <tr><td>① endpoint</td><td><code>fetch(`${BASE_URL}/v1/messages`)</code></td><td>the
+  <code>baseURL</code> option. The path lives inside <code>client.messages.create</code>.</td></tr>
+  <tr><td>② authentication</td><td><code>"x-api-key": API_KEY</code></td><td>the <code>apiKey</code>
+  option, defaulting to <code>ANTHROPIC_API_KEY</code> from the environment</td></tr>
+  <tr><td>③ version</td><td><code>"anthropic-version": "2023-06-01"</code></td><td>nothing to write.
+  The SDK sends it.</td></tr>
+  <tr><td>④ request and response shape</td><td>a hand-built body, a hand-written interface, an
+  <code>as</code></td><td>typed <code>MessageCreateParams</code> in, typed <code>Message</code> out.
+  Still an assertion (§4).</td></tr>
+  <tr><td>⑤ errors</td><td><code>if (!res.ok)</code> plus a hand-parsed envelope</td><td>typed error
+  classes, and automatic retry that obeys <code>retry-after</code></td></tr>
+  <tr><td>⑥ cancellation</td><td><code>signal</code> in the fetch options</td><td><code>signal</code>
+  in the request options, plus a per-call <code>timeout</code></td></tr>
 </table>
 
 <figure class="diagram">
 <pre class="mermaid">
 flowchart TD
     CALL["your code:<br/>client.messages.create(params)"]
-    subgraph SDK["@anthropic-ai/sdk — the six, absorbed"]
-        EP["① path + baseURL seam"]
-        AUTH["② x-api-key from apiKey/env"]
+    subgraph SDK["@anthropic-ai/sdk"]
+        EP["① path + baseURL"]
+        AUTH["② x-api-key from apiKey or env"]
         VER["③ anthropic-version header"]
-        SER["④ serialize → parse → assert Message"]
-        ERR["⑤ typed errors + retry-after honored"]
-        CAN["⑥ signal + timeout plumbing"]
+        SER["④ serialize, parse, assert Message"]
+        ERR["⑤ typed errors, retries obey retry-after"]
+        CAN["⑥ signal and timeout plumbing"]
     end
-    WIRE["the wire: POST /v1/messages —<br/>byte-for-byte exercise 01's request"]
-    MOCK["mock-server.ts :8787<br/>(unchanged, and cannot tell the difference)"]
+    WIRE["the wire: POST /v1/messages<br/>same body, extra SDK headers"]
+    MOCK["mock-server.ts :8787<br/>unchanged, cannot tell the difference"]
     CALL --> SDK --> WIRE --> MOCK
 </pre>
-<figcaption>Supplementary diagram — the SDK is a layer <em>between</em> your code and the wire, not a change
-<em>to</em> the wire. That invariance is what made the base-URL seam work without touching the mock.</figcaption>
+<figcaption>Diagram 1. The SDK is a layer between your code and the wire, not a change to the
+wire.</figcaption>
 </figure>
 
 <h2>2 · Construction is configuration</h2>
 
-<p>The raw client scattered the six across a function. The SDK gathers the durable ones into a long-lived
-<strong>client object</strong> — construction is configuration; calls are use:</p>
+<p>Exercise 01 scattered the six responsibilities across one function. The SDK gathers the durable
+ones into an <dfn>API client</dfn>: an object that holds connection settings and exposes the API's
+operations as typed methods. Construction is configuration. Calls are use.</p>
 
 <pre><code>const client = new Anthropic({
-  baseURL: "http://localhost:8787", // ① the seam (default: ANTHROPIC_BASE_URL, else api.anthropic.com)
-  apiKey: "mock-key",               // ② (default: ANTHROPIC_API_KEY from the environment)
-  maxRetries: 2,                    // ⑤ the default — 429s and 5xx retried, retry-after honored
-  timeout: 600_000,                 // ⑥ the default — MILLISECONDS in this SDK
+  baseURL: "http://localhost:8787", // ① default: ANTHROPIC_BASE_URL, else api.anthropic.com
+  apiKey: "mock-key",               // ② default: ANTHROPIC_API_KEY from the environment
+  maxRetries: 2,                    // ⑤ the default
+  timeout: 600_000,                 // ⑥ the default, in MILLISECONDS
 });</code></pre>
 
-<p>Anything set here is a <em>default</em>; any single call can override it through the <strong>options
-bag</strong> — a second argument that is not part of the request body. Params say <em>what you're asking</em>;
-options say <em>how this one call should behave on the wire</em>:</p>
+<p>Everything set here is a default for the client's whole life. A single call can override the
+transport through <dfn>request options</dfn>: a second argument of per-call transport settings, kept
+separate from the request body. Params say what you are asking. Options say how this one call behaves
+on the wire.</p>
 
 <pre><code>await client.messages.create(
-  { model, max_tokens, messages },                              // params — the ④ contract
-  { headers: { "x-mock-scenario": "rate-limit" },               // options — this call only
+  { model, max_tokens, messages },                 // params: the ④ request shape
+  { headers: { "x-mock-scenario": "rate-limit" },  // options: this call only
     maxRetries: 0, timeout: 200, signal: controller.signal },
 );</code></pre>
 
-<p>Where do these claims come from? Not this lesson's word for it: the constructor's JSDoc in
-<code>node_modules/@anthropic-ai/sdk/client.d.ts</code> states every default (env var fallbacks, 10-minute
-timeout, <code>maxRetries: 2</code>), and <code>core/error.d.ts</code> lists the whole error family. Those
-generated <strong>declaration files</strong> are the SDK's real contract — reading them is a Phase 0 skill,
-and today's exercise makes you do it once on purpose.</p>
+<p>Read the call one link at a time.</p>
+
+<table>
+  <tr><th>Piece</th><th>Syntax</th><th>Meaning</th><th>What exists at runtime</th></tr>
+  <tr><td><code>import Anthropic from "@anthropic-ai/sdk"</code></td><td>default import</td>
+  <td>the SDK's entry class</td><td>a class object from <code>node_modules</code></td></tr>
+  <tr><td><code>new Anthropic({ ... })</code></td><td>constructor call</td>
+  <td>build one configured client</td><td>the client object with your settings</td></tr>
+  <tr><td><code>client.messages</code></td><td>property read</td>
+  <td>the Messages resource</td><td>an object the constructor created</td></tr>
+  <tr><td><code>.create(params, options?)</code></td><td>method call</td>
+  <td>one <code>POST /v1/messages</code></td><td>a promise of the parsed <code>Message</code></td></tr>
+</table>
+
+<p>The declaration of <code>create</code> has three overloads, and the params type decides the return
+type. Without <code>stream: true</code> the call promises one <code>Message</code>. A signature tells
+TypeScript what may be called. The implementation does the runtime work. The SDK abstracts chores
+away from your application code, not away from TypeScript.</p>
+
+<p>Every default above comes from the SDK's own files, not from its docs. A <dfn>declaration file</dfn>
+is a <code>.d.ts</code> file that states a package's types and documented defaults, with no
+implementation. The constructor's JSDoc in <code>node_modules/@anthropic-ai/sdk/client.d.ts</code>
+states the environment fallbacks, the 10-minute timeout, and <code>maxRetries: 2</code>. For a
+generated SDK they are the authoritative description of its surface. The exercise starts there.</p>
+
+<h2>3 · Errors and cancellation, measured</h2>
+
+<p>Responsibility ⑤ used to be your <code>if (!res.ok)</code> branch. The SDK raises a <dfn>typed error</dfn>
+instead: a failure raised as a distinct class per failure family, carrying structured fields. The
+hierarchy lives in <code>core/error.d.ts</code>.</p>
+
+<pre><code>// core/error.d.ts (abridged)            // what your catch receives
+export declare class APIError {           RateLimitError {
+  readonly status: number | undefined;      status: 429,
+  readonly type: ErrorType | null;          type: "rate_limit_error",
+  readonly requestID: string | null;        requestID: "req_mock_0001",
+  readonly headers: Headers | undefined;    headers: { "retry-after": "5", ... },
+}                                         }
+export declare class RateLimitError
+  extends APIError&lt;429, Headers&gt; {}</code></pre>
+
+<p>A 429 does not reach your catch at once, because the SDK retries first. <dfn>Retry with
+exponential backoff</dfn> means re-sending a failed request after waiting longer between attempts.
+The SDK retries connection errors, 408, 409, 429 and 5xx answers, twice by default, and it obeys the
+<code>retry-after</code> header. Measured against the mock's scripted 429: three requests in the
+server log, 10.1 seconds of client silence, then one <code>RateLimitError</code>. With
+<code>maxRetries: 0</code> the same failure surfaces in 17 milliseconds.</p>
 
 <figure class="diagram">
 <pre class="mermaid">
@@ -100,93 +170,111 @@ sequenceDiagram
     participant S as SDK client
     participant M as mock :8787
     C->>S: create(params, {headers: rate-limit})
-    S->>M: attempt 1 — POST /v1/messages
+    S->>M: attempt 1, POST /v1/messages
     M-->>S: 429 + retry-after: 5
-    Note over S: honors the header — waits 5 s
+    Note over S: obeys the header, waits 5 s
     S->>M: attempt 2
     M-->>S: 429 + retry-after: 5
-    Note over S: waits 5 s — maxRetries (2) spent
+    Note over S: waits 5 s, maxRetries (2) spent
     S->>M: attempt 3
     M-->>S: 429 + retry-after: 5
     S-->>C: throws RateLimitError (.status .type .requestID .headers)
 </pre>
-<figcaption>Supplementary diagram — responsibility ⑤, made visible. Measured against this course's mock:
-three requests in the server log, 10.1 seconds of client-side silence, then one typed error. Your raw client
-could only <em>print</em> <code>retry-after</code>; the SDK obeys it.</figcaption>
+<figcaption>Diagram 2. The default retry policy against the mock's scripted 429.</figcaption>
 </figure>
 
-<h2>3 · What moved to compile time — and what could not</h2>
+<p>Responsibility ⑥ has two knobs. A <code>timeout</code> of 200
+milliseconds expires inside the mock's 400-millisecond latency. The SDK treats a timeout like a connection
+error: three attempts, then <code>APIConnectionTimeoutError</code> after about 2.1 seconds.</p>
 
-<p>In exercise 01 you misspelled <code>messages</code> and learned about it from a 400. Today the same typo
-never reaches a running process:</p>
+<p><dfn>Cancellation</dfn> is stopping an in-flight request on purpose. Pass an
+<code>AbortController</code>'s <code>signal</code> in the request options and call
+<code>abort()</code>. One attempt stops, <code>APIUserAbortError</code> surfaces at once, and the SDK
+retries nothing.</p>
+
+<h2>4 · What moved to compile time, and what did not</h2>
+
+<p>In exercise 01 you misspelled <code>messages</code> and learned about it from a 400. The same typo
+now never reaches a running process.</p>
 
 <pre><code>error TS2769: Object literal may only specify known properties, but 'mesages'
 does not exist in type 'MessageCreateParamsNonStreaming'.
 Did you mean to write 'messages'?</code></pre>
 
-<p>Deleting <code>max_tokens</code> fails the same way (<code>Property 'max_tokens' is missing</code>). Two of
-the mock's 400 gates just moved into <code>tsc</code>. But be precise about the limits — three things
-deliberately did <em>not</em> move:</p>
+<p>Remove <code>max_tokens</code> and the check fails again with a missing-property error. Two of the
+mock's 400 gates moved into <code>tsc</code>. Three things deliberately did not move.</p>
 
-<ul>
-  <li><strong>The model id.</strong> <code>claude-opsu-4-8</code> compiles. Peek at the type:
-  <code>Model = 'claude-opus-4-8' | … | (string &amp; {})</code> — a union of known ids with an escape hatch
-  admitting <em>any</em> string, so new models don't break old SDKs. Types check <em>shape</em>; the model
-  catalog is server-side <em>truth</em>.</li>
-  <li><strong>The key's value.</strong> <code>apiKey: "definitely-not-real"</code> sails through mock and
-  compiler alike — lesson 0002's presence-vs-authenticity line, unmoved.</li>
-  <li><strong>The response.</strong> The SDK's <code>Message</code> type is attached to <code>JSON.parse</code>
-  output by assertion — exactly the pipeline lesson 0001 §3 dissected, just written by a code generator
-  instead of by you. Nothing at runtime checks that the bytes match. The SDK trusts its server; Hermes will
-  not extend that trust to <em>model-generated</em> data — that runtime-validation gap is precisely what Zod
-  fills at Phase 1's JSON boundaries.</li>
-</ul>
+<p>The model id still compiles when misspelled. The declaration reads
+<code>Model = 'claude-opus-4-8' | … | (string &amp; {})</code>, a union of known ids plus one member
+that admits any string. New models must keep working against old SDKs, so the catalog stays on
+the server.</p>
 
-<h2>4 · The exercise</h2>
+<p>The key's value still passes everywhere. A value like <code>apiKey: "definitely-not-real"</code>
+satisfies the compiler and the mock alike. Lesson 0002's line between presence and authenticity has
+not moved.</p>
 
-<p>Commands and the full experiment table live in
-<code>hermes-sdk-lab/02-model-client-sdk/README.md</code>; the arc is:</p>
+<p>The response is still trusted, not checked. The SDK attaches its <code>Message</code> type to
+parsed bytes by assertion, the same pipeline lesson 0001 §3 dissected, now generated instead of
+hand-written. Nothing at runtime checks that the bytes match the type. Lesson 0005 closes that
+gap: Hermes validates model-shaped data with Zod at the boundary.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>An API client holds connection settings once. Every call inherits them.</li>
+    <li>Params and options are separate arguments: what you ask, and how one call behaves.</li>
+    <li>The SDK retries some failures for you and obeys <code>retry-after</code>.</li>
+    <li>Failures arrive as typed error classes with structured fields.</li>
+    <li>Declaration files state a generated SDK's types and defaults. Read them first.</li>
+  </ul>
+  <p>Reprise: the six responsibilities, the base URL, presence against authenticity, and the
+  parse-then-assert pipeline.</p>
+</div>
+
+<h2>5 · The exercise</h2>
+
+<p>The commands and the full experiment table live in
+<code>hermes-sdk-lab/02-model-client-sdk/README.md</code>. The exercise has five steps.</p>
 
 <ol>
-  <li><strong>Read the contract first.</strong> Open
-  <code>node_modules/@anthropic-ai/sdk/client.d.ts</code>, find the constructor, and read the JSDoc defaults
-  for <code>apiKey</code>, <code>baseURL</code>, <code>timeout</code>, <code>maxRetries</code>.</li>
-  <li><strong>Break it before you build it.</strong> With the TODOs still empty, write the create call with
-  <code>mesages</code>, run <code>pnpm typecheck</code>, and read the error slowly. Fix; delete
-  <code>max_tokens</code>; read again. Undo.</li>
-  <li><strong>Send it.</strong> Terminal 1 <code>pnpm mock</code>, terminal 2 <code>pnpm request</code>. On
-  the 200, print the same four things as exercise 01 (<code>_request_id</code>, <code>stop_reason</code>,
-  first text block, <code>usage</code>) and diff the two clients' output — and the two source files' length.</li>
-  <li><strong>Run the ⑤/⑥ experiments.</strong> The rate-limit header with and without
-  <code>maxRetries: 0</code>; the 200 ms <code>timeout</code> against the mock's 400 ms latency; the
-  100 ms abort. Watch <em>both</em> terminals every run — count the requests the mock logs.</li>
-  <li><strong>Close the loop:</strong> for each failure you produced, name the layer that caught it —
-  compiler, SDK, mock — and what only the real API could have caught.</li>
+  <li>Read the declarations first. Open <code>node_modules/@anthropic-ai/sdk/client.d.ts</code>, find
+  the constructor, and read the documented defaults for <code>apiKey</code>, <code>baseURL</code>,
+  <code>timeout</code> and <code>maxRetries</code>.</li>
+  <li>Break it before you build it. Write the create call with <code>mesages</code>, run
+  <code>pnpm typecheck</code>, and read the error. Fix it, delete <code>max_tokens</code>, read
+  again, undo.</li>
+  <li>Send it. Terminal 1 runs <code>pnpm mock</code>, terminal 2 runs <code>pnpm request</code>. On
+  the 200, print the same four things as exercise 01 and diff the two clients' output.</li>
+  <li>Run the ⑤ and ⑥ experiments: the rate-limit header with and without <code>maxRetries: 0</code>,
+  the 200-millisecond timeout, the 100-millisecond abort. Watch both terminals. Count the requests
+  the mock logs.</li>
+  <li>Close the loop. For each failure, name the layer that caught it: the compiler, the SDK, or the
+  mock. Then say what only the real API could have caught.</li>
 </ol>
 
-<h2>5 · Exercise: who catches it now?</h2>
+<h2>6 · Exercise: who catches it now?</h2>
 
 <section class="exercise" data-scored>
   <h3>Classify each failure</h3>
-  <p class="rules">Answer from memory before clicking — the effort is the point. Feedback is immediate.</p>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
 
   <div class="cl" data-cats="The compiler catches it|The SDK catches it|Only a server can catch it">
-    <div class="cl-item" data-cat="0" data-why="the params object is typed as MessageCreateParams — an unknown property is rejected before any process runs, with a did-you-mean pointing at the fix.">
+    <div class="cl-item" data-cat="0" data-why="the params object is typed as MessageCreateParams. An unknown property is rejected before any process runs, with a did-you-mean hint.">
       <p>You write <code>mesages</code> instead of <code>messages</code> in the params.</p>
     </div>
-    <div class="cl-item" data-cat="2" data-why="Model is a union of known ids plus (string &amp; {}) — any string compiles so newer models don't break older SDKs. The mock echoes it; the real API answers 404.">
+    <div class="cl-item" data-cat="2" data-why="Model is a union of known ids plus (string &amp; {}), so any string compiles. The mock echoes it. The real API answers 404.">
       <p>The model id is misspelled: <code>claude-opsu-4-8</code>.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="max_tokens is a required property of the params type — exercise 01's runtime 400 became a missing-property compile error.">
+    <div class="cl-item" data-cat="0" data-why="max_tokens is a required property of the params type. Exercise 01's runtime 400 became a missing-property compile error.">
       <p>The params object has no <code>max_tokens</code>.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="429 and 5xx answers are retried automatically with backoff, honoring retry-after; only when maxRetries is spent does a typed RateLimitError surface to your catch.">
+    <div class="cl-item" data-cat="1" data-why="the SDK retries 429 and 5xx answers automatically and obeys retry-after. Only when maxRetries is spent does a typed RateLimitError reach your catch.">
       <p>The server answers 429 with a <code>retry-after</code> header.</p>
     </div>
-    <div class="cl-item" data-cat="2" data-why="neither the type system nor the SDK can know which keys are genuine — the mock checks presence, and authenticity lives in Anthropic's key store.">
+    <div class="cl-item" data-cat="2" data-why="neither the type system nor the SDK can know which keys are genuine. The mock checks presence. Authenticity lives in Anthropic's key store.">
       <p>The <code>apiKey</code> value is not a genuine key.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="the per-request timeout aborts the attempt, and timeouts are retried like connection errors — three attempts in the mock's log, then APIConnectionTimeoutError.">
+    <div class="cl-item" data-cat="1" data-why="the per-request timeout aborts the attempt, and timeouts are retried like connection errors. Three attempts in the mock's log, then APIConnectionTimeoutError.">
       <p>The mock's ~400 ms latency exceeds your 200 ms <code>timeout</code>.</p>
     </div>
   </div>
@@ -194,22 +282,22 @@ deliberately did <em>not</em> move:</p>
   <p class="score" data-score>Score: 0 / 0</p>
 </section>
 
-<h2>6 · Quiz</h2>
+<h2>7 · Quiz</h2>
 
 <section class="exercise" data-scored>
-  <h3>Four questions, equal-length options, no format clues</h3>
+  <h3>Four questions</h3>
 
-  <div class="qz" data-correct="2" data-why="The mock cannot tell the two clients apart: same POST /v1/messages, same headers, same body, same gates. An SDK does the API's chores — client construction, typing, retries — without changing the protocol underneath.">
-    <p class="qz-prompt">Q1. You swap exercise 01's raw <code>fetch</code> for the SDK. What changes on the wire?</p>
-    <button class="qz-opt" type="button">The SDK adds its own framing to the body</button>
-    <button class="qz-opt" type="button">The SDK switches to a binary transport</button>
-    <button class="qz-opt" type="button">Nothing — the same request is produced</button>
-    <button class="qz-opt" type="button">The SDK batches calls to save requests</button>
+  <div class="qz" data-correct="2" data-why="the body is byte-for-byte identical, and the gates are the same. The SDK adds only its own telemetry headers, which the mock ignores.">
+    <p class="qz-prompt">Q1. You swap exercise 01's raw <code>fetch</code> for the SDK. What changes in the request the mock receives?</p>
+    <button class="qz-opt" type="button">The body gains an SDK envelope around your params</button>
+    <button class="qz-opt" type="button">The transport switches to a binary wire format</button>
+    <button class="qz-opt" type="button">Nothing but extra SDK headers the mock ignores</button>
+    <button class="qz-opt" type="button">The calls are batched so fewer requests are sent</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="1" data-why="maxRetries defaults to 2, so one initial attempt plus two retries hit the server, and the SDK waits out retry-after: 5 before each retry — three requests and roughly ten seconds, measured against this course's mock, before RateLimitError reaches your catch.">
-    <p class="qz-prompt">Q2. The mock answers 429 + <code>retry-after: 5</code> every time. With default settings, what does your process observe?</p>
+  <div class="qz" data-correct="1" data-why="maxRetries defaults to 2, so three requests hit the server, and the SDK waits out retry-after: 5 before each retry. Measured: about ten seconds of silence before RateLimitError reaches your catch.">
+    <p class="qz-prompt">Q2. The mock answers 429 plus <code>retry-after: 5</code> every time. With default settings, what does your process observe?</p>
     <button class="qz-opt" type="button">One request is sent, then the error surfaces instantly</button>
     <button class="qz-opt" type="button">Three requests are sent, an error after ten seconds</button>
     <button class="qz-opt" type="button">Two requests are sent, then an error after a second</button>
@@ -217,16 +305,16 @@ deliberately did <em>not</em> move:</p>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="0" data-why="The SDK parses the bytes and asserts the Message type over the result — the same parse-then-assert pipeline from lesson 0001 §3, generated instead of hand-written. Runtime validation is exactly what Hermes adds with Zod at Phase 1's JSON boundaries.">
-    <p class="qz-prompt">Q3. At runtime, what does the SDK's <code>Message</code> response type actually guarantee about the bytes received?</p>
-    <button class="qz-opt" type="button">Nothing — the type is asserted over parsed JSON</button>
-    <button class="qz-opt" type="button">Each field is checked as the bytes get parsed</button>
-    <button class="qz-opt" type="button">Only required fields are verified, not optional</button>
+  <div class="qz" data-correct="0" data-why="the SDK parses the bytes and asserts the Message type over the result, the parse-then-assert pipeline from lesson 0001 §3. Runtime validation is what lesson 0005 adds at the boundary.">
+    <p class="qz-prompt">Q3. At runtime, what does the SDK's <code>Message</code> response type guarantee about the bytes received?</p>
+    <button class="qz-opt" type="button">Nothing, since the type is asserted over parsed JSON</button>
+    <button class="qz-opt" type="button">Each field is checked while the bytes are parsed</button>
+    <button class="qz-opt" type="button">Only required fields are verified, never optional</button>
     <button class="qz-opt" type="button">The shape is validated once per client instance</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="3" data-why="Model ends in | (string &amp; {}) — an escape hatch that keeps every string assignable while preserving autocomplete for the known ids. A new model must work with an old SDK, so the catalog stays server-side truth, not compile-time shape.">
+  <div class="qz" data-correct="3" data-why="Model ends in (string &amp; {}), which keeps every string assignable while keeping autocomplete for the known ids. A new model must work with an old SDK, so the catalog stays on the server.">
     <p class="qz-prompt">Q4. <code>model: "claude-opsu-4-8"</code> compiles without complaint. Why did the SDK's authors allow that?</p>
     <button class="qz-opt" type="button">Model names are checked by the runtime, not the compiler</button>
     <button class="qz-opt" type="button">The field is typed as a plain string for compile speed</button>
@@ -238,41 +326,54 @@ deliberately did <em>not</em> move:</p>
   <p class="score" data-score>Score: 0 / 0</p>
 </section>
 
-<h2>7 · Say it in your own words</h2>
+<h2>8 · Say it in your own words</h2>
 
-<p>After the lab work, close the loop with your teacher. In the chat, answer these four — no notes, no
-scrolling up:</p>
+<p>After the lab, answer these four in the chat, from memory.</p>
 <ol>
-  <li>Define <strong>SDK</strong> in one sentence — without the words "tools" or "platform". What does it do
-  to the API's chores, and what does it change on the wire?</li>
-  <li>Your raw client could only <em>print</em> <code>retry-after</code>. What does the SDK do with it, and
-  which two knobs — one at construction, one per call — control that behavior?</li>
-  <li>The SDK's <code>Message</code> type versus the <code>MessageResponse</code> interface you wrote by hand:
-  what is the difference in <em>runtime</em> trust, and what is the real difference?</li>
-  <li>Phase 1's <code>ModelGateway</code> will wrap this SDK. Name two things it must still own itself,
-  because the SDK gives mechanics but not policy.</li>
+  <li>Define SDK in one sentence, without the words "tools" or "platform". What does it do to the
+  API's chores, and what changes on the wire?</li>
+  <li>Your raw client could only print <code>retry-after</code>. What does the SDK do with it? Name
+  the two knobs that control that behavior, one on the client, one per call.</li>
+  <li>Compare the SDK's <code>Message</code> type with the <code>MessageResponse</code> interface you
+  wrote by hand. What differs at runtime, and what is the real difference?</li>
+  <li>Lesson 0006's gateway wraps this SDK. Name two things it owns itself, because the SDK gives
+  mechanics and no policy.</li>
 </ol>
-<p>This lesson's new terms — <em>API client</em>, <em>request options</em>, <em>typed error</em>,
-<em>declaration file</em> — have wiki notes under <code>wiki/terms/</code> at <code>status: introduced</code>.
-As always: promoted when you can use them, not when you've seen them.</p>
+
+<h2>What this lesson names, and where it is built</h2>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where</th></tr>
+  <tr><td>a gateway that wraps this SDK under Hermes policy</td><td>implemented</td>
+  <td>lesson 0006, lab exercise 05</td></tr>
+  <tr><td>runtime validation of the response bytes</td><td>implemented</td>
+  <td>lesson 0005, lab exercise 04</td></tr>
+  <tr><td>streaming delivery and mid-stream cancellation</td><td>implemented</td>
+  <td>lesson 0004, lab exercise 03</td></tr>
+</table>
+
+<p>If you keep only four sentences, keep these. An SDK does an API's chores and leaves the wire
+unchanged. The client object holds connection settings, and request options override them for one
+call. The SDK retries some failures and obeys <code>retry-after</code>, so one call can become three
+requests. The response type is still an assertion, so runtime validation stays your job.</p>
 
 <h2>Primary source</h2>
 
 <p><strong>Read next:</strong> the
-<a href="https://github.com/anthropics/anthropic-sdk-typescript">anthropic-sdk-typescript README</a> —
-skim "Retries", "Timeouts", "Handling errors", and "Cancellation" and check each against what you just
-observed. Then the deeper habit: open <code>node_modules/@anthropic-ai/sdk/core/error.d.ts</code> and read
-the whole error hierarchy in one sitting (~2 min) — the generated declaration files, not the docs, are the
-contract your compiler actually enforces. The wire contract underneath both remains the
+<a href="https://github.com/anthropics/anthropic-sdk-typescript">anthropic-sdk-typescript README</a>
+sections on retries, timeouts, errors and cancellation. Check each claim against what you observed.
+Then open <code>node_modules/@anthropic-ai/sdk/core/error.d.ts</code> and read the whole error
+hierarchy. The wire rules underneath both stay the
 <a href="https://platform.claude.com/docs/en/api/messages">Messages API reference</a>.</p>
 
 <footer>
-  <p><strong>Stuck or curious?</strong> Ask your teacher — the agent that opened this lesson — anything: why
-  timeouts are retried but aborts are not, what <code>(string &amp; {})</code> does that plain
-  <code>string</code> wouldn't, why the SDK trusts its server's bytes when Hermes won't trust a model's. That
-  conversation <em>is</em> the course.</p>
-  <p>Next: <code>03-streaming-and-cancellation</code> — the same call with <code>stream: true</code>: server-sent
-  events, async iterators, and what ⑥ really means when the response is a process rather than a value.</p>
+  <p>Verified against <code>@anthropic-ai/sdk</code> 0.113.0, Node 22.14.0 and pnpm 11.17.0, as
+  resolved in <code>pnpm-lock.yaml</code>. The wire block in §1 is a real SDK request, captured
+  2026-08-18 against a local logging server on a private port. The retry, timeout and abort numbers
+  were measured against the mock on 2026-07-24. The mock approximates the real API's error wording.
+  This lesson's terms are registered under <code>wiki/terms/</code>.</p>
+  <p>Next: lesson 0004 sets <code>stream: true</code> on this same call and follows the response as
+  it becomes a process.</p>
 </footer>
 
 </body>

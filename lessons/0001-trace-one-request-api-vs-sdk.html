@@ -12,24 +12,25 @@
 <body>
 
 <header class="lesson-head">
-  <p class="kicker">Hermes · Phase 0 · Lesson 0001 · ~15 minutes</p>
+  <p class="kicker">Hermes · Phase 0 · Lesson 0001 · ~20 min</p>
   <h1>Trace One Request Through an API and a TypeScript SDK</h1>
-  <p class="lede">One HTTP request, written twice. By the end you can point at any line and say who owns it: the wire contract, or the library.</p>
+  <p class="lede">One HTTP request, written twice. Which lines does the API demand, and which does the
+  library add?</p>
 </header>
 
 <div class="callout mission">
   <strong>Why this matters for Hermes</strong>
-  Every loop Hermes will ever run bottoms out in HTTP requests to a model API. Before you can design a
-  <code>ModelGateway</code>, bound a loop, or debug a hung run, you need to see exactly which work belongs to the
-  <em>API</em> (the contract any language must honor) and which work an <em>SDK</em> does for you (and could do wrong,
-  or differently after an upgrade). An SDK you can't see through is magic; Hermes is not allowed to depend on magic.
+  Every job Hermes runs ends in HTTP requests to a model API. Scenario step S4 (model calls) sends each
+  one across the wire this lesson shows. Two course threads start here. The first is the six
+  responsibilities that every model call must cover. The second is the boundary rule: a static type is a
+  claim about bytes, never a check of them.
 </div>
 
 <h2>1 · The raw request</h2>
 
-<p>This is a complete call to Anthropic's
-<a href="https://platform.claude.com/docs/en/api/messages">Messages API</a> using nothing but
-<code>fetch</code>. The circled numbers mark six responsibilities — remember them, the whole lesson hangs on them.</p>
+<p>The code below calls Anthropic's Messages API with <code>fetch</code> and nothing else. An
+<dfn>API</dfn> is the set of rules a server enforces on the wire. The rules name the URL, the headers,
+the body fields, and what each response means. The circled numbers mark the six responsibilities.</p>
 
 <pre><code>const controller = new AbortController();                          // ⑥ cancellation
 
@@ -40,7 +41,7 @@ const res = await fetch("https://api.anthropic.com/v1/messages", { // ① endpoi
     "x-api-key": process.env.ANTHROPIC_API_KEY!,                   // ② authentication
     "anthropic-version": "2023-06-01",                             // ③ API version
   },
-  body: JSON.stringify({                                           // ④ request contract
+  body: JSON.stringify({                                           // ④ request shape
     model: "claude-opus-4-8",
     max_tokens: 1024,
     messages: [{ role: "user", content: "What is an SDK?" }],
@@ -48,189 +49,236 @@ const res = await fetch("https://api.anthropic.com/v1/messages", { // ① endpoi
   signal: controller.signal,
 });
 
-if (!res.ok) {                                                     // ⑤ error boundary
-  // 401? 429? 529? You write every branch — and every retry — yourself.
+if (!res.ok) {                                                     // ⑤ errors
+  // 401? 429? 529? You write every branch and every retry yourself.
   throw new Error(`API error ${res.status}: ${await res.text()}`);
 }
 
-const data = await res.json();     // type: any — the compiler knows nothing
-console.log(data.content[0].text); // works until the day content[0] isn't text</code></pre>
+const data = await res.json();     // type: any. The compiler knows nothing.
+console.log(data.content[0].text); // unchecked access into unchecked bytes</code></pre>
 
-<p>Everything above is <strong>API semantics</strong>: the endpoint, the two Anthropic headers, the required body
-fields, the meaning of a 429. Write this in Python, Rust, or curl and the same rules apply — the contract lives on
-the wire, not in your language.</p>
+<p>The six responsibilities, in the order the request meets them:</p>
 
-<h2>2 · The same request through the official SDK</h2>
+<ul>
+  <li>① the endpoint: every request is a <code>POST</code> to <code>/v1/messages</code>.</li>
+  <li>② authentication: the <code>x-api-key</code> header carries the secret key.</li>
+  <li>③ the API version: the <code>anthropic-version</code> header pins one revision of the rules.</li>
+  <li>④ the <dfn>request and response shape</dfn>: the body fields a request must carry, and the fields
+  the reply returns.</li>
+  <li>⑤ errors: the server answers with a status code. Everything after that is your code's job.</li>
+  <li>⑥ cancellation: the <code>AbortController</code> signal can stop the request at any moment.</li>
+</ul>
 
-<p>Now the identical request via
-<a href="https://github.com/anthropics/anthropic-sdk-typescript"><code>@anthropic-ai/sdk</code></a>. Watch where
-each circled responsibility went.</p>
+<p>These rules bind every language the same way. Python, Rust, and curl send the same headers and
+fields, and they receive the same status codes. The rules live on the wire, not in TypeScript.</p>
+
+<h2>2 · The same request through the SDK</h2>
+
+<p>Now the same request through <code>@anthropic-ai/sdk</code>. An <dfn>SDK</dfn> is a library that
+does an API's chores in one language, without changing what crosses the wire. The circled numbers mark
+where each responsibility went.</p>
 
 <pre><code>import Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic();       // ①+② endpoint baked in; the key is resolved
-                                      //     from ANTHROPIC_API_KEY for you
+const client = new Anthropic();       // ①+② endpoint built in. The key is read
+                                      //     from ANTHROPIC_API_KEY for you.
 const controller = new AbortController();
 
 try {
   const message = await client.messages.create(
     {
-      model: "claude-opus-4-8",       // ④ request contract — now type-checked:
-      max_tokens: 1024,               //    delete max_tokens and it won't compile
+      model: "claude-opus-4-8",       // ④ request shape, now type-checked.
+      max_tokens: 1024,               //    Delete max_tokens: it will not compile.
       messages: [{ role: "user", content: "What is an SDK?" }],
     },
-    { signal: controller.signal },    // ⑥ cancellation, plumbed to the transport
-  );                                  // ③ version header attached silently;
-                                      //    plus retries on 429/5xx and a default timeout
+    { signal: controller.signal },    // ⑥ cancellation, passed to the transport
+  );                                  // ③ version header attached silently,
+                                      //    plus retries and a default timeout
 
   for (const block of message.content) {
-    if (block.type === "text") {      // typed union — narrow before touching .text
+    if (block.type === "text") {      // narrow the block before touching .text
       console.log(block.text);
     }
   }
 } catch (err) {
-  if (err instanceof Anthropic.RateLimitError) {  // ⑤ error boundary — typed classes
+  if (err instanceof Anthropic.RateLimitError) {  // ⑤ errors: typed classes
     /* back off and retry later */                //    instead of hand-parsed statuses
   } else {
     throw err;
   }
 }</code></pre>
 
-<p>Nothing new happened on the wire — the server received byte-for-byte the same kind of request. What changed is
-<strong>who does the chores</strong>: the SDK resolves credentials, attaches the mandatory headers, retries
-connection errors and 408/409/429/5xx responses (twice, by default), applies a request timeout, raises typed errors,
-and describes the response with TypeScript types so your editor can autocomplete <code>message.content</code>.</p>
+<table>
+  <tr><th>Responsibility</th><th>Raw <code>fetch</code></th><th>Through the SDK</th></tr>
+  <tr><td>① endpoint</td><td>you type the URL</td><td>built into the client</td></tr>
+  <tr><td>② authentication</td><td>you attach the header</td><td>the client reads
+  <code>ANTHROPIC_API_KEY</code> and attaches the header</td></tr>
+  <tr><td>③ API version</td><td>you attach the header</td><td>attached on every request without a line
+  of your code</td></tr>
+  <tr><td>④ request and response shape</td><td>the server rejects mistakes at runtime</td>
+  <td>TypeScript rejects them at compile time, and the server still checks</td></tr>
+  <tr><td>⑤ errors</td><td>you parse status codes and write retries</td><td>typed error classes, plus
+  retries on 408, 409, 429 and 5xx, twice by default</td></tr>
+  <tr><td>⑥ cancellation</td><td>you pass the signal to <code>fetch</code></td><td>you pass the signal
+  as a request option, and it reaches the transport</td></tr>
+</table>
+
+<p>Nothing changed on the wire. The server received the same kind of request, byte for byte. The SDK
+also applies a default timeout of ten minutes, which the wire alone would never impose.</p>
+
+<p>One distinction carries the rest of the lesson. A signature tells TypeScript what may be called, and
+the implementation does the runtime work. The SDK takes chores away from your application code, not
+away from TypeScript.</p>
 
 <figure class="diagram">
 <pre class="mermaid">
 sequenceDiagram
     participant Code as Your code
-    participant SDK as SDK layer<br/>(@anthropic-ai/sdk)
-    participant API as API<br/>(api.anthropic.com)
+    participant SDK as SDK layer
+    participant API as api.anthropic.com
     Code->>SDK: client.messages.create(params, { signal })
-    Note over SDK: ② resolve key from env<br/>③ attach version header<br/>④ body already type-checked at compile time
+    Note over SDK: ② resolve key from env<br/>③ attach version header<br/>④ body checked at compile time
     SDK->>API: ① POST /v1/messages
     API-->>SDK: 429 rate limited
-    Note over SDK: ⑤ typed error, retryable —<br/>back off, retry (2× by default)
+    Note over SDK: ⑤ typed error, retryable.<br/>Back off, then retry
     SDK->>API: ① POST /v1/messages (retry)
     API-->>SDK: 200 + JSON bytes
-    Note over SDK: parse JSON, assert it matches the<br/>response types — no runtime check
+    Note over SDK: parse the JSON, assert the type.<br/>No runtime check
     SDK-->>Code: typed Message
-    Note over Code: ⑥ controller.abort() could have<br/>cancelled at any point
+    Note over Code: ⑥ controller.abort() could have<br/>fired at any point
 </pre>
-<figcaption>Supplementary diagram — section 2 on the wire. Everything crossing the SDK↔API line is API
-semantics; everything inside the SDK column is the chores. The circled numbers are the six responsibilities
-from section 1.</figcaption>
+<figcaption>Diagram 1. One request through the SDK. Work inside the SDK column is chores. Whatever
+crosses the line to the API follows the API's rules.</figcaption>
 </figure>
 
 <div class="callout">
-  <strong>The catch that shapes all of Hermes</strong>
-  Those beautiful response types are <em>compile-time claims about runtime bytes</em>. TypeScript types are erased
-  when the code runs — the SDK parses whatever JSON arrives and asserts it matches. For the SDK's own responses
-  that's a reasonable bet. For model-<em>generated</em> data — tool arguments, retrieved evidence, task specs — it is
-  not, which is why runtime validation (Zod) is coming in a later lesson. Section 3 dissects exactly how
-  that bet works.
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>The six responsibilities of every model call.</li>
+    <li>The split between the API's rules and the SDK's chores.</li>
+    <li>Types vanish before the code runs, so a type constrains code, never bytes.</li>
+    <li>The response gains its type from a declaration, not from a check.</li>
+    <li>The missing check has a name, and lesson 0005 builds it.</li>
+  </ul>
+  <p>Reprise: nothing. This is the first lesson.</p>
 </div>
 
 <h2>3 · The response types, up close</h2>
 
-<p>Hover over <code>message</code> in an editor and TypeScript names its type: <code>Message</code>, an interface
-shipped in the SDK's generated declaration files (<code>.d.ts</code>). These types aren't hand-written — they are
-generated from the same API specification the server implements. Abridged:</p>
+<p>Hover over <code>message</code> in an editor and TypeScript names its type: <code>Message</code>.
+The type ships in the SDK's declaration files, generated from the same specification the server
+implements. One word now carries two spellings and two meanings:</p>
 
-<pre><code>// @anthropic-ai/sdk — resources/messages (abridged)
+<table>
+  <tr><th>Spelling</th><th>Layer</th><th>Meaning</th></tr>
+  <tr><td><code>messages</code></td><td>request field</td><td>the conversation you send, oldest turn
+  first</td></tr>
+  <tr><td><code>Message</code></td><td>response type</td><td>the SDK's TypeScript description of one
+  reply</td></tr>
+</table>
+
+<pre><code>// @anthropic-ai/sdk 0.113.0, resources/messages (abridged)
 interface Message {
-  id: string;                      // "msg_015oFa..."
-  type: "message";                 // a literal type: can only ever be this string
+  id: string;
+  type: "message";                 // a literal type. It can only be this string.
   role: "assistant";
-  model: Model;                    // e.g. "claude-opus-4-8"
-  content: Array&lt;ContentBlock&gt;;    // the block union you narrowed in §2:
-                                   //   TextBlock | ToolUseBlock | ThinkingBlock | ...
+  model: Model;
+  content: Array&lt;ContentBlock&gt;;    // TextBlock | ToolUseBlock | ThinkingBlock | ...
   stop_reason: StopReason | null;  // "end_turn" | "max_tokens" | "stop_sequence"
                                    //   | "tool_use" | "pause_turn" | "refusal"
-                                   //   — the list grows as the API evolves;
-                                   //   your installed .d.ts is a snapshot
   stop_sequence: string | null;
-  usage: Usage;                    // input_tokens, output_tokens,
-                                   // cache_read_input_tokens, ...
+  usage: Usage;                    // input_tokens, output_tokens, ...
+}
+
+// A typical runtime value of that type
+{
+  id: "msg_015oFa...",
+  type: "message",
+  role: "assistant",
+  model: "claude-opus-4-8",
+  content: [{ type: "text", text: "An SDK is a library that..." }],
+  stop_reason: "end_turn",
+  stop_sequence: null,
+  usage: { input_tokens: 12, output_tokens: 41 }
 }</code></pre>
 
-<p>So where does a <em>value</em> of this type come from at runtime? The SDK's pipeline is embarrassingly short:</p>
+<p>Where does a value of this type come from at runtime? The pipeline has four steps.</p>
 
 <ol>
   <li>Bytes arrive off the wire.</li>
-  <li><code>JSON.parse</code> turns them into an untyped value. At this instant the compiler knows exactly as much
-  as it did in the raw-<code>fetch</code> version: nothing.</li>
-  <li>A <strong>type assertion</strong> — morally <code>parsed as Message</code> — stamps the type on. An assertion
-  is a declaration, not a check: no code compares a single field against the interface.</li>
-  <li>Everything downstream trusts the label.</li>
+  <li><code>JSON.parse</code> turns them into an untyped value. Here the compiler knows as much as it
+  did in the <code>fetch</code> version: nothing.</li>
+  <li>A <dfn>type assertion</dfn> attaches the type: a declaration to the compiler that this value is a
+  <code>Message</code>, with no field compared to the interface.</li>
+  <li>Everything downstream trusts the declared type.</li>
 </ol>
+
+<p>The assertion can never fail, because of <dfn>type erasure</dfn>: TypeScript deletes every type
+before the code runs. A type therefore constrains the code you write, and it never constrains the bytes
+that arrive.</p>
 
 <figure class="diagram">
 <pre class="mermaid">
 flowchart TB
-    subgraph CT["Compile time — the claim constrains your code"]
+    subgraph CT["Compile time. The type constrains your code"]
         SRC["your code:<br/>message.usage.output_tokens"] -->|"checked against"| DECL["Message interface<br/>(generated .d.ts)"]
     end
-    subgraph RT["Runtime — where the bytes actually flow"]
-        BYTES["JSON bytes off the wire"] --> PARSE["JSON.parse → untyped value"]
+    subgraph RT["Runtime. Where the bytes flow"]
+        BYTES["JSON bytes off the wire"] --> PARSE["JSON.parse: untyped value"]
         PARSE --> CAST["type assertion:<br/>'this is a Message'"]
-        CAST --> USE["downstream code<br/>trusts the label"]
+        CAST --> USE["downstream code<br/>trusts the declared type"]
     end
-    DECL -. "erased before runtime —<br/>never compared to the bytes" .-> CAST
+    DECL -. "erased before runtime.<br/>Never compared to the bytes" .-> CAST
 </pre>
-<figcaption>Supplementary diagram — why response types are <em>compile-time claims about runtime bytes</em>. The
-solid arrows are real checks; the dashed arrow is the check that never happens.</figcaption>
+<figcaption>Diagram 2. The solid arrows are real checks. The dashed arrow is the check that never
+happens.</figcaption>
 </figure>
 
-<p>That's the phrase unpacked. The claim points in two directions, and only one is enforced:</p>
+<table>
+  <tr><th>The type checks…</th><th>When</th><th>Example</th></tr>
+  <tr><td>the code you write</td><td>at compile time</td><td><code>usage.outputTokens</code> fails to
+  compile, because the field is named <code>output_tokens</code></td></tr>
+  <tr><td>the bytes that arrive</td><td>never</td><td>a <code>stop_reason</code> newer than your
+  installed types flows in without an error</td></tr>
+</table>
 
-<ul>
-  <li><strong>Claims about your code — enforced.</strong> Write <code>message.usage.outputTokens</code> instead of
-  <code>output_tokens</code> and it won't compile. Touch <code>.text</code> without narrowing the block and it won't
-  compile. The interface polices everything <em>you</em> write against it.</li>
-  <li><strong>Claims about the bytes — never checked.</strong> If the wire delivers a <code>stop_reason</code> value
-  your installed <code>.d.ts</code> predates, or <code>content</code> grows a block type your SDK version has never
-  heard of, the assertion succeeds silently. The surprise surfaces later, wherever your code first trusts the
-  label.</li>
-</ul>
+<p>The SDK accepts this trade for its own responses, on two grounds. The types are generated from the
+server's own specification. And responsibility ③, the version header, pins one revision of the rules,
+so the shapes rarely drift.</p>
 
-<p>Why does the SDK assert instead of validate? Because for its own responses it's a reasonable bet: the types are
-generated from the server's own spec, and responsibility ③ — the mandatory version header — pins which revision of
-the contract the server speaks. Pinning makes drift rare; field-by-field validation of every response would spend
-code and cycles guarding against it anyway. The same bet is <em>catastrophically</em> wrong for model-generated
-data — tool arguments, task specs, retrieved evidence — because no version header pins what a model produces.
-That's the boundary where Hermes will refuse to assert and instead validate, with Zod.</p>
+<p>Model-generated data has neither protection. Tool arguments, task specs, and retrieved evidence come
+out of a model, and no version header pins what a model produces. At those boundaries Hermes uses
+<dfn>runtime validation</dfn>: a check of received bytes against a schema while the program runs.</p>
 
 <h2>4 · Exercise: who owns this?</h2>
 
 <section class="exercise" data-scored>
   <h3>Classify each statement</h3>
-  <p class="rules">Answer from memory before clicking — the effort is the point. Feedback is immediate.</p>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
 
-  <div class="cl" data-cats="API contract|SDK layer">
-    <div class="cl-item" data-cat="0" data-why="the endpoint and body shape are the wire contract — identical from any language or tool.">
+  <div class="cl" data-cats="API rules|SDK layer">
+    <div class="cl-item" data-cat="0" data-why="the URL, the method, and the body fields are API rules. They bind every language and tool the same way.">
       <p>A request must be a <code>POST</code> to <code>/v1/messages</code> with a JSON body.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="the API only demands an x-api-key header; where the key comes from is client convenience.">
+    <div class="cl-item" data-cat="1" data-why="the API demands an x-api-key header. Where the key comes from is the client's convenience.">
       <p>The API key is read from the <code>ANTHROPIC_API_KEY</code> environment variable.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="max_tokens is a required field of the Messages API — raw fetch and SDK alike must send it.">
+    <div class="cl-item" data-cat="0" data-why="the Messages API requires max_tokens. Raw fetch and the SDK alike must send it.">
       <p>Every request must state <code>max_tokens</code>.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="HTTP just hands you the status code; retrying with backoff is client policy (configurable via maxRetries).">
+    <div class="cl-item" data-cat="1" data-why="HTTP hands you a status code. The retry and the backoff are client policy, set by maxRetries.">
       <p>A 429 or 500 response is automatically retried with exponential backoff.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="that is literally the JSON the server sends; the SDK merely describes it with types.">
+    <div class="cl-item" data-cat="0" data-why="that is the JSON the server sends. The SDK only describes it with types.">
       <p>The response's <code>content</code> is an array of blocks, each tagged with a <code>type</code> field.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="narrowing exists only in TypeScript's type layer — it is erased before the code ever runs.">
+    <div class="cl-item" data-cat="1" data-why="the check lives in TypeScript's type layer. Type erasure removes it before the code runs.">
       <p><code>block.type === "text"</code> narrows the block so <code>.text</code> is safe to access.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="that is the client's default timeout (10 minutes, set in milliseconds in the TS SDK); the wire itself would happily hang forever.">
+    <div class="cl-item" data-cat="1" data-why="that is the client's default timeout of ten minutes. The wire itself sets no limit.">
       <p>An unanswered request fails after ten minutes.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="stop_reason is a response field defined by the API — Hermes' loop-termination logic will branch on it in every language.">
+    <div class="cl-item" data-cat="0" data-why="stop_reason is a response field the API defines. Loop logic can branch on it from any language.">
       <p><code>stop_reason</code> tells you why generation ended.</p>
     </div>
   </div>
@@ -240,29 +288,29 @@ That's the boundary where Hermes will refuse to assert and instead validate, wit
 
 <h2>5 · Exercise: compile time or runtime?</h2>
 
-<p>Same six responsibilities, different axis: <em>when</em> can a mistake be caught?</p>
+<p>Same request, different axis: when can a mistake be caught?</p>
 
 <section class="exercise" data-scored>
-  <h3>When is each mistake caught?</h3>
-  <p class="rules">Pick the earliest moment the mistake can possibly be detected.</p>
+  <h3>Pick the earliest moment each mistake can be detected</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
 
   <div class="cl" data-cats="TypeScript catches it|Only runtime can catch it">
-    <div class="cl-item" data-cat="0" data-why="the SDK's request parameter types make it a compile error — the red squiggle appears before you ever send a request.">
+    <div class="cl-item" data-cat="0" data-why="the request parameter types catch the misspelling before any request is sent.">
       <p>You misspell <code>mesages</code> in the request object.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="max_tokens is a required property of the SDK's params type, so omitting it fails compilation.">
+    <div class="cl-item" data-cat="0" data-why="the params type requires max_tokens, so the omission fails compilation.">
       <p>You forget <code>max_tokens</code> entirely.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="types are erased at runtime; the SDK trusts that the wire matches its declarations. Detecting a mismatch requires actually checking the bytes.">
-      <p>The JSON bytes that arrive don't actually match the SDK's response types.</p>
+    <div class="cl-item" data-cat="1" data-why="types are erased before the code runs. Only a runtime check can compare bytes against a schema.">
+      <p>The JSON bytes that arrive do not match the SDK's response types.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="model output is data, not code — no compiler ever sees it. This is exactly where Hermes will put Zod schemas.">
+    <div class="cl-item" data-cat="1" data-why="model output is data, so no compiler ever sees it. This boundary is where Hermes puts runtime validation.">
       <p>The model calls one of your tools with an input missing a required field.</p>
     </div>
-    <div class="cl-item" data-cat="0" data-why="the Usage interface names the field output_tokens — mistakes in the code YOU write are exactly what the declaration can police.">
+    <div class="cl-item" data-cat="0" data-why="the Usage type names the field output_tokens. Mistakes in your own code are what the declaration can police.">
       <p>You write <code>message.usage.outputTokens</code> instead of <code>output_tokens</code>.</p>
     </div>
-    <div class="cl-item" data-cat="1" data-why="the wire is not bound by your installed .d.ts — the assertion succeeds and the unknown string flows into your code. Version drift is data, not a compile error; pinning the ③ version header is what keeps it rare.">
+    <div class="cl-item" data-cat="1" data-why="the wire is not bound by your installed types. The assertion succeeds and the unknown string flows on.">
       <p>A newer API revision returns a <code>stop_reason</code> value your installed SDK's types don't list.</p>
     </div>
   </div>
@@ -273,9 +321,9 @@ That's the boundary where Hermes will refuse to assert and instead validate, wit
 <h2>6 · Quiz</h2>
 
 <section class="exercise" data-scored>
-  <h3>Three questions, equal-length options, no format clues</h3>
+  <h3>Four questions</h3>
 
-  <div class="qz" data-correct="1" data-why="The SDK retries connection errors and 408/409/429/5xx responses — twice by default (maxRetries). Raw fetch gives you none of this.">
+  <div class="qz" data-correct="1" data-why="the SDK retries connection errors and 408, 409, 429 and 5xx responses. The default is two retries. Raw fetch gives you none of this.">
     <p class="qz-prompt">Q1. You call <code>client.messages.create(...)</code> and the network drops mid-request. What does the official SDK do by default?</p>
     <button class="qz-opt" type="button">Throws immediately without retrying the request</button>
     <button class="qz-opt" type="button">Retries the request with exponential backoff</button>
@@ -284,8 +332,8 @@ That's the boundary where Hermes will refuse to assert and instead validate, wit
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="2" data-why="Types are erased at compile time. The SDK's response types are a promise about the wire, not a check of it — runtime validation is a separate job.">
-    <p class="qz-prompt">Q2. At runtime, what does TypeScript's type for the API response actually guarantee about the JSON bytes received?</p>
+  <div class="qz" data-correct="2" data-why="types are erased before the code runs. The response type is a claim about the wire, not a check of it.">
+    <p class="qz-prompt">Q2. At runtime, what does TypeScript's type for the API response guarantee about the JSON bytes received?</p>
     <button class="qz-opt" type="button">Every field is checked against types</button>
     <button class="qz-opt" type="button">Only strings are checked against types</button>
     <button class="qz-opt" type="button">Nothing is checked against the wire</button>
@@ -293,12 +341,21 @@ That's the boundary where Hermes will refuse to assert and instead validate, wit
     <p class="qz-feedback" hidden></p>
   </div>
 
-  <div class="qz" data-correct="3" data-why="The version header is demanded by the API itself — you must send it from curl, Python, or TypeScript alike. The other three are conveniences the SDK layers on top of the contract.">
-    <p class="qz-prompt">Q3. Which of these is API semantics rather than SDK convenience?</p>
+  <div class="qz" data-correct="3" data-why="every language must send anthropic-version from its own code. The other three are conveniences the SDK adds on top of the rules.">
+    <p class="qz-prompt">Q3. Which of these is an API rule rather than an SDK convenience?</p>
     <button class="qz-opt" type="button">The automatic retry with backoff</button>
-    <button class="qz-opt" type="button">The typed discriminated response union</button>
+    <button class="qz-opt" type="button">The typed response block union</button>
     <button class="qz-opt" type="button">The environment variable key lookup</button>
-    <button class="qz-opt" type="button">The mandatory anthropic-version request header</button>
+    <button class="qz-opt" type="button">The mandatory anthropic-version header</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="the assertion follows JSON.parse and declares the type. No code has compared one field against the declaration by that point.">
+    <p class="qz-prompt">Q4. At which step does the response gain its <code>Message</code> type, and what has checked the bytes by then?</p>
+    <button class="qz-opt" type="button">During JSON.parse, after a full schema check</button>
+    <button class="qz-opt" type="button">At the type assertion, after no check at all</button>
+    <button class="qz-opt" type="button">At compile time, after the server's check</button>
+    <button class="qz-opt" type="button">In the for loop, after the narrowing check</button>
     <p class="qz-feedback" hidden></p>
   </div>
 
@@ -307,34 +364,42 @@ That's the boundary where Hermes will refuse to assert and instead validate, wit
 
 <h2>7 · Say it in your own words</h2>
 
-<p>Close the loop with your teacher. In the chat, answer these four — no notes, no scrolling up:</p>
+<p>Answer these four in the chat, from memory.</p>
 <ol>
-  <li>In one sentence: what is an <strong>API</strong>?</li>
-  <li>In one sentence: what is an <strong>SDK</strong>?</li>
-  <li>Name one thing in the SDK snippet that TypeScript <em>cannot</em> guarantee at runtime.</li>
-  <li>In the SDK's response pipeline, at what exact moment does the <code>Message</code> type get attached — and
-  what has checked the bytes by that point?</li>
+  <li>Define an API in one sentence.</li>
+  <li>Define an SDK in one sentence, without naming any library.</li>
+  <li>Name one thing the SDK snippet cannot guarantee at runtime.</li>
+  <li>State the moment the <code>Message</code> type is attached, and what has checked the bytes by
+  that point.</li>
 </ol>
-<p>Your teacher will pressure-test the answers. This lesson's terms already have wiki notes under
-<code>wiki/terms/</code> (open the vault's graph view to see the cluster), but each sits at
-<code>status: introduced</code>. Only after the pressure-test are <em>API</em> and <em>SDK</em> flipped to
-<code>status: demonstrated</code> — that's the house rule: terms are promoted when you can use them, not when
-you've seen them.</p>
+
+<h2>What this lesson names, and where it is built</h2>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where</th></tr>
+  <tr><td>runtime validation at a JSON boundary</td><td>implemented</td><td>lesson 0005, lab exercise
+  04</td></tr>
+  <tr><td>model calls behind one Hermes-owned interface</td><td>implemented</td><td>lesson 0006, lab
+  exercise 05</td></tr>
+</table>
+
+<p>If you keep only four sentences, keep these. An API is the set of rules a server enforces on the
+wire, and the rules bind every language. An SDK does the API's chores in one language and changes
+nothing on the wire. TypeScript deletes every type before the code runs, so the SDK's response types
+check no byte. Where model output enters, Hermes checks the bytes against a schema instead.</p>
 
 <h2>Primary source</h2>
 
-<p><strong>Read next:</strong> the
-<a href="https://github.com/anthropics/anthropic-sdk-typescript">Anthropic TypeScript SDK README</a> — skim
-Installation through Error Handling (~10 min). It is the highest-trust source for everything the SDK layer does:
-retries, timeouts, request options, typed errors. Cross-reference the wire side in the
+<p>Read the <a href="https://github.com/anthropics/anthropic-sdk-typescript">Anthropic TypeScript SDK
+README</a>, from Installation through Error Handling. It documents the SDK layer: retries, timeouts,
+request options, typed errors. The wire side lives in the
 <a href="https://platform.claude.com/docs/en/api/messages">Messages API reference</a>.</p>
 
 <footer>
-  <p><strong>Stuck or curious?</strong> Ask your teacher — the agent that opened this lesson — anything: why the
-  version header exists, what a 529 means, why <code>content</code> is an array. That conversation <em>is</em> the
-  course.</p>
-  <p>Next lesson (after the open decisions are settled): <code>hermes-sdk-lab/01-raw-http</code> — you run both of
-  these requests for real and diff the results.</p>
+  <p>Verified against <code>@anthropic-ai/sdk</code> 0.113.0 and its installed declaration files. Retry
+  counts and the ten-minute default timeout were measured against the lab mock on 2026-07-24. This
+  lesson's terms are registered under <code>wiki/terms/</code>.</p>
+  <p>Next: lesson 0002 sends the raw request against a local mock server, and you read every byte.</p>
 </footer>
 
 </body>

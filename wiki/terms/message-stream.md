@@ -18,10 +18,10 @@ tags:
 
 # Message stream
 
-The SDK's high-level streaming surface: `client.messages.stream(params)` returns a `MessageStream` (declared in `lib/MessageStream.d.ts`) that runs the accumulation fold for you. `.on("text", (delta, snapshot) => …)` delivers each chunk *and* the running total; `finalMessage()` resolves to the assembled `Message`; `currentMessage` exposes the fold's state mid-flight; `abort()` / a `signal` in the [[request-options]] kills the process. It also filters transport noise — the wire's `ping` keep-alives never reach your code.
+The SDK's high-level streaming surface. The call `client.messages.stream(params)` returns a `MessageStream`, declared in `lib/MessageStream.d.ts`, which assembles the streamed events into a `Message` for you. The `.on("text", (delta, snapshot) => …)` listener delivers each chunk and the running total. `finalMessage()` resolves to the assembled `Message`. `currentMessage` exposes the partly assembled value mid-flight. An `abort()` call, or a `signal` in the [[request-options]], stops the process. The helper also filters transport noise, so the wire's `ping` keep-alives never reach your code.
 
-**In [[lesson-0004-the-response-becomes-a-process|lesson 0004]]:** part B's `finalMessage()` matches exercise 02's response exactly — except `_request_id: undefined`, because the object was assembled client-side and never traveled as one HTTP body; the id lives on `stream.request_id`. Layers own facts.
+**In [[lesson-0004-the-response-becomes-a-process|lesson 0004]]:** Part B's `finalMessage()` matches exercise 02's response, except `_request_id: undefined`. That object was assembled client-side and never traveled as one HTTP body. The id lives on `stream.request_id`.
 
-**Why it matters for Hermes:** the [[model-gateway]] must choose an altitude per need — the helper's fold for ordinary calls, raw events where the loop must react mid-flight (budget checks, tool-use fragments, abort decisions). Knowing what the helper absorbs is knowing what the gateway still owns.
+**Why it matters for Hermes:** the [[model-gateway]] chooses a surface per need: the helper for whole answers, raw events where the loop must react mid-flight. Since lesson 0009 the adapter streams every call, so a bound can stop a reply that is still being written.
 
 **Related:** [[api-client]] · [[request-options]] · [[async-iterator]] · [[delta]] · [[cancellation]]

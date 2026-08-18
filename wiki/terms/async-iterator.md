@@ -17,10 +17,10 @@ tags:
 
 # Async iterator
 
-JavaScript's shape for "a sequence of values that arrive over time": an object implementing `AsyncIterable`, consumed with `for await (const item of source)`. Where a `Promise` is one future value, an async iterator is many — each `await`ed in turn. The SDK's streaming surfaces are typed this way: `create({ stream: true })` returns a `Stream<RawMessageStreamEvent>`, and each yielded event is a [[discriminated-union]] member you narrow on `event.type` — lesson 0001's `block.type` skill, one level up.
+JavaScript's shape for a sequence of values that arrive over time. An object implements `AsyncIterable` and is consumed with `for await (const item of source)`. A `Promise` is one future value. An async iterator is many, each awaited in turn. The SDK types its streaming surfaces this way: `create({ stream: true })` returns a `Stream<RawMessageStreamEvent>`. Each yielded event is a [[discriminated-union]] member you narrow on `event.type`, lesson 0001's `block.type` move one level up.
 
-**In [[lesson-0004-the-response-becomes-a-process|lesson 0004]]:** part A iterates the raw stream and logs the event order; TypeScript narrows `content_block_delta` → `text_delta` before `.text` is reachable, exactly as `noUncheckedIndexedAccess` forced care in exercise 01.
+**In [[lesson-0004-the-response-becomes-a-process|lesson 0004]]:** Part A iterates the raw stream and logs the event order. TypeScript narrows `content_block_delta` to `text_delta` before `.text` is reachable.
 
-**Why it matters for Hermes:** the Phase 1 loop consumes model output *as a sequence* — text deltas, tool-use JSON fragments, thinking. `for await` over typed events is the control structure the loop is built on; [[type-erasure]] still applies, so what the union claims about each event is a compile-time promise, not a runtime check.
+**Why it matters for Hermes:** the Phase 1 loop consumes model output as a sequence of text deltas and tool-use fragments. This is the control structure under that loop. The rule in [[type-erasure]] still applies, so the union's claims are compile-time promises, not runtime checks.
 
 **Related:** [[discriminated-union]] · [[narrowing]] · [[message-stream]] · [[delta]]

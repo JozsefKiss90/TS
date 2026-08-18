@@ -3,7 +3,7 @@ term: Discriminated union
 aliases:
   - tagged union
 type: glossary-term
-lesson: "0001"
+lesson: "0005"
 phase: 0
 category: type-system
 status: demonstrated
@@ -16,10 +16,10 @@ tags:
 
 # Discriminated union
 
-A union of object types that share a literal **tag field** telling them apart — the [[messages-api]]'s content blocks, each carrying `type: "text" | "tool_use" | …`, are one on the wire, and the [[sdk]] mirrors it in TypeScript. Checking the tag ([[narrowing]]) gives you the specific member safely.
+A union of object types that share one literal tag field. The [[messages-api]]'s content blocks each carry `type: "text" | "tool_use" | …`, and the [[sdk]] mirrors that union in TypeScript. A [[narrowing]] check on the tag yields the specific member safely.
 
-**In [[lesson-0001-trace-one-request|lesson 0001]]:** why `message.content` can't just be `.text`-ed — blocks must be narrowed by their `type` tag first.
+**First seen in [[lesson-0001-trace-one-request|lesson 0001]]:** why `message.content` cannot be read as text directly. **In [[lesson-0005-validate-the-boundary|lesson 0005]]:** `safeParse` returns one, and the lab narrows it on `success`.
 
-**Why it matters for Hermes:** discriminated unions are the backbone of explicit state — run-state variants, tool results, loop events all become tagged unions the compiler can check exhaustively. Coming up properly in the exhaustiveness lesson.
+**Why it matters for Hermes:** run states, tool results, and loop events are tagged unions the compiler can check exhaustively.
 
-**Related:** [[narrowing]] · [[messages-api]] · [[type-erasure]]
+**Related:** [[narrowing]] · [[messages-api]] · [[safe-parse]] · [[type-erasure]]

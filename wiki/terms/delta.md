@@ -18,10 +18,10 @@ tags:
 
 # Delta
 
-An incremental patch against a message under construction. The streaming grammar opens with a `Message` **skeleton** (`message_start`: id, model, `usage.input_tokens` — but `content: []`, `stop_reason: null`), then `content_block_delta` events patch text into the open block a few words at a time, and `message_delta` retrofits the two facts only knowable after generation: `stop_reason` and the real `usage.output_tokens`. Fold skeleton + deltas + retrofit together and you hold exactly the `Message` the non-streaming path returns in one piece.
+An incremental patch against a message that is still being assembled. The stream opens with `message_start`, a `Message` whose `content` is empty and whose `stop_reason` is null. Then `content_block_delta` events patch text into the open block, a few words at a time. Last, `message_delta` adds the two facts only knowable after generation: `stop_reason` and the real `usage.output_tokens`. Assemble all of it and you hold the `Message` the non-streaming path returns in one piece.
 
-**In [[lesson-0004-the-response-becomes-a-process|lesson 0004]]:** the mock's fixture text arrives as 8 `text_delta` chunks ~120 ms apart; the assembled result is byte-for-byte exercise 02's response. Order of knowledge is the lesson: input cost first, output cost and ending last.
+**In [[lesson-0004-the-response-becomes-a-process|lesson 0004]]:** the mock's fixture arrives as 8 `text_delta` chunks about 120 ms apart. The assembled result is byte-for-byte exercise 02's response. Input cost arrives first, output cost and ending last.
 
-**Why it matters for Hermes:** the numbers a budget enforces on arrive in the *last* events — mid-flight, a call's cost and ending are unknown. Loop accounting must either wait for `message_delta` or kill the stream and accept a partial with no [[stop-reason]].
+**Why it matters for Hermes:** the numbers a budget enforces arrive in the last events. Mid-flight, a call's cost and ending are unknown. Loop accounting must wait for `message_delta`, or abort and accept a partial with no [[stop-reason]].
 
 **Related:** [[server-sent-events]] · [[message-stream]] · [[stop-reason]] · [[discriminated-union]]

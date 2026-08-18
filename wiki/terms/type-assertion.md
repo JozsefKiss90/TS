@@ -16,10 +16,10 @@ tags:
 
 # Type assertion
 
-Telling the compiler a value has a type **without any runtime check** — morally `parsed as Message`. The opposite move from [[narrowing]], which *earns* the specific type by testing the value; an assertion just declares it.
+Telling the compiler that a value has a type, with no runtime check. It is the opposite move from [[narrowing]]. A narrowing check earns the specific type, and an assertion declares it.
 
-**In [[lesson-0001-trace-one-request|lesson 0001]]:** the last step of the [[sdk]]'s response pipeline — bytes → `JSON.parse` → assertion → trusted label. This is the precise mechanism behind "response types are compile-time claims about runtime bytes": the assertion is where the claim gets stamped on, and nothing has checked the bytes by that point.
+**In [[lesson-0001-trace-one-request|lesson 0001]]:** the last step of the [[sdk]]'s response pipeline. Bytes arrive, `JSON.parse` produces an untyped value, and an assertion attaches `Message`. Nothing has compared one field to the interface by that point.
 
-**Why it matters for Hermes:** an assertion is a bet. For SDK responses it's reasonable (spec-generated types + the [[api-version-header]] pinning the contract). For model-generated data no version header pins anything — which is why Hermes replaces the assertion with [[runtime-validation]] at every such boundary.
+**Why it matters for Hermes:** an assertion is a bet. The SDK's own responses make it a fair one, because the types come from the server's specification and the [[api-version-header]] pins the rules. No version header pins model output, so Hermes replaces the assertion with [[runtime-validation]] at that boundary.
 
 **Related:** [[type-erasure]] · [[narrowing]] · [[runtime-validation]] · [[sdk]] · [[messages-api]]

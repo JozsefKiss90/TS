@@ -16,12 +16,21 @@ tags:
 
 # Declaration file
 
-A `.d.ts` file describes a package's types — interfaces, unions, signatures, JSDoc'd defaults — with no implementation. For a generated SDK it *is* the contract: `client.d.ts` states the constructor defaults, `core/error.d.ts` the error hierarchy, `resources/messages/messages.d.ts` the `Message` shape and the `Model` union with its `(string & {})` escape hatch. Reading declaration files beats reading docs, because they are what the compiler actually enforces.
+A `.d.ts` file that states a package's types and documented defaults, with no implementation. For a
+generated SDK the declaration files are the authoritative description of its surface. In this SDK,
+`client.d.ts` states the constructor defaults, `core/error.d.ts` the error hierarchy, and
+`resources/messages/messages.d.ts` the `Message` shape and `Model` union. The compiler enforces what
+they state, so read them first.
 
-**The catch:** everything a declaration file promises is compile-time only — [[type-erasure]] applies in full. The `Message` type it declares still reaches you by [[type-assertion]] over parsed bytes.
+**The catch:** everything a declaration file promises is compile-time only. The rule of
+[[type-erasure]] applies in full, and the `Message` type it declares still reaches you by
+[[type-assertion]] over parsed bytes.
 
-**In [[lesson-0003-the-sdk-absorbs-the-six|lesson 0003]]:** step 1 of the exercise is reading the constructor JSDoc in `node_modules/@anthropic-ai/sdk/client.d.ts` before writing any code.
+**In [[lesson-0003-the-sdk-absorbs-the-six|lesson 0003]]:** step 1 of the exercise reads the
+constructor JSDoc in `node_modules/@anthropic-ai/sdk/client.d.ts` before any code is written.
 
-**Why it matters for Hermes:** "reading generated type declarations and SDK source" is a Phase 0 success criterion — every SDK Hermes wraps (Anthropic, MCP, OpenTelemetry) will be understood through its declaration files first.
+**Why it matters for Hermes:** reading generated type declarations is a Phase 0 success criterion.
+Every SDK Hermes wraps (Anthropic, MCP, OpenTelemetry) is understood through its declaration files
+first.
 
 **Related:** [[sdk]] · [[type-erasure]] · [[type-assertion]] · [[api-client]]

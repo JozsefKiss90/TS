@@ -20,9 +20,10 @@
 
 <div class="callout mission">
   <strong>Why this matters for Hermes</strong>
-  Scenario step S4 (model calls) puts every one behind the ModelGateway. The SDK's mechanics run below
-  it, and Hermes policy sits above it. Failures reach the supervisor as data it can classify. The same
-  interface carries the abort signal S6 (budget limits) needs, and the request id for S7 (the trace).
+  Scenario step S4 (model calls) puts every one behind the <dfn>ModelGateway</dfn>: Hermes' one
+  interface to any model provider. SDK mechanics run below it, and Hermes policy sits above it.
+  Failures reach the supervisor as data to classify. It also carries the abort signal S6 (budget
+  limits) needs, and the request id for S7 (the trace).
   Two threads advance: the six responsibilities move below the line, and lesson 0005's parse lands.
 </div>
 

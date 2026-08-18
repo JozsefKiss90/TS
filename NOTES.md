@@ -558,6 +558,208 @@ two diagrams, both render-verified in headless Edge against the vendored mermaid
 - Bookkeeping: ROADMAP row 0009 ✅ with the streaming win named, 0010 flipped to ▶; module graph synced
   (phase banner, Phase 1 detail, artifact graph, S6 row).
 
+## Update 2026-08-16 — lesson 0004 rewritten to the profile
+
+The 2026-08-08 readability rewrite reached lesson 0004. It went from 1,881 words, 21 errors and 12
+warnings to **1,994 words, 0 errors and 1 warning**. Its lesson-map note and all four term notes
+([[server-sent-events]], [[delta]], [[async-iterator]], [[message-stream]]) were rewritten with it and
+pass 0/0. Scope was not cut: both diagrams, the wire capture, the event table, all measurements and the
+full quiz/classification apparatus survive.
+
+- **The deletions paid for missing apparatus.** 64 em-dashes → 0, all bold-led bullets, the reader
+  guidance ("Three things to sit with", "Spoiler shape") and the fake-profound lines ("the whole game of
+  SDK literacy", "That conversation is the course") were removed. They funded four `<dfn>` definitions
+  (TERM-1 — the lesson had none), a new-vs-reprise callout and bounded compression (III.8 — both were
+  missing), a status table (III.9), a layer table, and a **version pin (IV.1 — the lesson had never had
+  one; pinned to SDK 0.113.0 with the mock's synthetic pacing disclosed per IV.3)**.
+- **Coinages removed:** *order of knowledge*, *the fold* (five uses, incl. two term notes), and
+  *skeleton* as a reused quasi-term. All are now ordinary words: assemble, "what the server knows before
+  generating". (NOTES.md is ungoverned, so they can be named here; the map note cites the profile
+  instead.)
+- **The 2026-08-08 renames rode along, as scheduled.** "Streaming changes delivery, not the contract" is
+  now "Streaming changes delivery. The response shape does not change." — in the lesson and the map note.
+  The `.d.ts` files are "the authoritative description", not "the real contract".
+- **Circled numbers and scenario steps are glossed.** S6 (budget enforcement) in the mission callout per
+  TERM-7; the new §2 layer table doubles as the ①–⑥ key (the 2026-08-12 decision); ⑥ reads
+  "responsibility ⑥ (cancellation)" at each teaching use.
+- **The status table tells today's truth, not ship-date truth.** Budget enforcement on the mid-stream
+  abort is labeled **implemented — lesson 0009's lab, `07-tool-loop`**, not "planned": it runs now, and
+  III.9 forbids present-tense claims only for capabilities that do not. Tool-use stream events likewise
+  cite the mock since lesson 0009. The footer's "events the mock doesn't simulate yet" list shrank to
+  `thinking_delta` for the same reason.
+- **A new "stream" collision table (III.5).** The SDK overloads the word four ways (`stream: true`, the
+  `Stream` return type, the `.stream()` method, `MessageStream`); the old lesson explained this in prose
+  asides.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 (passive) read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. The one kept
+  warning is SENT-6 on *"output cost arrive last"*, a verb phrase, not a noun cluster.
+- **Diagrams: text-only edits, not re-rendered.** Both keep the shipped structure; wording changed to
+  drop em-dashes and drama. Both blocks are semicolon-free per the 2026-07-30 house rule. Render-verify
+  alongside the next headless-browser session if wanted.
+- **Not touched:** lab `03-streaming-and-cancellation` and its README (every number in the lesson still
+  matches the measured runs recorded 2026-07-25), `ROADMAP.md`, `course-module-graph.md` (no status
+  changed), and all term-note frontmatter (`status: demonstrated` dates preserved).
+- **Related notes that still fail wait for their own lessons, per the 2026-08-12 ruling:** the rewritten
+  cluster links [[stop-reason]], [[discriminated-union]], [[narrowing]], [[request-options]],
+  [[messages-api]], [[endpoint]] and [[api-client]], which belong to lessons 0001–0003.
+- **Still to rewrite:** lessons 0001, 0002, 0003, and 0006b, which remains slated for demotion to a
+  reference page.
+
+## Update 2026-08-16 — lesson 0001 rewritten to the profile; its 17-term registry resolved to 6
+
+The 2026-08-08 readability rewrite reached lesson 0001. It went from 1,607 words and 21 errors to
+**1,775 words, 0 errors and 1 warning** (a SENT-6 false positive — *header pins one revision* is a verb
+phrase — judged and kept). The whole touched cluster of 21 files lints at 0 errors.
+
+- **Scope was kept, and the constitution's missing apparatus was added, not just slop removed.** The
+  lesson had predated Articles II–V: it gained a mission callout naming both threads and `S4 (model
+  calls)` (II.2), a `messages`/`Message` collision table (III.5), a runtime value beside the `Message`
+  interface (III.4), the signature-vs-implementation distinction (III.3), a new-vs-reprise callout and a
+  bounded four-sentence compression (III.8), one status table (III.9/PARA-6), a fourth quiz question
+  (the Article V calibration), and a version pin (IV.1). The `StopReason` union in §3 was re-verified
+  against the installed 0.113.0 `.d.ts` this session.
+- **The 2026-08-08 renames rode along as scheduled.** *Contract* is gone: responsibility ④ reads
+  *request and response shape* everywhere, including the six-responsibility key the lesson introduces.
+  `wiki/terms/request-contract.md` was renamed (git mv) to `request-and-response-shape.md`; inbound
+  links updated in `test-double.md`, `json-boundary.md`, the lesson-0003 map, and the rewritten cluster
+  notes. NOTES.md history keeps the old name, as records.
+- **The 17-term registry was the structural defect, and it is resolved to six:** [[api]], [[sdk]],
+  [[request-and-response-shape]], [[type-assertion]], [[type-erasure]], [[runtime-validation]] — each
+  now has a `<dfn>` of 20 words or fewer at first use, which none had. Eleven notes moved to the lessons
+  that exercise them, statuses and dates untouched: 0002 took `endpoint`, `api-key-authentication`,
+  `messages-api`, `stop-reason` (now 9 registered); 0003 took `api-version-header`, `error-boundary`,
+  `retry-with-backoff`, `cancellation`, `narrowing` (now 9); 0005 took `discriminated-union` (5, still
+  0 errors); 0006 took `model-gateway` (5) and gained a `<dfn>` for it in the mission callout, paid for
+  by tightening the same callout — 0006 now sits at 1,997 words, still 0 errors.
+- **Deliberate debt, loudly:** lessons 0002 (19 → 23 errors) and 0003 (19 → 24) now carry BUDGET-terms
+  9 > 6 plus TERM-1 for the arrivals. Both are next in the rewrite queue and cannot pass without a
+  **user decision on demotion to ordinary English**. Candidates: `endpoint`, `api-key-authentication`,
+  `api-version-header`, `error-boundary`, `narrowing` (ordinary vocabulary for a competent TS reader)
+  and `messages-api` (a proper noun). Demoting them brings both lessons under the budget. Demotion is a
+  registry question only — no note need be deleted, and `demonstrated` history is untouched either way.
+- **Found mid-session: a lesson 0004 rewrite sits uncommitted in the working tree** (1,994 words, 0
+  errors, four `<dfn>`s) with its map note and four term notes — from another session, not this one, and
+  deliberately untouched here. It changed the term moves: `cancellation`, `stop-reason` and `narrowing`
+  wanted 0004 homes, but the rewritten 0004 uses all three in prose without `<dfn>`s, so parking them
+  there would have broken a clean lesson. They went to 0002/0003 instead; the 0002/0003 rewrites may
+  re-home them if better.
+- **`model-gateway.md` no longer lies about its lesson.** `lesson: "0001"` → `"0006"`, `phase: 1`, and
+  the stale "named as the destination in lesson 0001" paragraph is gone. This closes the 2026-08-12
+  note's "it needs a rewrite when 0001 does".
+- **Judged rather than measured, per Article VIII.6:** SENT-3 (passive) read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Kicker
+  states ~20 min honestly (no lab; the II.1 45–60 min template describes lab lessons).
+- **Not verified this session:** the two Mermaid diagrams were not re-rendered in a browser. Their
+  source changed in note and label text only, inside constructs that rendered before, and both blocks
+  are free of semicolons (the 2026-07-30 house rule). Same disclosure as the 0006 rewrite.
+- Pre-existing and untouched: the lesson-0003 map note's 2 errors (identical at HEAD); the
+  `cilent2.ts` typecheck blocker.
+- **Still to rewrite:** 0002, 0003 (both gated on the demotion decision above), and 0006b, which
+  remains slated for demotion to a reference page.
+
+## Update 2026-08-17 — lesson 0002 rewritten to the profile; four terms demoted (user decision)
+
+The 2026-08-08 readability rewrite reached lesson 0002. It went from 1,613 words, 23 errors and 12
+warnings to **1,744 words, 0 errors and 0 warnings**. The whole eleven-file cluster (lesson, map note,
+nine term notes) lints at 0 errors. Scope was kept: the gates diagram, the six-break table, the
+classification exercise and the whole quiz apparatus survive.
+
+- **The gating decision landed.** The user chose the recommended demotion: [[endpoint]],
+  [[api-key-authentication]], [[messages-api]] and [[stop-reason]] are ordinary vocabulary now. Each
+  note keeps its body, status and dates, carries `lesson: ""`, and states the demotion with the date.
+  Lesson 0002 keeps five Technical Names against the budget of six: [[test-double]], [[base-url]],
+  [[lockfile]], [[es-modules]], [[strict-mode]] — each now has a `<dfn>` of 20 words or fewer, which
+  none had. **Side effect, accepted:** GLOSSARY.md's *Awaiting promotion* DataView still lists the
+  three `introduced` demoted notes, with an empty lesson column. Say so if it bothers the graph views.
+- **A factual error found by the detect pass, not the linter:** the lede and §3 said "break it five
+  ways" while the table has six rows and step 5 said "those six failures". Everything says six now.
+- **The missing constitutional apparatus was added, not just slop removed:** a mission callout naming
+  the six-responsibilities thread and `S4 (model calls)` (II.2/TERM-7); a one-sentence ①–⑥ key at
+  first use (the 2026-08-12 ruling); **wire truth** — two captured exchanges (the full 200 and the 401
+  envelope) recorded against a private mock on `PORT=8899`, stopped afterwards (III.1); a
+  new-vs-reprise callout and a bounded four-sentence compression (III.8); one status table telling
+  today's truth — exercises 02, 04 and 05 are implemented, not future (III.9/PARA-6); a fourth quiz
+  question, on the mock's ~400 ms delay (Article V calibration); and a footer pin — typescript 5.9.3,
+  tsx 4.23.1, Node 22.14.0, pnpm 11.17.0, capture date — plus the IV.3 disclosure that error wording
+  is approximated.
+- **The renames rode along, as scheduled.** *Contract* is gone from all seven uses (the port rename's
+  sibling: the wire rules are "the API's rules" / "the request shape"). The base-URL "seam" wording is
+  now "configuration point", in the lesson, the map note and its diagram label.
+- **Stale ops removed:** the corepack/admin-terminal install route (pnpm 11.17.0 is global since
+  2026-07-25) and "exercises 01–08" (the lab holds 01–07).
+- **44 em-dashes to 0.** The three §1 bold-led multi-sentence bullets became three short paragraphs.
+  The footer's "That conversation is the course" line is gone, as it is from 0004.
+- **Term notes rewritten:** `es-modules`, `lockfile`, `strict-mode` (10 errors → 0, banned word
+  *harness* removed from lockfile). The map note was rewritten and records the demotions.
+- **Linter behaviours reconfirmed for the next rewrite:** PARA-7 counts the "If you keep only N
+  sentences" opener toward the five-sentence limit, so the compression is opener plus four. The
+  sentence splitter still glues a sentence that opens with a lowercase code identifier onto the one
+  before it — hit twice in the term notes, fixed with ordinary-word openers.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 (passive) read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Four
+  warnings kept on judgment: three SENT-6 hits are verb phrases, and `api-key-authentication`'s
+  *Proving identity…* opener is the house definition form (the 2026-08-12 ruling on 56 notes). Quiz
+  option "The element type, exactly as declared" kept: *exactly* is literal there, not an intensifier.
+- **Diagrams not re-rendered:** the lesson's gates diagram is unchanged from the shipped, rendering
+  version; the map note's label change is text-only. Both blocks are semicolon-free per the 2026-07-30
+  house rule.
+- **Not touched:** lab `01-raw-http` and its README (every number in the lesson matches the captures
+  and the code constants), `ROADMAP.md`, `course-module-graph.md` (no status changed), and all term
+  frontmatter statuses and dates.
+- **Still to rewrite:** 0003 — gated on the same demotion question for its own arrivals
+  (`api-version-header`, `error-boundary`, `narrowing` are the NOTES 2026-08-16 candidates; today's
+  decision is the precedent) — and 0006b, still slated for demotion to a reference page.
+- Still your file, still untouched: `02-model-client-sdk/src/cilent2.ts` keeps `pnpm -r typecheck` red.
+
+## Update 2026-08-18 — lesson 0003 rewritten to the profile; three terms demoted (user decision); retitled
+
+The 2026-08-08 readability rewrite reached lesson 0003. It went from 1,647 words, 24 errors and 16
+warnings to **1,994 words, 0 errors and 0 warnings**. The whole twelve-file cluster (lesson, map note,
+nine term notes, module graph) lints at 0 errors. Scope was kept: both diagrams, the chore-by-chore
+table, all measured numbers, and the full quiz/classification apparatus survive.
+
+- **The gating decision landed, matching the 0002 precedent.** The user chose the recommended
+  demotion: [[api-version-header]], [[error-boundary]] and [[narrowing]] are ordinary vocabulary now
+  (`lesson: ""`, bodies/statuses/dates untouched, demotion dated in each note). Lesson 0003 keeps
+  exactly six Technical Names: [[api-client]], [[request-options]], [[typed-error]],
+  [[declaration-file]], plus the 0001 arrivals [[retry-with-backoff]] and [[cancellation]] — each now
+  has a `<dfn>` of 20 words or fewer, which none had.
+- **Retitled by user decision:** *The SDK Absorbs the Six Responsibilities*. "The six" is a TERM-2
+  banned coinage; the spine's name for the thread is ordinary English. Filename and links unchanged
+  (0006a precedent). ROADMAP row and module-graph node updated to the new title; no status changed.
+- **Wire truth (III.1) was unpaid and is now paid with a new measurement.** A logging server on a
+  private port (8899) captured the SDK's real request next to the raw client's. Finding: the shipped
+  lesson's "byte-for-byte exercise 01's request" claim was half wrong. The **body** is byte-for-byte
+  identical (102 bytes); the **headers** are a superset (`User-Agent: Anthropic/JS 0.113.0` plus
+  eight `X-Stainless-*` telemetry headers, all ignored by the mock). Lesson §1, quiz Q1, Diagram 1
+  and the map note now state the corrected claim; capture script left in the session scratchpad.
+- **The missing constitutional apparatus was added, not just slop removed:** a mission callout naming
+  the thread and `S4 (model calls)` (II.2/TERM-7); the one-sentence ①–⑥ key (2026-08-12 ruling); a
+  signature table for `import → new Anthropic → client.messages → .create` with the overload note and
+  the signature-vs-implementation sentence (III.3); the `APIError` declaration beside a caught
+  `RateLimitError` value (III.4); a new-vs-reprise callout and a bounded four-sentence compression
+  (III.8); one status table telling today's truth — the gateway (lesson 0006), runtime validation
+  (lesson 0005) and streaming (lesson 0004) are implemented, and the stale "Phase 1 will…" framing is
+  gone (III.9/PARA-6); and a footer pin — SDK 0.113.0, Node 22.14.0, pnpm 11.17.0, capture date —
+  with the IV.3 mock-wording disclosure.
+- **49 em-dashes to 0.** The §3 bold-led three-sentence bullets became paragraphs; the footer's "That
+  conversation is the course" line is gone, as it is from 0002 and 0004. Banned metaphors removed in
+  my own draft during the judgment pass, not just inherited ones: *escape hatch* (twice), *one
+  attempt dies*, *loses to the latency*.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 (passive) read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Four
+  warnings kept on judgment: the *Stopping…*/*Convincing…* definition openers are the house form
+  (2026-08-12 ruling), *Narrowing checks your code paths* opens with the term as a noun, and
+  *Knowing which knob…* is a gerund subject, not a participle clause.
+- **Diagrams not re-rendered:** Diagram 1 keeps the shipped structure with label text changes;
+  Diagram 2's note text swapped em-dashes for commas. Both blocks are semicolon-free per the
+  2026-07-30 house rule. Same disclosure as the 0001/0004 rewrites.
+- **Not touched:** lab `02-model-client-sdk` and its README (every number in the lesson matches the
+  2026-07-24 measured runs), term-note frontmatter statuses and dates, and `ROADMAP.md` statuses.
+- **Still to rewrite:** 0006b only, still slated for demotion to a reference page. Lessons 0001–0006
+  and 0007–0009 now all pass the profile.
+- Still your file, still untouched: `02-model-client-sdk/src/cilent2.ts` keeps `pnpm -r typecheck` red.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

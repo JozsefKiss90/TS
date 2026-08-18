@@ -16,10 +16,10 @@ tags:
 
 # Runtime validation
 
-Checking that actual bytes match an expected schema **while the program runs** — what [[type-erasure|erased static types]] cannot do. In this curriculum the tool is Zod: parse untrusted JSON at every boundary and get a typed value or a described failure.
+Checking that received bytes match a schema while the program runs. Static types cannot do this, because of [[type-erasure]]. In this course the tool is Zod. A parse at the [[json-boundary]] returns a typed value or a described failure.
 
-**In [[lesson-0001-trace-one-request|lesson 0001]]:** named as the missing piece — the [[sdk]] *asserts* its response types; nothing *checks* them. For SDK responses that's a reasonable bet; for model-**generated** data (tool arguments, task specs, retrieved evidence) it is not.
+**In [[lesson-0001-trace-one-request|lesson 0001]]:** named as the missing check. The [[sdk]] asserts its response types and checks no byte. [[lesson-0005-validate-the-boundary|Lesson 0005]] builds the check.
 
-**Why it matters for Hermes:** the guiding principle in one mechanism — *put probabilistic reasoning inside a deterministic, typed, observable control system*. Every JSON boundary in the loop (TaskSpec in, tool args in, evidence in) gets a schema. Dedicated lesson coming; promoted here only once used in anger.
+**Why it matters for Hermes:** every JSON boundary in the loop gets a schema. The TaskSpec, tool arguments, and evidence all enter through a parse. Hermes puts probabilistic output inside a deterministic, typed control system, and this check is the mechanism.
 
-**Related:** [[type-erasure]] · [[request-contract]] · [[model-gateway]] · [[sdk]]
+**Related:** [[type-erasure]] · [[json-boundary]] · [[zod-schema]] · [[safe-parse]] · [[model-gateway]]

@@ -1,7 +1,7 @@
 ---
 term: Endpoint
 type: glossary-term
-lesson: "0001"
+lesson: ""
 phase: 0
 category: protocol
 status: introduced
@@ -13,8 +13,10 @@ tags:
 
 # Endpoint
 
-The URL-plus-method a request targets — for the [[messages-api]], `POST https://api.anthropic.com/v1/messages`. Part of the [[api]] contract: raw `fetch` spells it out; the [[sdk]] bakes it into the client so you never type it.
+The URL plus method a request targets. For the [[messages-api]] it is `POST https://api.anthropic.com/v1/messages`. Raw `fetch` spells it out. The [[sdk]] holds it inside the client, so you never type it.
 
-**In [[lesson-0001-trace-one-request|lesson 0001]]:** responsibility ① of the six — visible in the `fetch` version, absorbed by `new Anthropic()` in the SDK version.
+**First seen in [[lesson-0001-trace-one-request|lesson 0001]]** as responsibility ①. **In [[lesson-0002-raw-http-against-a-mock|lesson 0002]]:** the lab points the same request at a local mock by swapping the [[base-url]].
 
-**Related:** [[api]] · [[messages-api]] · [[sdk]]
+*Demoted to ordinary vocabulary on 2026-08-17: lessons use this word without a definition. The note stays as a reference.*
+
+**Related:** [[api]] · [[messages-api]] · [[sdk]] · [[base-url]]
