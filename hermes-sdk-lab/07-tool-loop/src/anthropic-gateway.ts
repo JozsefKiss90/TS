@@ -151,7 +151,7 @@ export class AnthropicModelGateway implements ModelGateway {
                   name: tool.name,
                   description: tool.description,
                   input_schema: tool.inputSchema,
-                })),
+                })), 
               }
             : {}),
         },

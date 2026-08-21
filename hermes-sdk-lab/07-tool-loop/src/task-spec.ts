@@ -4,6 +4,8 @@
  * Carried forward from exercise 06. Lesson 0009 added two fields, both with
  * defaults: maxModelCalls and deadlineMs. Every bound the loop enforces now
  * comes from this file, which means every bound is the operator's to set.
+ * Lesson 0010 added approvalRequired: the names whose calls must wait for
+ * an operator, so the permission POLICY is spec data end to end.
  *
  * Lesson 0005 parsed bytes arriving from a provider. This file parses bytes
  * arriving from an operator: a JSON file on disk, written by a human or by
@@ -45,6 +47,10 @@ import { formatIssues } from "./issues.js";
  *                         decide which tools are declared, and to check the
  *                         name that comes back. Empty by default, because a
  *                         spec that says nothing about tools permits none.
+ *   approvalRequired    — the subset of allowedTools whose calls must wait
+ *                         for an operator's decision (lesson 0010). Empty by
+ *                         default: permitting a tool and gating it are two
+ *                         separate choices, both the operator's.
  *   outputPath          — where the artifact lands (S8).
  */
 export const TaskSpecSchema = z
@@ -69,6 +75,11 @@ export const TaskSpecSchema = z
     // permission list is the one that grants nothing.
     allowedTools: z.array(z.string()).default([]),
 
+    // Also default-empty: a permitted tool runs without approval unless the
+    // operator names it here. Gating everything by default would make every
+    // job interactive, and the audit job must run unattended.
+    approvalRequired: z.array(z.string()).default([]),
+
     outputPath: z.string().min(1),
   })
   /**
@@ -79,6 +90,15 @@ export const TaskSpecSchema = z
   .refine((spec) => spec.maxTokens <= spec.costCeilingTokens, {
     error: "maxTokens may not exceed the job's costCeilingTokens",
     path: ["maxTokens"],
+  })
+  /**
+   * The second refinement (lesson 0010). Gating a tool the job never
+   * permitted is a contradiction between two fields, so it is refused at
+   * admission — before a token is spent, like every spec defect.
+   */
+  .refine((spec) => spec.approvalRequired.every((name) => spec.allowedTools.includes(name)), {
+    error: "approvalRequired may only name tools that allowedTools permits",
+    path: ["approvalRequired"],
   });
 
 /**

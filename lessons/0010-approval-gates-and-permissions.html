@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0010 — Approval Gates and Permissions</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 1 · Lesson 0010 · lab exercise 07-tool-loop · ~45–60 min</p>
+  <h1>Approval Gates and Permissions</h1>
+  <p class="lede">The loop can stop itself since lesson 0009. Which tool calls may run on their own, and
+  which must wait for a human?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S5 (the loop iterates) puts a gate check between every tool call and its run.
+  The audit job ran unattended because its tools only read. Today the job that wants
+  <code>graph_writeback</code> arrives, and no call of that tool runs without an operator's decision.
+  The whole policy is spec data. It sits on the workflow side of the standing rule: what Hermes may
+  do stays apart from what it knows and what it did. In Part H, the operator is you.
+</div>
+
+<h2>1 · Permission gets a third level</h2>
+
+<p>Lesson 0008 gave permission two levels. A tool missing from <code>allowedTools</code> is never
+declared, and a call that names it anyway is refused. A listed tool runs every time, with nobody
+watching. Two levels were enough while every tool only read.</p>
+
+<p>They are not enough for <code>graph_writeback</code>, which mutates the knowledge graph. Some jobs
+need it, and no job should run it silently. So the spec gains a middle level: permitted, with every
+call held for a decision.</p>
+
+<pre><code>"allowedTools":     ["graph_writeback", "graph_health"],   // may be declared to the model
+"approvalRequired": ["graph_writeback"]                    // each call waits for the operator</code></pre>
+
+<p>An <dfn>approval gate</dfn> is a check that holds a permitted tool call until an operator decides.
+In the lab it is one pure function, and reading it is reading the whole permission policy:</p>
+
+<pre><code>export type GateDecision = "not_permitted" | "auto" | "hold";
+
+export function gateToolCall(name: string, spec: TaskSpec): GateDecision {
+  if (!spec.allowedTools.includes(name)) return "not_permitted";
+  if (spec.approvalRequired.includes(name)) return "hold";
+  return "auto";
+}</code></pre>
+
+<p>Part G runs the gate offline. The fake's first reply carries two calls, and the gate answers
+<code>"auto"</code> for one and <code>"hold"</code> for the other. A scripted operator denies the held
+call, and the report shows both decisions:</p>
+
+<pre><code>toolRuns: [ 'graph_health → ran', 'graph_writeback → denied by the operator' ],
+outcome: 'landed',  modelCalls: 2,  tokensSpent: 136</code></pre>
+
+<p>One transcript turn still carries both results, in the order the model asked. The denial is a
+failed result among ordinary ones, and the loop continues. The fake's second reply reports without
+writing, and the job lands.</p>
+
+<p>The two spec fields can contradict each other. A file that requires approval for a tool it never
+permitted is refused at admission, by a second refinement, before a token is spent:</p>
+
+<pre><code>.refine((spec) =&gt; spec.approvalRequired.every((name) =&gt; spec.allowedTools.includes(name)), {
+  error: "approvalRequired may only name tools that allowedTools permits",
+  path: ["approvalRequired"],
+})</code></pre>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>Permission has a third level: permitted, with every call held for a decision.</li>
+    <li>The whole policy is spec data, and one pure function reads it.</li>
+    <li>The operator is a port, and a missing operator means denial, not approval.</li>
+    <li>A denial answers the model as a failed tool result, so the loop continues.</li>
+    <li>The approval wait races the job's bounds, so a silent operator cannot hang a job.</li>
+  </ul>
+  <p>Reprise: the two readers of <code>allowedTools</code> and refusal-as-answer from lesson 0008,
+  the refinement from lesson 0007, the one controller from lesson 0009, and ports from lesson
+  0006.</p>
+</div>
+
+<h2>2 · The operator is a port</h2>
+
+<p>Who answers a held call? The supervisor does not know, and should not. It asks a port, the same
+move lesson 0006 made at the model boundary:</p>
+
+<pre><code>export interface ApprovalPort {
+  decide(call: ToolCall): Promise&lt;"approved" | "denied"&gt;;
+}
+
+// a runtime value — Part G's scripted operator (abridged, the lab's also logs):
+const denyEverything: ApprovalPort = { decide: () =&gt; Promise.resolve("denied") };
+
+// Part H wires your terminal to it instead:
+//   approve graph_writeback({"graph":"atlas","patch":"atlas"})? [y/N]</code></pre>
+
+<p>Part G wired a script that denies everything. Part H wires the question above into a live job, so
+the loop pauses in your terminal until you answer. The wiring decides who the operator is. The
+supervisor only ever sees the two-valued answer.</p>
+
+<p>When no approver is wired at all, a held call is denied. <dfn>Default deny</dfn> is the rule that
+refuses whatever a policy does not permit. The rule shaped <code>allowedTools</code> in lesson 0007: a
+spec that says nothing permits no tools. The port applies it again: no channel, no approval. The empty
+<code>approvalRequired</code> default is deliberately permissive, because a gate is the operator's
+choice, not a side effect.</p>
+
+<p>Part H ran twice through a logging proxy, denied once and approved once. The two second requests
+differ in one block and nowhere else:</p>
+
+<pre><code>{ "role": "user", "content": [
+    { "type": "tool_result", "tool_use_id": "toolu_mock_0001",
+      "content": "The operator declined \"graph_writeback\" for this job.",
+      "is_error": true } ] }
+// the approved run: "content": "wrote patch to atlas", "is_error": false</code></pre>
+
+<p>No request field records the gate, the wait, or who decided. The human took about four seconds to
+answer, and the API is stateless, so the late request is just a request. The model cannot tell an
+operator's denial from a tool failure, except by reading the content text. The denied run cost 229
+tokens against the approved run's 221, because the longer denial sentence rides in the resent
+transcript.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    participant OP as you
+    participant SUP as runTask
+    participant API as the API
+    API-->>SUP: tool_use graph_writeback
+    SUP->>SUP: the gate answers hold
+    SUP->>OP: approve graph_writeback? [y/N]
+    Note over OP,SUP: four seconds pass —<br/>the provider notices nothing
+    OP-->>SUP: n
+    SUP->>API: tool_result with is_error true
+    API-->>SUP: the reply quotes the refusal
+</pre>
+<figcaption>Diagram 1. Part H, denied. The gate lives entirely on Hermes's side of the wire.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Layer</th><th>Changed?</th><th>Evidence</th></tr>
+  <tr><td>the six responsibilities, ① endpoint to ⑥ cancellation</td><td>no</td><td>the SDK still runs all six, below the port</td></tr>
+  <tr><td>the request body</td><td>one block</td><td>a denial is a <code>tool_result</code> with <code>is_error</code> set, known since lesson 0008</td></tr>
+  <tr><td>the model gateway</td><td>no</td><td><code>gateway.ts</code> and the adapter are untouched since lesson 0009</td></tr>
+  <tr><td>who Hermes asks</td><td>yes</td><td>a second port, <code>ApprovalPort</code>, appears beside the model's</td></tr>
+  <tr><td>the spec</td><td>yes</td><td><code>approvalRequired</code>, and the second refinement</td></tr>
+  <tr><td>timing between requests</td><td>yes, invisibly</td><td>the API is stateless, so a human pause is just a later request</td></tr>
+</table>
+
+<h2>3 · The wait races the bounds</h2>
+
+<p>An operator is a human, and humans walk away. Part I wires an approver whose promise never
+resolves, under a spec with a 2000 ms deadline. The job must still end, because lesson 0009's
+guarantee also covers a call that waits.</p>
+
+<p>The supervisor already arms one <code>AbortController</code> per job. The approval wait listens to
+the same signal, so whichever settles first wins:</p>
+
+<pre><code>const verdict = await raceBounds(options.approver.decide(call), signal);
+if (verdict === "job_ended") {
+  // classified by boundHit: out_of_time, over_budget, or the operator's own abort
+}</code></pre>
+
+<p>The measured run ended at about 2018 ms:</p>
+
+<pre><code>outcome: 'out_of_time',  modelCalls: 1,  tokensSpent: 42,
+toolRuns: [ 'graph_health → ran', 'graph_writeback → held when the job ended' ],
+notes: [ 'deadline of 2000 ms passed while "graph_writeback" waited for approval' ]</code></pre>
+
+<p>The report's first <code>toolRuns</code> line shows the read-only tool had already run before the
+wait began. Three levels met one unattended job: the read ran, the write waited, and the deadline
+ended the wait.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    CALLS["reply.calls — one decision each"] --> GATE{"gateToolCall"}
+    GATE -->|"not_permitted"| REF["refused, is_error on the wire"]
+    GATE -->|"auto"| RUN["runTool"]
+    GATE -->|"hold"| WIRED{"an approver wired?"}
+    WIRED -->|"no"| DEF["denied by default"]
+    WIRED -->|"yes"| RACE{"decision, or a bound,<br/>whichever settles first"}
+    RACE -->|"approved"| RUN
+    RACE -->|"denied"| DEN["failed tool result"]
+    RACE -->|"a bound fires"| END["job ends, classified"]
+</pre>
+<figcaption>Diagram 2. Every call gets a decision, and every wait can be outlived by the
+job's bounds.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>Three permission levels from the spec</td><td>implemented</td><td><code>task-spec.ts</code> and <code>approval.ts</code>, measured in Parts G to I</td></tr>
+  <tr><td>An operator decides over a port</td><td>implemented</td><td>the terminal prompt in Part H</td></tr>
+  <tr><td>The approval wait races the deadline</td><td>implemented</td><td>Part I, measured at ~2018 ms</td></tr>
+  <tr><td>Gate decisions in a durable record</td><td>prepared</td><td>they live in the report's <code>toolRuns</code>. Lesson 0011 makes the record durable</td></tr>
+  <tr><td>A queue of pending approvals an operator can browse</td><td>planned</td><td>Phase 3 puts gates on the workflow graph's edges (ROADMAP)</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and the measured table live in <code>07-tool-loop/README.md</code>, steps 11 to 14. The
+arc:</p>
+
+<ol>
+  <li>Run Part H twice: approve once, deny once. Compare <code>toolRuns</code> and the final
+  answer.</li>
+  <li>Move <code>graph_writeback</code> out of <code>approvalRequired</code>. Predict what Part H
+  asks you now, then run it.</li>
+  <li>Require approval for a tool the spec never permitted, and predict which layer refuses.</li>
+  <li>Run Part I, raise the deadline to 60000, run again, and say what you are waiting for.</li>
+</ol>
+
+<h2>5 · Exercise: which layer decides it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each decision with the layer that makes it</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="admission|the gate|the operator|the bounds">
+    <div class="cl-item" data-cat="0" data-why="The second refinement runs at admission. The defect spans two fields, so no single call could carry it, and no token is spent.">
+      <p>Refusing a spec that requires approval for a tool it never permitted.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="gateToolCall answers auto for a permitted name that approvalRequired does not list. Measured in Parts G and I.">
+      <p>Letting <code>graph_health</code> run with no question asked.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The gate answers hold for any name in approvalRequired. Who answers the question is the port's business, not the gate's.">
+      <p>Holding a <code>graph_writeback</code> call until someone decides.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="The denial becomes a tool_result with is_error set, and the model reads it in the next request. Measured in Part H.">
+      <p>Turning a held call into a failed tool result.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="Part I measured it. The deadline fired the job's controller at about 2018 ms while the call still waited, and the outcome was classified.">
+      <p>Ending a job whose approval never arrives.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The gate answers not_permitted, and runTool refuses the call with the same check lesson 0008 measured in Part B.">
+      <p>Refusing a call that names a tool outside <code>allowedTools</code>.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="0" data-why="The captured requests differ in the one tool_result block and nowhere else. The API has no approval field, so only outcomes travel.">
+    <p class="qz-prompt">Q1. Part H's approved and denied runs sent almost identical second requests. What does the wire record about the gate?</p>
+    <button class="qz-opt" type="button">One tool_result block differs, and nothing else: the wire carries outcomes, not decisions</button>
+    <button class="qz-opt" type="button">An approval field rides beside the tool_result, so the provider can audit the gate</button>
+    <button class="qz-opt" type="button">The denied run resends a shorter transcript, because the refused call is dropped from it</button>
+    <button class="qz-opt" type="button">The wait appears as a timing header, which tells the provider that a human was asked</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="The contradiction spans two fields, so it is a refinement's job, and refinements run at admission. The job is refused before any call exists.">
+    <p class="qz-prompt">Q2. A spec lists a tool in <code>approvalRequired</code> but not in <code>allowedTools</code>. What happens?</p>
+    <button class="qz-opt" type="button">The gate answers hold, and the operator decides whether the contradiction matters</button>
+    <button class="qz-opt" type="button">Admission refuses the spec on the second refinement, before a single call is made</button>
+    <button class="qz-opt" type="button">The tool is declared anyway, because approvalRequired extends the permitted list</button>
+    <button class="qz-opt" type="button">The first call is refused at run time by runTool, and the loop continues without it</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="Permission must be granted, never assumed. The same rule already made allowedTools default to an empty list in lesson 0007.">
+    <p class="qz-prompt">Q3. A call needs approval, and <code>runTask</code> was given no approver. Why is denial the right answer?</p>
+    <button class="qz-opt" type="button">Whatever cannot be decided is refused: permission is granted, never assumed by absence</button>
+    <button class="qz-opt" type="button">An unattended approval would crash the supervisor, because the port cannot be null</button>
+    <button class="qz-opt" type="button">The provider rejects any request whose tools were not approved, so denial avoids a 400</button>
+    <button class="qz-opt" type="button">Approval is only a report entry, so the safe default is to run the call and record it</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The wait listens to the job's own AbortController, the one lesson 0009 armed. The deadline fired it at about 2018 ms, and boundHit named the outcome.">
+    <p class="qz-prompt">Q4. Part I's operator never answers. What ends the job?</p>
+    <button class="qz-opt" type="button">The terminal's readline interface times out after two seconds and returns a denial</button>
+    <button class="qz-opt" type="button">The fake gateway notices the silence and returns the aborted arm of its failure union</button>
+    <button class="qz-opt" type="button">The model withdraws its tool call when no result arrives in the following request</button>
+    <button class="qz-opt" type="button">The deadline fires the job's own controller, and the approval wait was listening to it</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Name the three permission levels a tool call can meet, and say where each one is decided.</li>
+  <li>A reviewer says <code>approvalRequired</code> is redundant, because <code>allowedTools</code>
+  already controls the tools. Answer in two sentences.</li>
+  <li>Explain why the approval wait must share the job's <code>AbortController</code> rather than
+  waiting freely.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. Permission has three levels: a tool
+is unlisted, permitted, or permitted with approval, and all three live in the spec. The approval gate
+holds a call until the operator decides, and a denial answers the model as a failed tool result. The
+wire has no approval field, so the provider never sees the gate, only its outcomes. The wait races
+the job's bounds, so a job whose operator never answers still terminates.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the Anthropic <a href="https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview">tool
+use documentation</a> and search it for any notion of approval. You will find <code>is_error</code>
+and nothing more. The provider offers the loop, and every permission above it is yours to build,
+which is what <code>approval.ts</code> does.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and number here was verified against
+  <code>@anthropic-ai/sdk</code> 0.113.0 and <code>zod</code> 4.4.3, by live runs against the exercise
+  01 mock on a private port. The wire blocks came from a logging proxy in front of it. The mock cannot
+  reason, so it asks for the first declared tool and invents arguments from that tool's schema. The
+  invented patch argument reads <code>"atlas"</code> for that reason. Its final answer quotes whatever the
+  <code>tool_result</code> carried, a denial included. The two new terms have notes under
+  <code>wiki/terms/</code>.</p>
+  <p><strong>Next.</strong> Lesson 0011, <em>The Trace Is What Happened</em>, in the same lab. The
+  gate's decisions live only in a report that dies with the process. Next, every event of a run lands
+  in a durable, replayable record.</p>
+</footer>
+
+</body>
+</html>

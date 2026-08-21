@@ -15,7 +15,13 @@
  * The true output count arrives only when a reply finishes, so the in-flight
  * check acts on an ESTIMATE, and the estimate errs toward stopping early.
  * Nothing here names a provider, and nothing here runs a tool.
+ *
+ * Lesson 0010 put a gate between a tool call and its run. Every call gets a
+ * decision from gateToolCall — not permitted, auto, or hold — and a held
+ * call waits for the ApprovalPort. The wait races the same AbortController
+ * as everything else: an operator who never answers cannot hang a job.
  */
+import { type ApprovalPort, gateToolCall } from "./approval.js";
 import type { CallProgress, ModelGateway, ToolOutcome, Turn } from "./gateway.js";
 import type { TaskSpec } from "./task-spec.js";
 import { offerTools, runTool } from "./tools.js";
@@ -40,10 +46,30 @@ export interface JobReport {
  */
 const estimateTokens = (chars: number): number => Math.ceil(chars / 3);
 
+/**
+ * Wait for the operator, unless the job ends first. The signal already
+ * merges the deadline, the budget and the operator's own abort, so one
+ * listener covers every way the job can end mid-wait.
+ */
+function raceBounds(
+  decision: Promise<"approved" | "denied">,
+  signal: AbortSignal,
+): Promise<"approved" | "denied" | "job_ended"> {
+  if (signal.aborted) return Promise.resolve("job_ended");
+  return new Promise((resolve) => {
+    const onAbort = (): void => resolve("job_ended");
+    signal.addEventListener("abort", onAbort, { once: true });
+    void decision.then((verdict) => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(verdict);
+    });
+  });
+}
+
 export async function runTask(
   gateway: ModelGateway,
   spec: TaskSpec,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; approver?: ApprovalPort },
 ): Promise<JobReport> {
   // The spec decides which tools exist for this job. A tool that is not
   // offered is a tool the model never hears about.
@@ -172,11 +198,63 @@ export async function runTask(
         return report("gave_up", modelCall, ["the reply asked for a tool and named none"]);
       }
 
-      const results: ToolOutcome[] = reply.calls.map((call) => {
+      // The gate runs per call, between the reply and any run. "auto" and
+      // "not_permitted" go straight to runTool, whose own checks produce
+      // the refusal — unchanged since lesson 0008. Only "hold" waits.
+      const results: ToolOutcome[] = [];
+      for (const call of reply.calls) {
+        const gate = gateToolCall(call.name, spec);
+
+        if (gate === "hold") {
+          if (options?.approver === undefined) {
+            // Default deny: no approval channel means no approval. A gate
+            // that opens when nobody is watching is not a gate.
+            results.push({
+              id: call.id,
+              output: `Tool "${call.name}" needs approval and no approval channel exists.`,
+              failed: true,
+            });
+            toolRuns.push(`${call.name} → denied by default`);
+            continue;
+          }
+
+          const verdict = await raceBounds(options.approver.decide(call), signal);
+
+          if (verdict === "job_ended") {
+            toolRuns.push(`${call.name} → held when the job ended`);
+            if (boundHit === "deadline") {
+              return report("out_of_time", modelCall, [
+                `deadline of ${spec.deadlineMs} ms passed while "${call.name}" waited for approval`,
+              ]);
+            }
+            if (boundHit === "budget") {
+              return report("over_budget", modelCall, [
+                `ceiling ${spec.costCeilingTokens} reached while "${call.name}" waited for approval`,
+              ]);
+            }
+            return report("gave_up", modelCall, ["aborted by the operator"]);
+          }
+
+          if (verdict === "denied") {
+            results.push({
+              id: call.id,
+              output: `The operator declined "${call.name}" for this job.`,
+              failed: true,
+            });
+            toolRuns.push(`${call.name} → denied by the operator`);
+            continue;
+          }
+
+          const approved = runTool(call, spec.allowedTools);
+          toolRuns.push(`${call.name} → ${approved.failed ? "refused" : "ran (approved)"}`);
+          results.push(approved);
+          continue;
+        }
+
         const outcome = runTool(call, spec.allowedTools);
         toolRuns.push(`${call.name} → ${outcome.failed ? "refused" : "ran"}`);
-        return outcome;
-      });
+        results.push(outcome);
+      }
 
       // One turn carries every result, in the order the model asked. Splitting
       // them across turns would break the pairing the provider expects.

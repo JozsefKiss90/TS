@@ -112,8 +112,9 @@ export function offerTools(allowedTools: string[]): ToolSpec[] {
  * Two checks run before any implementation does. The name must be
  * permitted for THIS job, and the arguments must parse. Offering a short
  * tool list is not enforcing one: the reply that comes back is model
- * output, so it can name a tool that was never declared. Lesson 0010 adds
- * the operator's approval gate on top of both checks.
+ * output, so it can name a tool that was never declared. Since lesson 0010
+ * the approval gate (approval.ts) runs in the supervisor before this
+ * function is reached, so a held call arrives here only once approved.
  *
  * A refusal is still an answer. It returns as a failed ToolOutcome, which
  * the adapter sends with is_error set, and the model can try something else.

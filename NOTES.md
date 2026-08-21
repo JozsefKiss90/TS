@@ -760,6 +760,81 @@ table, all measured numbers, and the full quiz/classification apparatus survive.
   and 0007–0009 now all pass the profile.
 - Still your file, still untouched: `02-model-client-sdk/src/cilent2.ts` keeps `pnpm -r typecheck` red.
 
+## Update 2026-08-20 — lesson 0010 shipped: the loop learns to wait
+
+Lesson 0010 (*Approval Gates and Permissions*) continues lab `07-tool-loop` with Parts G–I. 1,932
+words, 0 errors, 8 warnings from `tools/lesson-lint.mjs`; the map note and both term notes pass 0/0.
+Two new Technical Names against a budget of six: `approval-gate` and `default-deny`. Zero em-dashes in
+prose, two diagrams, both render-verified 3× in headless Edge against the vendored mermaid.
+
+- **The design decision of the session: the gate is a pure function plus a second port.** Permission
+  gets a third level — `approvalRequired`, a spec field defaulting empty, constrained by a second
+  refinement (approvalRequired ⊆ allowedTools, refused at admission). `approval.ts` holds
+  `gateToolCall` (spec in, `not_permitted | auto | hold` out) and `ApprovalPort`
+  (`decide(call) → "approved" | "denied"`). The model gateway, the adapter and the mock are untouched:
+  the wire has no approval field, which is the lesson's wire-truth centrepiece.
+- **A held call's wait races the job's bounds** via the same AbortController lesson 0009 armed
+  (`raceBounds` in `supervisor.ts`). Part I wires an approver whose promise never resolves under a
+  2000 ms deadline: `out_of_time` at ~2018 ms, the read-only tool had already run, the writeback shows
+  `held when the job ended`. Default deny applies at `allowedTools` (0007's empty default) and at the
+  port (no approver wired → denied; Part H's closed stdin → denied, caught not crashed). The empty
+  `approvalRequired` default is deliberately permissive — the review below fixed my first draft, which
+  had miscounted it as a third deny instance.
+- **Part H is the course's first interactive lab step**: `runTask` pauses a live job at a terminal
+  `[y/N]` prompt (node:readline/promises). Measured through a logging proxy: the approved and denied
+  second requests are byte-identical except the one `tool_result` block; denied cost 229 tokens vs
+  approved 221, the difference being the longer denial sentence resent in the transcript. Verified by
+  piping timed input through Git Bash (`(sleep 4; echo n; sleep 8) | pnpm job h`) — PowerShell 5.1
+  pipes close stdin early and readline throws ERR_USE_AFTER_CLOSE; the catch now maps that to a denial.
+- **Backwards-compatible labels, deliberately.** `toolRuns` keeps `ran`/`refused` for ungated calls, so
+  Parts A–F reproduce their lesson 0008/0009 numbers byte-for-byte (re-run as regression: 217, 95, 65,
+  gave_up-at-2, 191/190 with 46 chars, ~2412 ms with 24 chars). New labels only on new paths:
+  `ran (approved)`, `denied by the operator`, `denied by default`, `held when the job ended`.
+- **The lesson-0007 refinement caught my own first spec draft** (default maxTokens 1024 > ceiling 600)
+  before any code ran — the admission gate doing its job against its own author.
+- **Recall debt paid:** the user's lesson 0009 say-it answers (learning-records/0012) are all correct
+  at mechanism level; evaluation appended. **Promoted to `demonstrated` (1):** [[termination]] (answer
+  3 is the term exercised). **Held at `introduced`:** [[partial-artifact]] — untouched by those
+  answers; cleanest workout is lesson 0011's landing/trace work.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 (passive) read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. The six
+  SENT-5 warnings are classification labels (*Refusing a spec that gates…*) — noun phrases naming a
+  decision, the same kept pattern as 0008/0009. The two SENT-6 warnings are verb phrases, kept.
+- **Ops notes:** verification ran on a private mock (`PORT=8899`) plus a logging proxy on 8898; both
+  stopped afterwards, nothing holds 8787. The per-edit lint hook again reported intermediate states
+  mid-fix; the fresh linter run is the truth.
+- Still your file, still untouched: `02-model-client-sdk/src/cilent2.ts` keeps `pnpm -r typecheck` red.
+- Bookkeeping: ROADMAP row 0010 ✅ with the three-level win named, 0011 flipped to ▶; module graph
+  synced (phase banner, M10 detail, artifact graph `gates ✅ 0010`, S5 row).
+
+### What the two-axis review caught, and what I did about it
+
+The review ran before shipping, third lesson running, and again earned its keep where the linter
+cannot: truth and judgment rules. All accepted findings are fixed in the shipped text.
+
+- **The lesson contradicted its own definition of default deny.** §2 counted the empty
+  `approvalRequired` default as a deny instance; by the lesson's definition it is the opposite —
+  permissive, so ungated jobs run unattended. The lesson, the term note, the README and this file all
+  count two instances now (allowedTools, the port) and name the permissive exception as deliberate.
+- **The S5 gloss drifted.** Lesson 0008 glossed S5 as "(the loop iterates)"; 0010 had invented a second
+  gloss "(tool calls pass a gate)". One step, one gloss: aligned to 0008's across the lesson, the term
+  note and the map note.
+- **TERM-5: "gate" was verbed** in three governed places ("a spec that gates a tool…"). All are now
+  "requires approval for". The README's "gated it" stays — the profile does not govern READMEs.
+- **III.4 was half-paid:** `ApprovalPort` had a declaration and no runtime value. Part G's
+  `denyEverything` now sits beside it, marked abridged.
+- **Two rhetorical lines flattened** ("no exception for politeness", "Read the report's first line…"),
+  plus the README's H-approved row now quotes the mock's full answer instead of its tail.
+
+Declined, with reasons, so the next reviewer does not re-raise them: extracting the three
+`boundHit` → outcome mappings in `supervisor.ts` into one classifier (each site carries a different
+teaching note, and the duplication is three two-line ifs); deduplicating the admission boilerplate in
+`main.ts` (it is the established per-part teaching pattern since Part A); and hardening Part H against
+spec-order changes (the mock asks for the first declared tool by design, and README step 12 teaches
+through that knob). The 0008 "queues for a human" promise is met as a blocking prompt, not a queue;
+the status table says so and Phase 3 owns the browsable queue — recorded here rather than papered
+over. The double-dot learning-record filenames (0010–0012) are the user's files, left as they are.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

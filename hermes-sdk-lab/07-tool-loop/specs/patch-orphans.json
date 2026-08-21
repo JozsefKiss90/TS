@@ -1,0 +1,10 @@
+{
+  "title": "Patch the atlas orphans",
+  "owner": "themis",
+  "instruction": "Fix the three orphan nodes in the atlas graph, then confirm what changed.",
+  "maxTokens": 300,
+  "costCeilingTokens": 600,
+  "allowedTools": ["graph_writeback", "graph_health"],
+  "approvalRequired": ["graph_writeback"],
+  "outputPath": "vault/audits/atlas-orphan-patch.md"
+}

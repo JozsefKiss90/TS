@@ -1,6 +1,6 @@
-# 07-tool-loop — one call becomes a loop, and the loop gets its bounds
+# 07-tool-loop — one call becomes a loop, bounded and gated
 
-Two lessons share this exercise. Lesson 0008, [`0008-tool-use-the-loops-heartbeat.html`](../../lessons/0008-tool-use-the-loops-heartbeat.html), built the loop (Parts A–C). Lesson 0009, [`0009-bounds-and-termination.html`](../../lessons/0009-bounds-and-termination.html), bounded it (Parts D–F). Read the lesson first; this file is the command reference and the measured results.
+Three lessons share this exercise. Lesson 0008, [`0008-tool-use-the-loops-heartbeat.html`](../../lessons/0008-tool-use-the-loops-heartbeat.html), built the loop (Parts A–C). Lesson 0009, [`0009-bounds-and-termination.html`](../../lessons/0009-bounds-and-termination.html), bounded it (Parts D–F). Lesson 0010, [`0010-approval-gates-and-permissions.html`](../../lessons/0010-approval-gates-and-permissions.html), gated it (Parts G–I). Read the lesson first; this file is the command reference and the measured results.
 
 ## Setup
 
@@ -21,8 +21,9 @@ pnpm install
 | `src/supervisor.ts` | `runTask` — the same function, now inside a `for` | rewritten |
 | `src/main.ts` | wiring and the three parts | rewritten |
 | `src/task-spec.ts` | the contract for the work — comments, plus the formatter moving to `issues.ts` | near enough, from 06 |
+| `src/approval.ts` | the gate as one pure function, and the operator's port (lesson 0010) | **new** |
 | `src/fake-gateway.ts` | the port's second implementation — one line added, to snapshot the transcript | near enough, from 06 |
-| `specs/*.json` | five job files: two from lesson 0008, and one per bound from lesson 0009 | **new** |
+| `specs/*.json` | seven job files: two from lesson 0008, one per bound from lesson 0009, two gated jobs from lesson 0010 | **new** |
 
 The mock server in `01-raw-http/src/mock-server.ts` also grew a tool branch, including the pairing rule: a `tool_result` that answers no `tool_use` in the preceding message is a 400. The change is additive, so a request with no `tools` key takes exactly the path it took before, and exercises 01 to 06 still produce their old numbers.
 
@@ -38,6 +39,9 @@ pnpm job c      # Part C: a job that permits no tools
 pnpm job d      # Part D (lesson 0009): the call cap, offline, with a fake
 pnpm job e      # Part E (lesson 0009): the budget aborts a generation mid-delta
 pnpm job f      # Part F (lesson 0009): the deadline aborts a generation on the clock
+pnpm job g      # Part G (lesson 0010): the gate, offline — auto beside denied
+pnpm job h      # Part H (lesson 0010): the gate, live — YOU answer in the terminal
+pnpm job i      # Part I (lesson 0010): an operator who never answers, offline
 ```
 
 ## What to observe — measured against this mock (SDK 0.113.0, zod 4.4.3)
@@ -68,6 +72,19 @@ The gateway now **streams every call** (`client.messages.stream` instead of `cre
 | The estimate's error | booked 191 against a ceiling of 190: the pre-request check lets a call start below the ceiling, and the ceiling is crossed during it by at most one estimate step |
 | Wire truth | `message_start` carries `"usage":{"input_tokens":110,"output_tokens":1,…}` — input is true from the first frame, output is a placeholder. The true count (`"usage":{"output_tokens":42}`) arrives only in `message_delta`. An aborted call never receives that frame |
 
+## What lesson 0010 changed, and what it measured
+
+The spec gained `approvalRequired` (default empty): the subset of `allowedTools` whose calls must wait for an operator. A second refinement refuses, at admission, any spec that gates a tool it never permitted. `approval.ts` holds the gate — one pure function with three answers (`not_permitted`, `auto`, `hold`) — and the `ApprovalPort` the supervisor asks about a held call. The wait runs against the same `AbortController` as every bound, so a silent operator cannot hang a job. Nothing changed in `gateway.ts`, in the adapter, or in the mock: the wire has no approval field.
+
+| Experiment | Measured result (fresh mock, SDK 0.113.0, zod 4.4.3) |
+|---|---|
+| G: two decisions, one reply | the fake's first reply carries two calls; `graph_health → ran` with no question asked, `graph_writeback → denied by the operator` (scripted); one `tools` turn carries both results; `outcome: 'landed'`, 136 tokens |
+| H, approved | you type `y`: `graph_writeback → ran (approved)`, the answer reads `Audit complete. The tool reported: wrote patch to atlas`, 221 tokens |
+| H, denied | you type `n`: the denial crosses the wire as a `tool_result` with `is_error: true` and the operator's sentence as its content; the answer quotes it; 229 tokens |
+| H: what the wire shows | the two second-requests are identical except that one `tool_result` block. No request field records the gate, the wait, or who decided |
+| The pause is invisible | the human took ~4 s to answer; the API is stateless, so a late request is just a request. Nothing times out and nothing is billed while Hermes waits |
+| I: nobody answers | `deadlineMs: 2000`; the approver's promise never resolves; the job ends at ~**2018 ms** with `outcome: 'out_of_time'`, note `deadline of 2000 ms passed while "graph_writeback" waited for approval`; `graph_health` still ran, 42 tokens |
+
 ## The exercise
 
 1. Run Part A with the mock's terminal visible. Read the two log lines: the first reply asked, the second answered.
@@ -84,13 +101,22 @@ Lesson 0009's steps:
 9. Raise `costCeilingTokens` in `specs/tight-budget.json` to 250. Predict which bound fires now, then run.
 10. Lower `deadlineMs` in `specs/tight-deadline.json` to 300. Say where the abort lands before you run: no delta has arrived by then, so the partial is empty.
 
+Lesson 0010's steps:
+
+11. Run Part H twice with the mock's terminal visible: approve once, deny once. Compare `toolRuns`, the final answer, and the mock's request count.
+12. In `specs/patch-orphans.json`, move `graph_writeback` out of `approvalRequired`. Predict what Part H asks you now, then run it.
+13. Add a tool name to `approvalRequired` that `allowedTools` does not list. Predict which layer refuses, and with which message, then run any part that reads this spec.
+14. Run Part I, then raise `deadlineMs` to 60000 and run it again. Say what you are now waiting for, and press Ctrl+C with a clear conscience.
+
 ## Notes
 
 - **The model never runs anything.** A `tool_use` block is a request. Hermes chooses whether to honor it, runs the code, and sends the result back. The provider executes nothing.
 - **`tool_use_id` is the pairing key.** The `tool_result` block must carry the id from the `tool_use` block it answers. The mock enforces it, which is what makes exercise step 6 fail visibly rather than silently.
 - **A tool result is not a role.** It travels inside a `user` message. `anthropic-gateway.ts` is the only file whose code knows that; the domain says `from: "tools"`.
 - **The transcript is Hermes's, not the provider's.** The API keeps no memory between requests, so every model call resends everything.
-- **Offering a short tool list is not enforcement.** The reply is model output, so `runTool` checks the name against `allowedTools` again before dispatching. Lesson 0010 adds the operator's approval gate on top.
+- **Offering a short tool list is not enforcement.** The reply is model output, so `runTool` checks the name against `allowedTools` again before dispatching. Since lesson 0010 the approval gate sits in front of that check: a held call reaches `runTool` only once approved.
+- **The gate is Hermes-side only.** The API has no approval field. The model sees outcomes — a `tool_result`, or a refusal with `is_error` set — and cannot tell an operator's denial from a tool failure except by reading the content text.
+- **Default deny at the port.** A held call with no approval channel is denied, and Part H treats a closed stdin the same way: whatever cannot be decided is refused. The spec side is different on purpose — an empty `approvalRequired` is permissive, so a read-only job can run unattended.
 - **Tool arguments get the boundary treatment.** They arrive as model output, so each tool parses them with its own Zod schema before its body runs. `defineTool` puts the parse inside the tool, which is why the body reads `input.graph` rather than coercing an unknown.
 - **Every bound comes from the spec now.** Lesson 0008's `MAX_MODEL_CALLS` literal is gone: `maxModelCalls`, `costCeilingTokens` and `deadlineMs` are the operator's, and every exit is a classified outcome.
 - **In-flight enforcement acts on an estimate.** A call's `input_tokens` are true from `message_start`; its output is estimated at one token per three characters until `message_delta` delivers the truth. An aborted call never gets that frame, so its spend stays an estimate, and the report says so.

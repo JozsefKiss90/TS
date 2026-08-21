@@ -1,21 +1,27 @@
 /**
- * Exercise 07 — one call becomes a loop (lesson 0008), and the loop gets
- * its bounds (lesson 0009).
+ * Exercise 07 — one call becomes a loop (lesson 0008), the loop gets its
+ * bounds (lesson 0009), and tool calls pass an approval gate (lesson 0010).
  *
  * Lessons: ../../../lessons/0008-tool-use-the-loops-heartbeat.html
  *          ../../../lessons/0009-bounds-and-termination.html
+ *          ../../../lessons/0010-approval-gates-and-permissions.html
  *
- * Six parts. Run them separately:
+ * Nine parts. Run them separately:
  *   pnpm job a   — one tool call answered, end to end, against the mock
  *   pnpm job b   — the loop with a fake: a refused tool, then an answer
  *   pnpm job c   — a job that permits no tools (mock running)
  *   pnpm job d   — the call cap, from the spec, with a fake (no mock needed)
  *   pnpm job e   — the budget: abort mid-generation at the ceiling (mock)
  *   pnpm job f   — the deadline: abort mid-generation on the clock (mock)
+ *   pnpm job g   — the gate, offline: auto beside denied, with a fake
+ *   pnpm job h   — the gate, live: YOU approve or deny in the terminal (mock)
+ *   pnpm job i   — the wait races the deadline: an operator who never answers
  * `pnpm job` with no argument runs a then b.
  */
 import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
 import Anthropic from "@anthropic-ai/sdk";
+import type { ApprovalPort } from "./approval.js";
 import { AnthropicModelGateway } from "./anthropic-gateway.js";
 import { FakeModelGateway } from "./fake-gateway.js";
 import type { GatewayResult } from "./gateway.js";
@@ -203,6 +209,138 @@ async function partF_theDeadline(): Promise<void> {
   console.log(`\nelapsed: ~${Date.now() - startedAt} ms — the job ended near its deadline, not after it.`);
 }
 
+/** A reply that asks for the writeback tool, for Parts G and I. */
+function wantsWriteback(id: string): GatewayResult {
+  return {
+    ok: true,
+    reply: {
+      text: "I will check the counters and patch the orphans.",
+      calls: [
+        { id: `${id}_health`, name: "graph_health", input: { graph: "atlas" } },
+        { id: `${id}_patch`, name: "graph_writeback", input: { graph: "atlas", patch: "drop orphans" } },
+      ],
+      stop: "wants_tool",
+      usage: { inputTokens: 24, outputTokens: 18 },
+      requestId: null,
+    },
+  };
+}
+
+async function partG_theGateOffline(): Promise<void> {
+  console.log("\n=== G. The gate, offline: auto beside denied ===");
+
+  // One reply, two calls. graph_health is permitted and ungated, so it
+  // runs. graph_writeback is permitted AND gated, so it waits for the
+  // approver — here a script that denies everything, standing in for an
+  // operator who said no.
+  const fake = new FakeModelGateway([
+    wantsWriteback("toolu_fake_0001"),
+    {
+      ok: true,
+      reply: {
+        text: "The patch was declined. Reporting the orphan count instead.",
+        calls: [],
+        stop: "completed",
+        usage: { inputTokens: 78, outputTokens: 16 },
+        requestId: null,
+      },
+    },
+  ]);
+
+  const denyEverything: ApprovalPort = {
+    decide: (call) => {
+      console.log(`  operator (scripted): deny ${call.name}`);
+      return Promise.resolve("denied");
+    },
+  };
+
+  const admission = admitTaskSpec(await readSpecFile("patch-orphans.json"));
+  if (!admission.admitted) {
+    console.log("refused:", admission.rejections);
+    return;
+  }
+  console.log("allowedTools    :", admission.spec.allowedTools.join(", "));
+  console.log("approvalRequired:", admission.spec.approvalRequired.join(", "));
+
+  const report = await runTask(fake, admission.spec, { approver: denyEverything });
+  console.log(report);
+  console.log(
+    "\nOne reply, two calls, two different gate decisions. The denial went " +
+      "back to the model as a failed tool result, and the loop still landed.",
+  );
+}
+
+/** Part H's approver: one terminal question per held call. */
+function terminalApprover(): ApprovalPort & { close: () => void } {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return {
+    decide: async (call) => {
+      try {
+        const answer = await rl.question(
+          `\n  approve ${call.name}(${JSON.stringify(call.input)})? [y/N] `,
+        );
+        return answer.trim().toLowerCase().startsWith("y") ? "approved" : "denied";
+      } catch {
+        // stdin closed, so nobody can answer. The default-deny rule applies.
+        console.log("  (stdin closed — denied)");
+        return "denied";
+      }
+    },
+    close: () => rl.close(),
+  };
+}
+
+async function partH_theGateLive(): Promise<void> {
+  console.log("\n=== H. The gate, live: you are the operator ===");
+
+  const admission = admitTaskSpec(await readSpecFile("patch-orphans.json"));
+  if (!admission.admitted) {
+    console.log("refused:", admission.rejections);
+    return;
+  }
+
+  // The mock always asks for the FIRST declared tool, and patch-orphans.json
+  // lists graph_writeback first — so the held call is the mutating one.
+  const approver = terminalApprover();
+  try {
+    const report = await runTask(liveGateway(), admission.spec, { approver });
+    console.log(report);
+    console.log(
+      "\nRun it twice: approve once, deny once. Compare toolRuns and the " +
+        "final answer — the provider never saw the gate, only your outcome.",
+    );
+  } finally {
+    approver.close();
+  }
+}
+
+async function partI_theWaitRacesTheDeadline(): Promise<void> {
+  console.log("\n=== I. An operator who never answers ===");
+
+  // The approver's promise never resolves. The spec's 2000 ms deadline is
+  // what ends the job — the same AbortController as every other bound.
+  const nobodyAnswers: ApprovalPort = {
+    decide: () => new Promise(() => {}),
+  };
+
+  const fake = new FakeModelGateway([wantsWriteback("toolu_fake_0001")]);
+
+  const admission = admitTaskSpec(await readSpecFile("patch-unattended.json"));
+  if (!admission.admitted) {
+    console.log("refused:", admission.rejections);
+    return;
+  }
+  console.log("deadlineMs:", admission.spec.deadlineMs);
+
+  const startedAt = Date.now();
+  const report = await runTask(fake, admission.spec, { approver: nobodyAnswers });
+  console.log(report);
+  console.log(
+    `\nelapsed: ~${Date.now() - startedAt} ms — the deadline ended the wait. ` +
+      "The tool never ran, and the job still terminated with a classified outcome.",
+  );
+}
+
 async function main(): Promise<void> {
   const part = (process.argv[2] ?? "ab").toLowerCase();
   if (part.includes("a")) await partA_oneToolCallAnswered();
@@ -211,6 +349,9 @@ async function main(): Promise<void> {
   if (part.includes("d")) await partD_theCallCap();
   if (part.includes("e")) await partE_theBudget();
   if (part.includes("f")) await partF_theDeadline();
+  if (part.includes("g")) await partG_theGateOffline();
+  if (part.includes("h")) await partH_theGateLive();
+  if (part.includes("i")) await partI_theWaitRacesTheDeadline();
 }
 
 main().catch((err: unknown) => {
