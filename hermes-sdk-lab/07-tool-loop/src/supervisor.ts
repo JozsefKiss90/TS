@@ -20,11 +20,19 @@
  * decision from gateToolCall — not permitted, auto, or hold — and a held
  * call waits for the ApprovalPort. The wait races the same AbortController
  * as everything else: an operator who never answers cannot hang a job.
+ *
+ * Lesson 0011 makes the run durable. Every decision this file already made
+ * now also lands in the trace, THROUGH a port, AT the moment it happens —
+ * not at the end, because a crashed job must still leave its story. With no
+ * trace wired, `record` is a no-op and Parts A to I run exactly as before.
+ * A resumed job starts from a ResumePoint instead of from scratch: the
+ * transcript and the ledger carry over, and the clock starts fresh.
  */
 import { type ApprovalPort, gateToolCall } from "./approval.js";
 import type { CallProgress, ModelGateway, ToolOutcome, Turn } from "./gateway.js";
 import type { TaskSpec } from "./task-spec.js";
 import { offerTools, runTool } from "./tools.js";
+import type { ResumePoint, TraceEvent, TracePort } from "./trace.js";
 
 export interface JobReport {
   task: string;
@@ -69,15 +77,43 @@ function raceBounds(
 export async function runTask(
   gateway: ModelGateway,
   spec: TaskSpec,
-  options?: { signal?: AbortSignal; approver?: ApprovalPort },
+  options?: {
+    signal?: AbortSignal;
+    approver?: ApprovalPort;
+    trace?: TracePort;
+    resume?: ResumePoint;
+  },
 ): Promise<JobReport> {
   // The spec decides which tools exist for this job. A tool that is not
   // offered is a tool the model never hears about.
   const tools = offerTools(spec.allowedTools);
-  const transcript: Turn[] = [{ from: "operator", text: spec.instruction }];
+
+  // A resumed job continues an earlier run's transcript and ledger. Time is
+  // not carried: the deadline restarts, because time lost is gone either way.
+  const resume = options?.resume;
+  const transcript: Turn[] = resume
+    ? [...resume.transcript]
+    : [{ from: "operator", text: spec.instruction }];
+  const firstCall = (resume?.modelCalls ?? 0) + 1;
   const toolRuns: string[] = [];
   const alerts: string[] = [];
-  let tokensSpent = 0;
+  let tokensSpent = resume?.tokensSpent ?? 0;
+
+  // Appends one event to the trace, if one is wired. Never awaited: the
+  // supervisor does not wait on its own record.
+  const record = (event: TraceEvent): void => {
+    options?.trace?.append(event);
+  };
+
+  record({
+    kind: "job_started",
+    at: Date.now(),
+    title: spec.title,
+    owner: spec.owner,
+    instruction: spec.instruction,
+    costCeilingTokens: spec.costCeilingTokens,
+    ...(resume ? { carriedCalls: resume.modelCalls, carriedTokens: resume.tokensSpent } : {}),
+  });
 
   // One controller serves every bound. The deadline arms it now, the budget
   // check can fire it mid-call, and AbortSignal.any merges it with the
@@ -92,21 +128,37 @@ export async function runTask(
     ? AbortSignal.any([options.signal, bounds.signal])
     : bounds.signal;
 
+  // Every classified exit passes through here, so every classified exit
+  // writes exactly one job_ended. A crash writes none — and a trace with no
+  // job_ended is itself a diagnosis: the record was cut short.
   const report = (
     outcome: JobReport["outcome"],
     modelCalls: number,
     notes: string[],
-  ): JobReport => ({
-    task: spec.title,
-    outcome,
-    modelCalls,
-    toolRuns,
-    tokensSpent,
-    notes: [...alerts, ...notes],
-  });
+    partialText?: string,
+  ): JobReport => {
+    const finalNotes = [...alerts, ...notes];
+    record({
+      kind: "job_ended",
+      at: Date.now(),
+      outcome,
+      modelCalls,
+      tokensSpent,
+      notes: finalNotes,
+      ...(partialText !== undefined && partialText.length > 0 ? { partialText } : {}),
+    });
+    return {
+      task: spec.title,
+      outcome,
+      modelCalls,
+      toolRuns,
+      tokensSpent,
+      notes: finalNotes,
+    };
+  };
 
   try {
-    for (let modelCall = 1; modelCall <= spec.maxModelCalls; modelCall++) {
+    for (let modelCall = firstCall; modelCall <= spec.maxModelCalls; modelCall++) {
       // BEFORE: a job that has reached its ceiling makes no further calls.
       if (tokensSpent >= spec.costCeilingTokens) {
         return report("over_budget", modelCall - 1, [
@@ -132,6 +184,8 @@ export async function runTask(
         }
       };
 
+      record({ kind: "call_started", at: Date.now(), call: modelCall });
+
       const result = await gateway.complete(
         { transcript, maxTokens: spec.maxTokens, tools },
         { signal, onProgress },
@@ -153,18 +207,30 @@ export async function runTask(
                 ? [`partial artifact kept (${failure.partialText.length} chars): ${failure.partialText}`]
                 : [];
             if (boundHit === "budget") {
-              return report("over_budget", modelCall, [
-                `ceiling ${spec.costCeilingTokens} reached mid-generation; spend is estimated — the true count never arrived`,
-                ...partial,
-              ]);
+              return report(
+                "over_budget",
+                modelCall,
+                [
+                  `ceiling ${spec.costCeilingTokens} reached mid-generation; spend is estimated — the true count never arrived`,
+                  ...partial,
+                ],
+                failure.partialText,
+              );
             }
             if (boundHit === "deadline") {
-              return report("out_of_time", modelCall, [
-                `deadline of ${spec.deadlineMs} ms passed`,
-                ...partial,
-              ]);
+              return report(
+                "out_of_time",
+                modelCall,
+                [`deadline of ${spec.deadlineMs} ms passed`, ...partial],
+                failure.partialText,
+              );
             }
-            return report("gave_up", modelCall, ["aborted by the operator", ...partial]);
+            return report(
+              "gave_up",
+              modelCall,
+              ["aborted by the operator", ...partial],
+              failure.partialText,
+            );
           }
           case "malformed_reply":
             return report("gave_up", modelCall, ["reply refused at the boundary", ...failure.issues]);
@@ -181,6 +247,20 @@ export async function runTask(
       // AFTER: the reply finished, so the true counts exist. The ledger adds
       // up rather than overwriting, and the input half grows per call.
       tokensSpent += reply.usage.inputTokens + reply.usage.outputTokens;
+
+      // requestId is the only key that joins this record to the provider's
+      // own logs. Everything else in the trace never crossed the wire.
+      record({
+        kind: "reply",
+        at: Date.now(),
+        call: modelCall,
+        stop: reply.stop,
+        text: reply.text,
+        calls: reply.calls,
+        inputTokens: reply.usage.inputTokens,
+        outputTokens: reply.usage.outputTokens,
+        requestId: reply.requestId,
+      });
 
       // The model's turn goes into the transcript BEFORE the tools run. Drop
       // it and the next request asks a question the provider has no record of.
@@ -202,23 +282,42 @@ export async function runTask(
       // "not_permitted" go straight to runTool, whose own checks produce
       // the refusal — unchanged since lesson 0008. Only "hold" waits.
       const results: ToolOutcome[] = [];
+      // Every outcome that answers the model also lands in the trace, right
+      // after it joins the turn under construction.
+      const answer = (outcome: ToolOutcome, tool: string): void => {
+        results.push(outcome);
+        record({
+          kind: "tool_result",
+          at: Date.now(),
+          id: outcome.id,
+          tool,
+          failed: outcome.failed,
+          output: outcome.output,
+        });
+      };
       for (const call of reply.calls) {
         const gate = gateToolCall(call.name, spec);
+        record({ kind: "gate", at: Date.now(), call: modelCall, tool: call.name, decision: gate });
 
         if (gate === "hold") {
           if (options?.approver === undefined) {
             // Default deny: no approval channel means no approval. A gate
             // that opens when nobody is watching is not a gate.
-            results.push({
-              id: call.id,
-              output: `Tool "${call.name}" needs approval and no approval channel exists.`,
-              failed: true,
-            });
+            record({ kind: "approval", at: Date.now(), tool: call.name, verdict: "no_channel" });
+            answer(
+              {
+                id: call.id,
+                output: `Tool "${call.name}" needs approval and no approval channel exists.`,
+                failed: true,
+              },
+              call.name,
+            );
             toolRuns.push(`${call.name} → denied by default`);
             continue;
           }
 
           const verdict = await raceBounds(options.approver.decide(call), signal);
+          record({ kind: "approval", at: Date.now(), tool: call.name, verdict });
 
           if (verdict === "job_ended") {
             toolRuns.push(`${call.name} → held when the job ended`);
@@ -236,24 +335,27 @@ export async function runTask(
           }
 
           if (verdict === "denied") {
-            results.push({
-              id: call.id,
-              output: `The operator declined "${call.name}" for this job.`,
-              failed: true,
-            });
+            answer(
+              {
+                id: call.id,
+                output: `The operator declined "${call.name}" for this job.`,
+                failed: true,
+              },
+              call.name,
+            );
             toolRuns.push(`${call.name} → denied by the operator`);
             continue;
           }
 
           const approved = runTool(call, spec.allowedTools);
           toolRuns.push(`${call.name} → ${approved.failed ? "refused" : "ran (approved)"}`);
-          results.push(approved);
+          answer(approved, call.name);
           continue;
         }
 
         const outcome = runTool(call, spec.allowedTools);
         toolRuns.push(`${call.name} → ${outcome.failed ? "refused" : "ran"}`);
-        results.push(outcome);
+        answer(outcome, call.name);
       }
 
       // One turn carries every result, in the order the model asked. Splitting

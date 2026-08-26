@@ -835,6 +835,62 @@ through that knob). The 0008 "queues for a human" promise is met as a blocking p
 the status table says so and Phase 3 owns the browsable queue — recorded here rather than papered
 over. The double-dot learning-record filenames (0010–0012) are the user's files, left as they are.
 
+## Update 2026-08-25 — lesson 0011 shipped: the run becomes a file
+
+Lesson 0011 (*The Trace Is What Happened*) continues lab `07-tool-loop` with Parts J–L. **2,000 words
+exactly, 0 errors, 3 warnings** from `tools/lesson-lint.mjs`; the map note and both term notes pass
+0/0. Two new Technical Names against a budget of six: `trace` and `json-lines`. Zero em-dashes in
+prose, one diagram, render-verified 3× in headless Edge against the vendored mermaid.
+
+- **The design decision of the session: the trace is the job's third port, written at the moment.**
+  `trace.ts` holds a 7-arm `kind`-discriminated Zod union (`job_started`, `call_started`, `reply`,
+  `gate`, `approval`, `tool_result`, `job_ended`), `TracePort { append }`, the per-line reader, and
+  the resume rebuild. The supervisor emits through `report()` as the single `job_ended` choke point,
+  so a crash writes no ending — and a missing `job_ended` is itself the diagnosis. The sink in
+  `main.ts` appends one JSON line per event with `appendFileSync` (survives process death, not power
+  loss — fsync skipped, disclosed in the lesson footer). No `seq` field: the line number is the
+  sequence, taught as a property of JSON Lines.
+- **Resume semantics settled: the ledger and call numbering carry, the clock restarts.** Rationale
+  taught in the lesson: time lost is gone either way, tokens spent stay spent. `rebuildResumePoint`
+  takes transcript from `reply`/`tool_result` events, spend from `job_ended` (which holds the
+  aborted call's estimate), calls from `call_started` (an aborted call was billed, so it counts). A
+  trailing unanswered model-ask turn is dropped and simply re-asked. The resumed run's `job_started`
+  carries `carriedCalls`/`carriedTokens` and writes its own file.
+- **Measured, not asserted:** Part J re-runs Part A's job with a trace wired — report unchanged at
+  217 tokens, 8 events in the file. Part K diagnoses tight-budget from the file alone (+1709 ms
+  `call_started` with no `reply` = where the abort landed); tampering `"tokensSpent":191` to a
+  string yields `line 7 REFUSED … invalid_type` while the other six lines still read — 0005's drift
+  on Hermes's own record. Part L: run 1 `out_of_time` at 183 tokens with a 24-char partial; rebuilt
+  `operator → model → tools`; run 2 lands as call 3 at 335 total. Wire truth: the `request-id`
+  response header (captured, `req_mock_0001` on a fresh mock) is the trace's only join to the
+  provider's logs; the aborted call consumed `req_mock_0002`, which the trace shows only as a
+  `call_started`.
+- **No mock change this lesson** — first lesson since 0007 to need none: the trace is Hermes-side
+  only. Parts A–I re-ran as regression and reproduce their numbers (217, 95, 65, gave_up-at-2,
+  191/190 with 46 chars, ~2405 ms, 136 landed, ~2003 ms). With no trace wired, `record` is a no-op.
+- **Recall debt paid:** the user's lesson 0010 say-it answers (learning-records/0013) are all
+  correct at mechanism level; evaluation appended. **Promoted to `demonstrated` (1):**
+  [[approval-gate]]. **Held at `introduced`:** [[default-deny]] — no answer states the rule itself;
+  its workout is 0011's say-it or the next lab. [[partial-artifact]] still held; 0011's say-it Q3
+  (what the trace kept, what resume does with it, what nobody holds) is its designed workout.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 (passive) read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. The
+  three kept SENT-5 warnings are gerund subjects (*Reading a trace back is a parse…*), the same kept
+  pattern as 0003's. III.3 got a light touch for `appendFileSync` (one declaration-reading sentence,
+  no table), matching 0010's `node:readline` precedent — no new SDK surface this lesson.
+- **The budget bit hard.** First draft: 2,230 words. It shipped at 2,000 by cuts, not compression of
+  scope: the seen-instance paragraph (the reprise callout already carries it), a metadiscourse
+  opener ("One rule keeps this lesson in its lane" — PARA-4 anyway), reader-guidance sentences, and
+  the 8-event listing moved into a code block, which the linter does not count.
+- **Ops notes:** verification ran on a private mock (`PORT=8899`), restarted before each measured
+  capture so request ids start at 0001; stopped afterwards, nothing holds 8787 or 8899. `traces/`
+  is gitignored (`hermes-sdk-lab/.gitignore`); generated traces were deleted after verification so
+  the user's first runs start clean.
+- Still your file, still untouched: `02-model-client-sdk/src/cilent2.ts` keeps `pnpm -r typecheck`
+  red. Still pending from 2026-08-08: 0006b's demotion to a reference page.
+- Bookkeeping: ROADMAP row 0011 ✅ with the trace win named, 0012 flipped to ▶; module graph synced
+  (phase banner, M11 detail, artifact graph `trace ✅ 0011`, S7 row).
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0011 — The Trace Is What Happened</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 1 · Lesson 0011 · lab exercise 07-tool-loop · ~45–60 min</p>
+  <h1>The Trace Is What Happened</h1>
+  <p class="lede">The job report dies with the process. What must Hermes write down, and when, so any
+  run can be diagnosed and resumed later?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S7 (the durable trace) is this lesson. Every event of a run appends to a record
+  that outlives the process, and an interrupted run resumes from it. The record answers what
+  happened, kept apart from what Hermes knows and what it may do. Lesson 0010's gate decisions
+  lived in a report that vanishes. Today they land in a file.
+</div>
+
+<h2>1 · A report is a summary. A trace is the record.</h2>
+
+<p>Lessons 0008 to 0010 built decisions. Bounds fire, gates hold, operators deny. All of it reaches
+you as one <code>JobReport</code> printed when the run ends. The process exits, and the story is
+gone.</p>
+
+<p>A <dfn>trace</dfn> is the durable, append-only record of one job's events, written as each event
+happens. The supervisor already makes every decision the record needs. The change is one emit per
+moment, each an arm of one schema:</p>
+
+<pre><code>// trace.ts — the event vocabulary, one Zod schema (7 kinds, abridged)
+const Reply = z.object({
+  kind: z.literal("reply"),
+  at: z.number().int().nonnegative(),   // epoch ms, at the moment it happened
+  call: z.number().int().positive(),
+  stop: z.enum(["completed", "hit_length_cap", "hit_stop_sequence", "wants_tool"]),
+  text: z.string(),
+  // …calls, inputTokens, outputTokens, requestId
+});
+
+export const TraceEventSchema = z.discriminatedUnion("kind", [
+  JobStarted, CallStarted, Reply, Gate, Approval, ToolResult, JobEnded,
+]);
+export type TraceEvent = z.infer&lt;typeof TraceEventSchema&gt;;
+
+// one runtime value, line 4 of Part J's file:
+{"kind":"gate","at":1787614192995,"call":1,"tool":"graph_health","decision":"auto"}</code></pre>
+
+<p>Where events land is not the supervisor's business. It appends through a port, the job's third:
+the model port answers calls, the approval port answers holds, and this one accepts history.</p>
+
+<pre><code>export interface TracePort { append(event: TraceEvent): void }
+
+// the wiring's sink, in main.ts — one JSON line per event:
+{ append: (event) =&gt; appendFileSync(path, `${JSON.stringify(event)}\n`) }</code></pre>
+
+<p>The moment of writing matters more than the format. The report is built only on a classified
+exit, so a crashed run reports nothing. The trace is written before the outcome is known, so a
+crashed run keeps its story up to the cut. The write is synchronous on purpose:
+<code>appendFileSync</code> returns only after the operating system has the bytes. A buffered
+writer could lose the tail, and the tail says why.</p>
+
+<p>The file format is <dfn>JSON Lines</dfn>: one complete JSON value per line. An append never
+rewrites earlier lines, so the line number doubles as a sequence number. Part J runs Part A's audit
+job with a trace wired. The report is unchanged at 217 tokens, and the file holds eight lines:</p>
+
+<pre><code>traces/audit-atlas.jsonl
+  job_started → call_started → reply → gate → tool_result
+              → call_started → reply → job_ended</code></pre>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>Every decision the supervisor makes also lands in a trace, at the moment it happens.</li>
+    <li>The trace is the job's third port, and the wiring decides where events land.</li>
+    <li>Reading a trace back is a parse, because bytes on your own disk are still bytes.</li>
+    <li>A resumed job is rebuilt from the file alone: transcript, ledger, and call count.</li>
+    <li>The trace records what happened and decides nothing. Policy stays in the spec.</li>
+  </ul>
+  <p>Reprise: unions narrowed on a discriminant (lessons 0005 to 0009), the boundary parse (lesson
+  0005), ports (lessons 0006 and 0010), and the partial artifact (lesson 0009).</p>
+</div>
+
+<h2>2 · Reading your own past is a boundary</h2>
+
+<p>A trace file is bytes on disk. Any editor, any program, any crash can have touched it since it
+was written. Lessons 0005, 0007 and 0008 parsed bytes from a provider, an operator and a model.
+The fourth boundary is your own past: <code>safeParse</code> per line, refuse what fails.</p>
+
+<p>Part K measures it. Run the tight-budget job with a trace, change the final line's
+<code>"tokensSpent":191</code> to <code>"tokensSpent":"191"</code>, and read the file back:</p>
+
+<pre><code>  +    0 ms  job "Audit the atlas graph under a tight budget" for themis, ceiling 190 tokens
+  +    1 ms  model call 1 started
+  + 1707 ms  call 1 replied: stop=wants_tool, 23+42 tokens, request req_mock_0001, asks for graph_health
+  + 1708 ms  gate: graph_health → auto
+  + 1709 ms  tool graph_health → ok: graph=atlas nodes=1284 orphans=3 stale_edges=2
+  + 1709 ms  model call 2 started
+  line 7 REFUSED: tokensSpent: [invalid_type] Invalid input: expected number, received string
+  NOTE: no job_ended — the run crashed, or the record was cut short.</code></pre>
+
+<p>The tampered line is refused with its number, and the other six still read. The refusal is
+lesson 0005's drift, a string where a number belongs, now on Hermes's own record. And an absence is
+a finding: call 2 started and never replied, which is where the abort landed.</p>
+
+<p>One word in this lesson collides with two earlier uses:</p>
+
+<table>
+  <tr><th>Term</th><th>Where it lives</th><th>What it is</th></tr>
+  <tr><td>stream event</td><td>the wire, lesson 0004</td><td>one SSE frame, such as <code>message_start</code></td></tr>
+  <tr><td><code>CallProgress</code></td><td>the port, lesson 0009</td><td>what the gateway reports while a call runs</td></tr>
+  <tr><td>trace event</td><td>the record, this lesson</td><td>one appended line: a decision or result that happened</td></tr>
+</table>
+
+<p>The trace never crosses the wire. Its one join to the provider's world is the request id, a
+response header stored on each <code>reply</code> event:</p>
+
+<pre><code>HTTP/1.1 200 OK                              ← the response, captured
+content-type: text/event-stream; charset=utf-8
+request-id: req_mock_0001
+
+{"kind":"reply","call":1, … ,"requestId":"req_mock_0001"}   ← the trace, line 3</code></pre>
+
+<table>
+  <tr><th>Layer</th><th>Changed?</th><th>Evidence</th></tr>
+  <tr><td>the six responsibilities, ① endpoint to ⑥ cancellation</td><td>no</td><td>the SDK still runs all six, below the port</td></tr>
+  <tr><td>the wire</td><td>no</td><td>no request field mentions the trace. Only the <code>request-id</code> header is copied from it</td></tr>
+  <tr><td>the model gateway</td><td>no</td><td><code>gateway.ts</code>, the adapter and the mock are untouched</td></tr>
+  <tr><td>who Hermes asks</td><td>yes</td><td>a third port, <code>TracePort</code>, beside the model's and the operator's</td></tr>
+  <tr><td>the supervisor</td><td>emits only</td><td>same decisions as lesson 0010, each now also appended</td></tr>
+  <tr><td>the spec</td><td>no</td><td>the trace is a record, not policy, so no field describes it</td></tr>
+</table>
+
+<h2>3 · Resume: the file is enough</h2>
+
+<p>Diagnosis reads the trace. Resume replays it. The rebuild folds a run's events back into
+supervisor state. The transcript comes from <code>reply</code> and <code>tool_result</code> events,
+the ledger from <code>job_ended</code>, and the call count from <code>call_started</code>. An
+aborted call still counts, because it was still billed.</p>
+
+<p>Part L measures the round trip. Run 1 carries the tight-deadline spec, and its 2400 ms deadline
+fires mid-generation of call 2. The run ends <code>out_of_time</code> at 183 tokens booked by
+estimate, with a 24-character partial artifact kept on the <code>job_ended</code> event. Run 2
+starts from the file that run 1 left behind:</p>
+
+<pre><code>rebuilt from the file: { turns: 'operator → model → tools', tokensSpent: 183, modelCalls: 2 }
+
+run 2, resumed:  outcome: 'landed',  modelCalls: 3,  tokensSpent: 335,
+                 notes: [ 'stop: completed', 'request: req_mock_0003', … ]</code></pre>
+
+<p>The ledger continued, so 335 is the whole job's spend. The call numbering continued, so the
+resumed call is call 3.
+The deadline restarted, because time lost is gone either way, while tokens spent stay spent.</p>
+
+<p>The rebuild replays completed turns only. The partial artifact is kept for the operator, not
+resent as a turn, because the model never finished saying it. Nobody holds the unwritten remainder.
+The abort stopped generation before it was produced.</p>
+
+<p>The trace records decisions and never makes them.
+Deleting a trace changes no future run, and editing one cannot approve a tool, because the gate
+reads the spec alone. What Hermes may do and what it did stay in separate records, so a
+disagreement between them stays visible.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    subgraph RUN1["run 1 — interrupted"]
+      A["call 1 + tool"] --> B["call 2 aborted<br/>by the deadline"]
+    end
+    B --> F[("tight-deadline.jsonl<br/>7 lines, one per event")]
+    F --> R["rebuild<br/>transcript, 183 tokens, 2 calls"]
+    R --> RUN2["run 2 — call 3<br/>lands at 335 total"]
+    F --> D["pnpm trace<br/>diagnosis, no process needed"]
+</pre>
+<figcaption>Diagram 1. One file serves both readers: the diagnosis and the resumed run.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>Every supervisor decision in a durable trace</td><td>implemented</td><td><code>trace.ts</code> and the sink in <code>main.ts</code>, measured in Part J</td></tr>
+  <tr><td>Diagnosis without the process that ran the job</td><td>implemented</td><td><code>pnpm trace</code>, measured in Part K</td></tr>
+  <tr><td>Resume from the trace, ledger carried</td><td>implemented</td><td>Part L, measured at 183 → 335 tokens</td></tr>
+  <tr><td>Outputs landing in an Artifact Vault, linked to job and cost</td><td>planned</td><td>S8 (landing and outputs), ROADMAP Phases 1 and 4</td></tr>
+  <tr><td>Spans, latency and cost accounting over OpenTelemetry</td><td>planned</td><td>ROADMAP Phase 4</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and the measured table live in <code>07-tool-loop/README.md</code>, steps 15 to 18. The
+arc:</p>
+
+<ol>
+  <li>Run Part J and open the trace file. Find the one value the provider also has.</li>
+  <li>Run Part K, tamper with the ledger field, and read the refusal. Name the lesson that taught
+  it.</li>
+  <li>Delete a clean trace's last line. Say what the missing <code>job_ended</code> tells you.</li>
+  <li>Run Part L. Predict run 2's total spend from run 1's report before it prints.</li>
+</ol>
+
+<h2>5 · Exercise: which record answers it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each question with the only record that can answer it</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the trace|the spec|the report|the provider's logs">
+    <div class="cl-item" data-cat="0" data-why="The trace times every event. Part K shows call 2 starting at +1709 ms with no reply after it: the abort landed there.">
+      <p>Which call the budget abort interrupted, and when.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="Permission is policy, and policy is spec data: allowedTools and approvalRequired. The trace only records which policy fired.">
+      <p>Whether <code>graph_writeback</code> may run without approval.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="The report is the one-object summary a finished run prints, and it dies with the process.">
+      <p>The finished run's outcome in one object, no story attached.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="An aborted call never receives message_delta, so Hermes booked an estimate. The provider generated the text, so only its logs hold the truth.">
+      <p>The true output tokens of the aborted call.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="The approval event records the verdict, no_channel included, so the two denials stay distinguishable later.">
+      <p>Whether a held call was denied by an operator or by default.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="offerTools reads allowedTools from the spec. What the model may be told about is policy, decided before the run.">
+      <p>Which tools the model may be told about.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="The report is built only on a classified exit, so a crash reports nothing. Per-event writing keeps the story up to the cut.">
+    <p class="qz-prompt">Q1. Why is the trace written per event instead of once, when the job ends?</p>
+    <button class="qz-opt" type="button">Writing per event is faster, because one large write at the end would block the loop</button>
+    <button class="qz-opt" type="button">The schema requires it, because a discriminated union cannot be serialized in one piece</button>
+    <button class="qz-opt" type="button">A crashed run writes no ending, so a record written at the end would not exist at all</button>
+    <button class="qz-opt" type="button">The provider expects the events in order, and batching them would break the pairing rule</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="One line is one JSON value, parsed on its own. The reader refuses line 7 with the issue and still reads the rest — measured in Part K.">
+    <p class="qz-prompt">Q2. A trace line was edited and no longer matches the schema. What does the reader do?</p>
+    <button class="qz-opt" type="button">It stops at the bad line, because everything after it can no longer be trusted</button>
+    <button class="qz-opt" type="button">It refuses that line with its number and reason, and the other lines still read</button>
+    <button class="qz-opt" type="button">It repairs the line from context, because the surrounding events constrain its value</button>
+    <button class="qz-opt" type="button">It throws, because safeParse on a tampered file is an error the caller must catch</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="Tokens spent stay spent, so the ledger and the call numbering continue. Time lost is gone either way, so the deadline restarts.">
+    <p class="qz-prompt">Q3. A job resumes from its trace. What carries over, and what restarts?</p>
+    <button class="qz-opt" type="button">Everything restarts, because a resumed run is a new job with the same instruction</button>
+    <button class="qz-opt" type="button">Everything carries, because the spec's bounds describe the job and not the run</button>
+    <button class="qz-opt" type="button">The deadline carries and the ledger restarts, because time is the scarcer budget</button>
+    <button class="qz-opt" type="button">The ledger and call count carry, and the deadline restarts with the new run's clock</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The request-id header is stored per reply event. Nothing else in the trace ever crossed the wire, so nothing else exists on both sides.">
+    <p class="qz-prompt">Q4. Which value joins Hermes's trace to the provider's own logs?</p>
+    <button class="qz-opt" type="button">The request id from each response's headers, stored on every reply event in the trace</button>
+    <button class="qz-opt" type="button">The job title from the spec, which the adapter sends as metadata on every request</button>
+    <button class="qz-opt" type="button">The event timestamps, which the provider echoes back inside each message_start frame</button>
+    <button class="qz-opt" type="button">The tool_use id, which the provider assigns from its own log sequence for that reason</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Explain why the trace must be written as events happen rather than when the job ends.</li>
+  <li>A teammate proposes that the supervisor consult the trace before permitting a tool. Say which
+  separation that breaks.</li>
+  <li>Run 1 was aborted mid-generation. Say what its trace kept, what run 2 does with the partial
+  artifact, and what nobody holds.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A trace is the append-only record
+of one job, one event per line, written at the moment each event happens. The file outlives the
+process, so a finished run can be diagnosed and an interrupted run resumed from the trace alone.
+Bytes read back from your own disk are still untrusted, so the reader parses every line and refuses
+what fails. The trace records what happened and decides nothing, because policy lives in the spec
+and history lives in the file.</p>
+
+<h2>Primary source</h2>
+
+<p>Read <a href="https://jsonlines.org/">jsonlines.org</a>. The whole format fits on one page:
+UTF-8, one JSON value per line. Then search the Anthropic
+<a href="https://platform.claude.com/docs/en/api/messages">Messages API reference</a> for any record
+of your past requests. The API is stateless, so the only history of a job is the one Hermes
+writes.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and number here was verified against
+  <code>@anthropic-ai/sdk</code> 0.113.0 and <code>zod</code> 4.4.3, by live runs against the
+  exercise 01 mock on a private port. The mock was restarted before each capture, so request ids
+  start at 0001. The mock cannot reason, and its token counts are estimates. The sync append
+  survives the process dying, not the machine losing power. Machine-level durability needs fsync,
+  which the lab skips.</p>
+  <p><strong>Next.</strong> Lesson 0012, <em>Offline by Construction</em>, in a new lab. The whole
+  loop runs green with fakes and recorded fixtures, no model and no network, which closes Phase 1.</p>
+</footer>
+
+</body>
+</html>

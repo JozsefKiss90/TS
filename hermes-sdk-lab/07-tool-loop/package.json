@@ -5,6 +5,7 @@
   "scripts": {
     "mock": "tsx ../01-raw-http/src/mock-server.ts",
     "job": "tsx src/main.ts",
+    "trace": "tsx src/read-trace.ts",
     "typecheck": "tsc -p ."
   },
   "dependencies": {

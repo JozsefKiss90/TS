@@ -1,12 +1,14 @@
 /**
  * Exercise 07 — one call becomes a loop (lesson 0008), the loop gets its
- * bounds (lesson 0009), and tool calls pass an approval gate (lesson 0010).
+ * bounds (lesson 0009), tool calls pass an approval gate (lesson 0010), and
+ * every run leaves a durable trace (lesson 0011).
  *
  * Lessons: ../../../lessons/0008-tool-use-the-loops-heartbeat.html
  *          ../../../lessons/0009-bounds-and-termination.html
  *          ../../../lessons/0010-approval-gates-and-permissions.html
+ *          ../../../lessons/0011-the-trace-is-what-happened.html
  *
- * Nine parts. Run them separately:
+ * Twelve parts. Run them separately:
  *   pnpm job a   — one tool call answered, end to end, against the mock
  *   pnpm job b   — the loop with a fake: a refused tool, then an answer
  *   pnpm job c   — a job that permits no tools (mock running)
@@ -16,10 +18,16 @@
  *   pnpm job g   — the gate, offline: auto beside denied, with a fake
  *   pnpm job h   — the gate, live: YOU approve or deny in the terminal (mock)
  *   pnpm job i   — the wait races the deadline: an operator who never answers
+ *   pnpm job j   — every run leaves a trace: Part A's job, written down (mock)
+ *   pnpm job k   — diagnose a finished run from its trace file alone (mock)
+ *   pnpm job l   — resume an interrupted job from its trace (mock)
  * `pnpm job` with no argument runs a then b.
+ * `pnpm trace traces/<file>.jsonl` reads any trace back as a story.
  */
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import type { ApprovalPort } from "./approval.js";
 import { AnthropicModelGateway } from "./anthropic-gateway.js";
@@ -28,6 +36,8 @@ import type { GatewayResult } from "./gateway.js";
 import { runTask } from "./supervisor.js";
 import { admitTaskSpec } from "./task-spec.js";
 import { offerTools } from "./tools.js";
+import { parseTrace, rebuildResumePoint, type TracePort } from "./trace.js";
+import { printTraceStory } from "./trace-story.js";
 
 const BASE_URL = process.env["ANTHROPIC_BASE_URL"] ?? "http://localhost:8787";
 const API_KEY = process.env["ANTHROPIC_API_KEY"] ?? "mock-key-any-value-passes";
@@ -341,6 +351,116 @@ async function partI_theWaitRacesTheDeadline(): Promise<void> {
   );
 }
 
+const TRACE_DIR = new URL("../traces/", import.meta.url);
+
+/**
+ * The wiring's trace sink: one JSON line appended per event, synchronously.
+ * Synchronous on purpose — a buffered writer can lose its tail when the
+ * process dies, and losing the tail is losing the part that says why.
+ * (This survives the process dying, not the machine losing power: that
+ * would need fsync, which the lab skips.)
+ */
+function fileTrace(name: string): { trace: TracePort; path: string } {
+  mkdirSync(TRACE_DIR, { recursive: true });
+  const path = fileURLToPath(new URL(name, TRACE_DIR));
+  writeFileSync(path, ""); // one file per run: a rerun starts a fresh record
+  return {
+    path,
+    trace: { append: (event) => appendFileSync(path, `${JSON.stringify(event)}\n`) },
+  };
+}
+
+async function partJ_everyRunLeavesATrace(): Promise<void> {
+  console.log("\n=== J. Every run leaves a trace ===");
+
+  const admission = admitTaskSpec(await readSpecFile("audit-atlas.json"));
+  if (!admission.admitted) {
+    console.log("refused:", admission.rejections);
+    return;
+  }
+
+  const { trace, path } = fileTrace("audit-atlas.jsonl");
+  const report = await runTask(liveGateway(), admission.spec, { trace });
+  console.log(report);
+
+  const entries = parseTrace(readFileSync(path, "utf8"));
+  console.log(`\ntrace: ${path}`);
+  console.log(`${entries.length} lines, one event each:`);
+  for (const entry of entries) {
+    console.log(entry.ok ? `  ${entry.event.kind}` : `  line ${entry.line} refused: ${entry.reason}`);
+  }
+  console.log(
+    "\nSame job as Part A, same report — plus a file that outlives the process. " +
+      "Open it: every line is one JSON object you can read in any editor.",
+  );
+}
+
+async function partK_diagnoseFromTheTraceAlone(): Promise<void> {
+  console.log("\n=== K. Diagnose a finished run from its trace alone ===");
+
+  const admission = admitTaskSpec(await readSpecFile("tight-budget.json"));
+  if (!admission.admitted) {
+    console.log("refused:", admission.rejections);
+    return;
+  }
+
+  const { trace, path } = fileTrace("tight-budget.jsonl");
+  await runTask(liveGateway(), admission.spec, { trace });
+  console.log("The run finished. Its report is deliberately not printed.\n");
+
+  console.log(`Reading ${path} back:`);
+  printTraceStory(readFileSync(path, "utf8"));
+  console.log(
+    "\nEverything above came from the file — which call overspent, what the " +
+      "abort kept, and the request ids the provider also logged. Now tamper " +
+      "with one line in the file and run: pnpm trace traces/tight-budget.jsonl",
+  );
+}
+
+async function partL_resumeFromTheTrace(): Promise<void> {
+  console.log("\n=== L. Resume an interrupted job from its trace ===");
+
+  const admission = admitTaskSpec(await readSpecFile("tight-deadline.json"));
+  if (!admission.admitted) {
+    console.log("refused:", admission.rejections);
+    return;
+  }
+
+  const first = fileTrace("tight-deadline.jsonl");
+  console.log("run 1, under the spec's 2400 ms deadline:");
+  const report1 = await runTask(liveGateway(), admission.spec, { trace: first.trace });
+  console.log(report1);
+
+  // The resume point comes from the FILE, not from run 1's report — the
+  // process that ran it could be long gone.
+  const events = parseTrace(readFileSync(first.path, "utf8")).flatMap((entry) =>
+    entry.ok ? [entry.event] : [],
+  );
+  const resume = rebuildResumePoint(events);
+  if (resume === null) {
+    console.log("no job_started in the trace — nothing to resume");
+    return;
+  }
+  console.log("\nrebuilt from the file:", {
+    turns: resume.transcript.map((turn) => turn.from).join(" → "),
+    tokensSpent: resume.tokensSpent,
+    modelCalls: resume.modelCalls,
+  });
+
+  const second = fileTrace("tight-deadline-resume.jsonl");
+  console.log("\nrun 2, resumed — fresh clock, same ledger:");
+  const report2 = await runTask(liveGateway(), admission.spec, {
+    trace: second.trace,
+    resume,
+  });
+  console.log(report2);
+  console.log(
+    `\nRun 2's ledger started at ${resume.tokensSpent}, so ${report2.tokensSpent} is the whole ` +
+      "job's spend, and its calls continue run 1's numbering. The deadline restarted: " +
+      "time lost is gone either way, but tokens spent stay spent.",
+  );
+}
+
 async function main(): Promise<void> {
   const part = (process.argv[2] ?? "ab").toLowerCase();
   if (part.includes("a")) await partA_oneToolCallAnswered();
@@ -352,6 +472,9 @@ async function main(): Promise<void> {
   if (part.includes("g")) await partG_theGateOffline();
   if (part.includes("h")) await partH_theGateLive();
   if (part.includes("i")) await partI_theWaitRacesTheDeadline();
+  if (part.includes("j")) await partJ_everyRunLeavesATrace();
+  if (part.includes("k")) await partK_diagnoseFromTheTraceAlone();
+  if (part.includes("l")) await partL_resumeFromTheTrace();
 }
 
 main().catch((err: unknown) => {

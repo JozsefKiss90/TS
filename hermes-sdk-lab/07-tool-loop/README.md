@@ -1,6 +1,6 @@
-# 07-tool-loop — one call becomes a loop, bounded and gated
+# 07-tool-loop — one call becomes a loop, bounded, gated and traced
 
-Three lessons share this exercise. Lesson 0008, [`0008-tool-use-the-loops-heartbeat.html`](../../lessons/0008-tool-use-the-loops-heartbeat.html), built the loop (Parts A–C). Lesson 0009, [`0009-bounds-and-termination.html`](../../lessons/0009-bounds-and-termination.html), bounded it (Parts D–F). Lesson 0010, [`0010-approval-gates-and-permissions.html`](../../lessons/0010-approval-gates-and-permissions.html), gated it (Parts G–I). Read the lesson first; this file is the command reference and the measured results.
+Four lessons share this exercise. Lesson 0008, [`0008-tool-use-the-loops-heartbeat.html`](../../lessons/0008-tool-use-the-loops-heartbeat.html), built the loop (Parts A–C). Lesson 0009, [`0009-bounds-and-termination.html`](../../lessons/0009-bounds-and-termination.html), bounded it (Parts D–F). Lesson 0010, [`0010-approval-gates-and-permissions.html`](../../lessons/0010-approval-gates-and-permissions.html), gated it (Parts G–I). Lesson 0011, [`0011-the-trace-is-what-happened.html`](../../lessons/0011-the-trace-is-what-happened.html), gave every run a durable trace (Parts J–L). Read the lesson first; this file is the command reference and the measured results.
 
 ## Setup
 
@@ -23,6 +23,9 @@ pnpm install
 | `src/task-spec.ts` | the contract for the work — comments, plus the formatter moving to `issues.ts` | near enough, from 06 |
 | `src/approval.ts` | the gate as one pure function, and the operator's port (lesson 0010) | **new** |
 | `src/fake-gateway.ts` | the port's second implementation — one line added, to snapshot the transcript | near enough, from 06 |
+| `src/trace.ts` | the event vocabulary as one Zod schema, the trace port, the reader, and the resume rebuild (lesson 0011) | **new** |
+| `src/trace-story.ts` | a parsed trace printed back as a story, with +ms deltas (lesson 0011) | **new** |
+| `src/read-trace.ts` | the `pnpm trace <file>` CLI — needs the file and nothing else (lesson 0011) | **new** |
 | `specs/*.json` | seven job files: two from lesson 0008, one per bound from lesson 0009, two gated jobs from lesson 0010 | **new** |
 
 The mock server in `01-raw-http/src/mock-server.ts` also grew a tool branch, including the pairing rule: a `tool_result` that answers no `tool_use` in the preceding message is a 400. The change is additive, so a request with no `tools` key takes exactly the path it took before, and exercises 01 to 06 still produce their old numbers.
@@ -42,6 +45,11 @@ pnpm job f      # Part F (lesson 0009): the deadline aborts a generation on the 
 pnpm job g      # Part G (lesson 0010): the gate, offline — auto beside denied
 pnpm job h      # Part H (lesson 0010): the gate, live — YOU answer in the terminal
 pnpm job i      # Part I (lesson 0010): an operator who never answers, offline
+pnpm job j      # Part J (lesson 0011): every run leaves a trace — Part A, written down
+pnpm job k      # Part K (lesson 0011): diagnose a finished run from its trace alone
+pnpm job l      # Part L (lesson 0011): resume an interrupted job from its trace
+
+pnpm trace traces/tight-budget.jsonl   # read any trace back as a story
 ```
 
 ## What to observe — measured against this mock (SDK 0.113.0, zod 4.4.3)
@@ -85,6 +93,20 @@ The spec gained `approvalRequired` (default empty): the subset of `allowedTools`
 | The pause is invisible | the human took ~4 s to answer; the API is stateless, so a late request is just a request. Nothing times out and nothing is billed while Hermes waits |
 | I: nobody answers | `deadlineMs: 2000`; the approver's promise never resolves; the job ends at ~**2018 ms** with `outcome: 'out_of_time'`, note `deadline of 2000 ms passed while "graph_writeback" waited for approval`; `graph_health` still ran, 42 tokens |
 
+## What lesson 0011 changed, and what it measured
+
+The supervisor's every decision now also lands in a trace, through a third port (`TracePort`), at the moment it happens — not at the end, because a crashed job must still leave its story. The wiring's sink appends one JSON line per event to `traces/<name>.jsonl`, synchronously (this survives the process dying, not a power cut — that would need fsync, which the lab skips). With no trace wired, `record` is a no-op: Parts A–I re-ran as regression and reproduce their numbers (217, 95, 65, gave_up-at-2, 191/190 with 46 chars, ~2405 ms, 136, ~2003 ms). Nothing changed in `gateway.ts`, the adapter, or the mock: the trace never crosses the wire. Its one join key to the provider's own logs is the `request-id` response header, stored per reply.
+
+| Experiment | Measured result (fresh mock, SDK 0.113.0, zod 4.4.3) |
+|---|---|
+| J: the same job, written down | Part A's job with a trace wired: the report is unchanged (217 tokens, landed) and `traces/audit-atlas.jsonl` holds **8 lines** — `job_started`, `call_started`, `reply`, `gate`, `tool_result`, `call_started`, `reply`, `job_ended` |
+| J: the join key | the first response's headers carry `request-id: req_mock_0001`; the trace's first `reply` line stores `"requestId":"req_mock_0001"`. Nothing else in the trace ever crossed the wire |
+| K: diagnosis from the file alone | `pnpm trace` on the tight-budget trace answers everything without the process that ran it: call 1 booked 23+42 true tokens, call 2 started at +1709 ms and never got a `reply` line, the job ended `over_budget` at 191/190 with a 46-char partial artifact |
+| K: a tampered line | change `"tokensSpent":191` to `"tokensSpent":"191"` and the reader answers `line 7 REFUSED: tokensSpent: [invalid_type] Invalid input: expected number, received string` — the other six lines still read, and the missing `job_ended` is flagged |
+| L: run 1, interrupted | `tight-deadline.json`'s 2400 ms deadline fires mid-call-2: `out_of_time`, 183 tokens (estimated), 24-char partial, `job_ended` at ~+2420 ms. The aborted call consumed `req_mock_0002`, which the trace shows only as a `call_started` with no `reply` |
+| L: the rebuild | `rebuildResumePoint` from the file alone: transcript `operator → model → tools`, 183 tokens, 2 calls — the process that ran the job is gone |
+| L: run 2, resumed | fresh clock, same ledger: call **3** (numbering continues), `req_mock_0003`, `landed`, **335** tokens total for the whole job |
+
 ## The exercise
 
 1. Run Part A with the mock's terminal visible. Read the two log lines: the first reply asked, the second answered.
@@ -108,6 +130,13 @@ Lesson 0010's steps:
 13. Add a tool name to `approvalRequired` that `allowedTools` does not list. Predict which layer refuses, and with which message, then run any part that reads this spec.
 14. Run Part I, then raise `deadlineMs` to 60000 and run it again. Say what you are now waiting for, and press Ctrl+C with a clear conscience.
 
+Lesson 0011's steps:
+
+15. Run Part J, then open `traces/audit-atlas.jsonl` in your editor. Match each line to the report, and find the one value in the file that the provider also has.
+16. Run Part K, then change `"tokensSpent":191` in the trace file to `"tokensSpent":"191"` and run `pnpm trace traces/tight-budget.jsonl`. Say which lesson taught you the refusal you are reading.
+17. Run Part K again for a clean file, delete its last line, and read it back. Say what the missing `job_ended` tells you.
+18. Run Part L. Before run 2's report prints, predict the total spend from run 1's report, then check. Then say why the resumed call is numbered 3 and not 1.
+
 ## Notes
 
 - **The model never runs anything.** A `tool_use` block is a request. Hermes chooses whether to honor it, runs the code, and sends the result back. The provider executes nothing.
@@ -120,6 +149,9 @@ Lesson 0010's steps:
 - **Tool arguments get the boundary treatment.** They arrive as model output, so each tool parses them with its own Zod schema before its body runs. `defineTool` puts the parse inside the tool, which is why the body reads `input.graph` rather than coercing an unknown.
 - **Every bound comes from the spec now.** Lesson 0008's `MAX_MODEL_CALLS` literal is gone: `maxModelCalls`, `costCeilingTokens` and `deadlineMs` are the operator's, and every exit is a classified outcome.
 - **In-flight enforcement acts on an estimate.** A call's `input_tokens` are true from `message_start`; its output is estimated at one token per three characters until `message_delta` delivers the truth. An aborted call never gets that frame, so its spend stays an estimate, and the report says so.
+- **The trace records, it never decides.** Deleting a trace changes no future decision, and editing one cannot approve a tool. Policy lives in the spec; the trace only records which policy fired. That separation — what Hermes may do apart from what it did — is a standing course rule.
+- **A trace file is a JSON boundary.** Any editor, any program, any crash can have touched it since it was written, so `parseTrace` refuses lines instead of trusting them — the fourth boundary this lab defends, after replies, specs and tool arguments.
+- **One file per run, and the line number is the sequence number.** The sink truncates on start, appends one JSON line per event, and never rewrites. A resumed run writes its own file.
 - **The mock approximates.** It cannot reason, so it always asks for the first declared tool and invents arguments from that tool's own JSON Schema. Its token counts are estimates and its canned output is 42 tokens. The block shapes and the SSE grammar are faithful to the API. The choice of tool is a stand-in.
 - Everything stays mock-first: no live API calls, no credentials.
 - Ops reminder: a `pnpm mock` left running from a previous session serves **old** code and holds port 8787.
