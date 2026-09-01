@@ -983,6 +983,93 @@ surface that matters here), and the closing compression's use of *port*, *fake* 
 (PARA-7 read as barring terms no lesson defined; all three are defined reprises, the same reading
 every shipped compression relies on).
 
+## Update 2026-09-01 — Phase 2 resource gap resolved (evidence-schema sources)
+
+The RESOURCES.md gap "Graph RAG evidence-schema design references" is closed. Three written sources
+now sit in the Knowledge section, ranked by trust: **W3C PROV-DM** (W3C Recommendation — the anchor:
+entity/activity/agent, derivation chains, bundles), the **nanopublication guidelines** (assertion /
+provenance / publication-info split — the published mirror of "the three graphs never merge"), and
+the **LEDGER preprint** (arXiv 2608.18398, CMU + LLNL, Aug 2026 — claim-to-evidence trace graphs for
+LLM agent audits; preprint-level trust only).
+
+The practice side to compare against is the user's `C:\Code\el_nino\dev_graph` (surveyed this
+session). Key finding: it is a closed corpus — 229 files, essentially zero external literature cited
+(only Alpaca and Anthropic API docs) — so the comparison against published sources is genuinely new
+ground, not a re-derivation. Its strongest specimens for a Phase 2 compare-against-practice exercise:
+`schemas/Runtime Decision Record Schema.md` (content-addressed ids, wrap-by-reference, three-valued
+guard outcomes, fail-closed verdict biconditional), `schemas/Runtime Ledger Schema.md` (append-only
+hash-chained ledger), `schemas/Gold DecisionPacket v0 Schema.md` (per-citation staleness and
+revision-risk, confidence trust trace), and `decisions/ADR - JARVIS GraphRAG Integration.md` §3
+(cite-or-abstain with evidence-class annotations). Its `CLAUDE.md` confidence lifecycle
+(promotion/demotion state machine over `confirmed | single-source | inferred | speculative |
+experimental`) is directly comparable to PROV-DM's derivation/trust story. Weakest specimens, useful
+as before/after contrast: `Decision Packet Schema.md` and `Evaluation Scorecard Schema.md` (the old
+generation — no ids, no versioning, no provenance).
+
+## Update 2026-09-02 — Phase 2 opened; lesson ids 0013–0016 assigned
+
+Phase 1 completed 2026-09-01 (lesson 0012) and the Phase 2 prerequisite (evidence-schema source)
+resolved the same day, so Phase 2 — Graph RAG through MCP — is now open. ROADMAP.md's planned arc
+became a lesson table: **0013 MCP Anatomy** (lab `09-mcp-server`, ▶ next up), **0014 Evidence With
+Provenance** (lab `10-graph-evidence` — the Zod evidence schema designed against W3C PROV-DM and the
+`dev_graph` practice surveyed 2026-09-01), **0015 Test It Without an LLM** (lab 10 continues), **0016
+Evidence Enters the Loop** (lab `11-evidence-in-the-loop` — scenario step S2 goes live). Only 0013 is
+firm; 0014–0016 remain placeholders per the roadmap's firmness gradient. Lab numbering continues
+after `08-tested-adapters`. `wiki/course/course-module-graph.md` gained the Phase 2 module detail and
+the phase-graph node flipped to open, per the sync duty.
+
+## Update 2026-09-02 — lesson 0013 shipped: the tool leaves the process; Phase 2 underway
+
+Lesson 0013 (*MCP Anatomy*) opens lab `09-mcp-server` and starts Phase 2. **1,911 words, 0
+errors, 2 warnings** from `tools/lesson-lint.mjs`; the map note passes 0/2 and all four term
+notes 0/0 (one warning on json-rpc.md). Four new Technical Names against a budget of six:
+`mcp`, `resource`, `transport`, `json-rpc`. Zero em-dashes in prose, two diagrams,
+render-verified 3× in headless Edge (2 SVGs each run).
+
+- **The version decision of the session: teach the v2 SDK.** `@modelcontextprotocol/sdk` 1.30.0
+  and the new split packages went out the same day (2026-07-27), and the official docs now teach
+  v2. The lab pins `@modelcontextprotocol/server` 2.0.0 (zod-v4 native, fits the course's zod
+  4.4.3). Signatures verified against the installed `.d.mts`, not the docs alone: `registerTool`
+  (non-deprecated `z.object` form; the raw-shape form is deprecated), `registerResource`'s two
+  declarations (string → `RegisteredResource`, `ResourceTemplate` → `RegisteredResourceTemplate`
+  — the lesson's overload example), `connect(transport)`. `serveStdio` exists as a second entry
+  style; the lab uses the explicit transport form the docs' minimal example uses.
+- **The lab's teaching move is the lesson 0002 move at the new layer:** `probe.jsonl` pipes seven
+  raw JSON-RPC frames into the server before any client library appears. Measured: answers
+  arrive out of order (ids 1, 2, 5, 6, 4, 3 — async handlers), the Zod schema travels in
+  `tools/list` as JSON Schema (`minLength`, `default: 5`, `required`), `query: 42` refused
+  in-band (`isError: true`, before the handler), unknown URI refused as protocol error
+  (`-32603`). All numbers in lesson and README come from these runs.
+- **A folklore claim died under verification:** "a stray `console.log` breaks the stdio client"
+  is false for this stack. Measured: the bare line lands between frames, and both the raw probe
+  and Inspector 2.4.0 tolerate it. The README teaches what was measured and keeps the stdout
+  rule on its true ground (the transport owns stdout; other clients need not recover). Break
+  experiments 2 (missing field → `received undefined`) and 3 (`.max(500)` travels on the next
+  list) were also run before being taught.
+- **Scope held for 0014/0015:** no provenance fields, no scripted MCP client, no vitest suite in
+  09 (labs 01–07 precedent; 08 remains the only suite). The graph is an eight-node stand-in and
+  the lesson's footer says so. Verification used Inspector CLI 2.4.0 (`--cli`), which wants Node
+  ≥22.19 and warns on the user's 22.14, then works — disclosed in README and footer.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. The
+  five kept warnings across the cluster are two table headers ("Meaning …") the linter reads as
+  participle openers and three gerund subjects ("Calling with…", "Reading…", "Diagnosing…"), the
+  same kept class as 0011/0012. Linter quirk found: a markdown bullet that opens with inline
+  code glues to the previous sentence — worked around by starting those bullets with words.
+- **Recall debt paid:** the user's lesson 0012 say-it answers were found in the repo as
+  `learning-records/0015` and are all correct at mechanism level; evaluation appended.
+  **Promoted to `demonstrated` (2):** [[fixture]] (all three answers) and [[fake]] (answer 1 is
+  a complete account of its depth and blind spot). **Held at `introduced`:** [[json-lines]]
+  (format untouched) and [[default-deny]] (the rule is still never stated; 0013's gate-free
+  surface offers no workout, next chance is lesson 0016).
+- **Ops notes:** `pnpm -r typecheck` green across all nine packages. Exercise 08's 29-test suite
+  re-run green this session (regression). No mock, no port, nothing to stop — the MCP server
+  lives only while a pipe holds it open. npx had a stale Inspector 1.0.2 cached; the README and
+  the `inspect` script pin `@modelcontextprotocol/inspector@2.4.0` to dodge it.
+- Bookkeeping: ROADMAP row 0013 ✅ with the measured win named, 0014 flipped to ▶, Phase 2 header
+  *1 of 4 shipped*; module graph synced (phase banner, N13/N14 detail, artifact graph EV node,
+  S2 row, lesson-map lists).
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

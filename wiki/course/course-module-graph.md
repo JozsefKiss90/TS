@@ -18,7 +18,7 @@ Graph form of [ROADMAP.md](../../ROADMAP.md): the phases, their gates, and the l
 flowchart TD
     P0["Phase 0 · See the wire<br/>TS/SDK literacy · complete ✅"]
     P1["Phase 1 · Own the loop<br/>manual bounded loop · complete ✅ (0006 to 0012)"]
-    P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP · next ▶"]
+    P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP · open ▶ (0013 ✅ · 0014 next)"]
     P3["Phase 3 · Encode the policy<br/>the workflow graph"]
     P4["Phase 4 · Prove it<br/>reliability & evaluation"]
     P5["Phase 5 · Meet the harness<br/>Claude Agent SDK"]
@@ -70,6 +70,24 @@ Lesson maps: [[lesson-0006-the-model-gateway]] · [[lesson-0007-the-taskspec-is-
 
 Supplements: 0006a has no map note, so see [[course-architecture]]. [[lesson-0006b-the-hermes-control-plane]] covers the Hermes OS control plane from the governance record. Read 0006 §1 first, then 0006b, then 0006a, then the rest.
 
+## Phase 2, module detail
+
+Opened 2026-09-02. Id 0014 is firm; 0015–0016 are provisional per the firmness gradient.
+
+```mermaid
+flowchart TD
+    N13["0013 MCP Anatomy ✅<br/>lab 09-mcp-server · tool, resource, transport<br/>schema travels via tools/list, measured raw and by Inspector"]
+    N14["0014 Evidence With Provenance ▶<br/>lab 10-graph-evidence · Zod evidence schema vs PROV-DM<br/>Python behind a typed adapter"]
+    N15["0015 Test It Without an LLM ○<br/>lab 10-graph-evidence continues · scripted MCP client<br/>recorded evidence fixtures join the offline toolkit"]
+    N16["0016 Evidence Enters the Loop ○<br/>lab 11-evidence-in-the-loop · S2 goes live<br/>the Phase 1 loop queries the MCP surface"]
+    N13 -->|"the tool surface exists"| N14
+    N14 -->|"the evidence shape is fixed"| N15
+    N15 -->|"testable without an LLM"| N16
+    N14 -.->|"knowledge graph stays apart from workflow & trace"| N16
+```
+
+Lesson maps: [[lesson-0013-mcp-anatomy]].
+
 ## What accumulates (artifacts → the loop)
 
 Each module leaves an artifact that a later module consumes.
@@ -95,7 +113,7 @@ flowchart LR
     GWY --> TLOOP
     TLOOP --> TR
     TLOOP --> TESTS
-    EV["MCP evidence tools — Phase 2"] --> TLOOP
+    EV["MCP evidence tools — Phase 2<br/>surface ✅ 0013 · provenance next"] --> TLOOP
     TLOOP --> WG["workflow graph — Phase 3"]
     TR --> EVAL["golden tasks + evals — Phase 4"]
     TESTS --> EVAL
@@ -107,7 +125,7 @@ Scenario steps these feed (see [[hermes-integration]]):
 | Step | Where the course builds it |
 |---|---|
 | S1 (the envelope check) | Phase 0's boundary parse, then Phase 1's TaskSpec |
-| S2 (evidence assembled) | Phase 2, over MCP |
+| S2 (evidence assembled) | Phase 2, over MCP — the served surface exists since lesson 0013 |
 | S3 (dispatch under the graph) | Phase 3 |
 | S4 (model calls) | Phase 0's mechanics, below Phase 1's port |
 | S5 (the loop iterates) | Phase 1, from lesson 0008, with the approval gate since lesson 0010 |

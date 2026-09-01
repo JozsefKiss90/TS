@@ -1,0 +1,14 @@
+{
+  "name": "09-mcp-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "server": "tsx src/server.ts",
+    "inspect": "npx @modelcontextprotocol/inspector@2.4.0 tsx src/server.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.4.3"
+  }
+}

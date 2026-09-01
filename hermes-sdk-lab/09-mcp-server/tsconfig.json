@@ -1,0 +1,7 @@
+{
+  // Same shared config as every exercise. Nothing new: the MCP SDK is a
+  // normal nodenext package, and the server is ordinary Node code that
+  // reads stdin and writes stdout.
+  "extends": "../tsconfig.base.json",
+  "include": ["src"]
+}

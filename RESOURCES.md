@@ -22,6 +22,12 @@
   Phase 4. Use for: traces, spans, cost/latency accounting on the Hermes loop.
 - [Temporal SDK concepts](https://docs.temporal.io/encyclopedia/temporal-sdks)
   Later. Use for: durable execution vocabulary (checkpointing, replay) once the manual loop exposes the need.
+- [W3C PROV-DM](https://www.w3.org/TR/prov-dm/) (W3C Recommendation)
+  Phase 2 evidence-schema anchor. Use for: the canonical entity/activity/agent model, derivation chains, bundles (provenance of provenance). Compare against `C:\Code\el_nino\dev_graph` practice (Runtime Decision Record, Runtime Ledger, Gold DecisionPacket schemas).
+- [Nanopublication guidelines](https://github.com/Nanopublication/Guidelines/blob/master/nschema.html)
+  Phase 2 secondary. Use for: the assertion / provenance / publication-info three-graph split — the published mirror of "the three graphs never merge".
+- [LEDGER: Claim-to-Evidence Trace Graphs for Auditing LLM Agents](https://arxiv.org/abs/2608.18398) (arXiv preprint, CMU + LLNL, Aug 2026 — not peer-reviewed)
+  Phase 2 topical supplement. Use for: claim-to-evidence graph shape for agent sessions (action/artifact nodes, `supports`/`checked_by` edges); treat claims with preprint-level trust.
 
 ## Wisdom (Communities)
 
@@ -34,4 +40,4 @@
 ## Gaps
 
 - No vetted primary source yet for evaluating agent harnesses (golden tasks, replayable fixtures) — search when Phase 4 approaches.
-- Graph RAG evidence-schema design references — the user has practical experience; find a high-trust written source before Phase 2 to compare against.
+- ~~Graph RAG evidence-schema design references~~ — resolved 2026-09-01: W3C PROV-DM (anchor), nanopublication guidelines, LEDGER preprint (see Knowledge). The practice side to compare against is `C:\Code\el_nino\dev_graph` — it cites no external literature itself, so the comparison is genuinely new.

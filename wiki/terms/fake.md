@@ -7,8 +7,9 @@ type: glossary-term
 lesson: "0006"
 phase: 1
 category: hermes
-status: introduced
+status: demonstrated
 introduced: 2026-07-29
+demonstrated: 2026-09-02
 tags:
   - glossary
   - hermes

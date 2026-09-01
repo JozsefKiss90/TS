@@ -56,18 +56,22 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 ---
 
-## Phase 2 — Graph RAG through MCP — *gate met 2026-09-01; opens next, ids assigned then*
+## Phase 2 — Graph RAG through MCP — *opened 2026-09-02, 1 of 4 shipped; 0014 next up*
 
 **Goal:** expose the existing (Python-side) Graph RAG capability as typed MCP tools with provenance-bearing evidence — *exposing*, not re-teaching retrieval (prior experience: learning-records/0003).
 **Guardrail:** graph fluency will tempt a merged schema — knowledge, workflow, and trace graphs stay separate.
-**Prerequisite:** find a high-trust written source on evidence-schema design to compare against practice (RESOURCES gap).
+**Prerequisite — met 2026-09-01:** high-trust written source on evidence-schema design found and vetted: **W3C PROV-DM** (anchor), nanopublication guidelines and the LEDGER preprint (secondaries). Sources in [RESOURCES.md](RESOURCES.md); the practice side to compare against is the user's `dev_graph` (survey recorded in NOTES.md, 2026-09-01).
 
-Planned lesson arc (ids assigned when the phase opens):
+| # (prov.) | Lesson | Lab (prov.) | The win | Status |
+|---|---|---|---|---|
+| 0013 | [MCP Anatomy](lessons/0013-mcp-anatomy.html) | `09-mcp-server` | the tool leaves the process: served over stdio, schema discovered via `tools/list` (measured), arguments parsed before the handler; poked raw, then by Inspector UI and CLI — no LLM anywhere | ✅ |
+| 0014 | Evidence With Provenance | `10-graph-evidence` | the Zod evidence schema, designed against W3C PROV-DM and the user's own `dev_graph` practice; the knowledge-graph port; Python stays behind a typed adapter | ▶ |
+| 0015 | Test It Without an LLM | `10-graph-evidence` continues | Inspector plus a scripted MCP client; recorded evidence fixtures join the fake-first toolkit that lesson 0012 built | ○ |
+| 0016 | Evidence Enters the Loop | `11-evidence-in-the-loop` | the Phase 1 loop's planning step consumes provenance-bearing evidence from the MCP surface — scenario step S2 (evidence assembled) goes live; knowledge and trace graphs stay separate | ○ |
 
-- **MCP Anatomy** — a server is a typed tool surface: tools, resources, transport; build a minimal server and poke it with the Inspector.
-- **Evidence With Provenance** — the Zod evidence schema; the knowledge-graph port; Python stays behind a typed adapter.
-- **Test It Without an LLM** — Inspector plus a scripted client; recorded evidence fixtures join the fake-first toolkit.
-- **Evidence Enters the Loop** — bounded planning consumes evidence; the loop's evidence step goes live against the MCP surface.
+*Id 0014 is firm; 0015–0016 are placeholders per the firmness gradient. Labs `10`–`11` continue the `hermes-sdk-lab/` numbering; expect the table to compress or split as sessions reveal pace.*
+
+*Lesson maps in the wiki: [[lesson-0013-mcp-anatomy]].*
 
 **Exit criteria (from MISSION):** Graph RAG capabilities exposed and consumed through MCP, testable without an LLM.
 

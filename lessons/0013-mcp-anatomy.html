@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0013 — MCP Anatomy</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 2 · Lesson 0013 · lab exercise 09-mcp-server · ~45–60 min</p>
+  <h1>MCP Anatomy</h1>
+  <p class="lede">Lesson 0008 kept every tool inside Hermes. What changes when a tool moves to its
+  own process, behind a protocol?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Phase 2 builds the evidence supply. This lesson builds toward scenario step S2 (evidence
+  assembled), where Hermes fills a Context Pack by querying the knowledge graph through typed
+  tools. Today that surface exists and answers, with no model anywhere. The boundary rule gains a
+  new surface, because tool arguments now arrive from another process.
+</div>
+
+<h2>1 · The tool leaves the process</h2>
+
+<p>Lesson 0008 defined tools as data inside Hermes. Every request carried each tool's name,
+description and JSON Schema up to the provider. Hermes ran the handler itself. Definition, schema
+and code lived in one process, and only that process knew the tools existed.</p>
+
+<p><dfn>MCP</dfn> (Model Context Protocol) is an open protocol under which a program serves tools
+and data to any client that connects. Exercise 09 serves a miniature knowledge graph this way:
+one tool, <code>search_nodes</code>, over eight nodes in a TypeScript file. The snapshot stands
+in for the real <code>dev_graph</code>, which is Python-side and stays there.</p>
+
+<p>A <dfn>resource</dfn> is data a server publishes under
+a URI, for a client to read by its own choice. A tool runs when a model asks for an action. A
+resource answers when a client reads, and no model turn is spent. The graph index is a resource
+for that reason.</p>
+
+<p>A <dfn>transport</dfn> is the channel that carries protocol messages between one client and
+one server. Exercise 09 uses the standard-io transport: the client starts the server as a child
+process, writes to its stdin, and reads its stdout. The client owns the server's lifetime, and a
+closed pipe stops the process.</p>
+
+<table>
+  <tr><th>Term</th><th>Meaning so far in this course</th><th>Meaning in MCP</th></tr>
+  <tr><td>tool</td><td>data Hermes sends the provider with each request, plus a handler Hermes
+  runs itself (lesson 0008)</td><td>a callable a server hosts, describes over the wire, and runs
+  on request</td></tr>
+  <tr><td>server</td><td>the mock: an HTTP process that doubles the provider (lesson
+  0002)</td><td>a process that serves one client over pipes, with no HTTP anywhere</td></tr>
+</table>
+
+<p>"The tool moved out of Hermes" is true at some layers and false at others.</p>
+
+<table>
+  <tr><th>Layer</th><th>Lesson 0008</th><th>Exercise 09</th></tr>
+  <tr><td>schema author</td><td>Hermes, in <code>tools.ts</code></td><td>the server, at
+  <code>registerTool</code></td></tr>
+  <tr><td>where the schema travels</td><td>to the provider, inside every request</td><td>to any
+  client that sends <code>tools/list</code></td></tr>
+  <tr><td>argument validation</td><td>Hermes's Zod parse, before the handler</td><td>the server
+  SDK's parse, before the handler</td></tr>
+  <tr><td>handler execution</td><td>inside Hermes</td><td>inside the server process</td></tr>
+  <tr><td>the decision to call</td><td>the model, via a <code>tool_use</code>
+  block</td><td>unchanged in kind: whichever client drives the wire</td></tr>
+</table>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    RAW["probe.jsonl<br/>raw frames, piped"] --> T["standard-io transport<br/>one frame per line"]
+    INS["Inspector<br/>UI or CLI"] --> T
+    T --> S["dev-graph-mini<br/>McpServer"]
+    S --> TOOL["tool<br/>search_nodes"]
+    S --> R1["resource<br/>graph://index"]
+    S --> R2["template<br/>graph://node/&#123;id&#125;"]
+    TOOL --> G["graph.ts<br/>eight nodes"]
+    R1 --> G
+    R2 --> G
+</pre>
+<figcaption>Diagram 1. Two clients, one pipe, one process, and no model anywhere in the
+picture.</figcaption>
+</figure>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>A tool can live in its own process, and clients discover its shape at runtime.</li>
+    <li>A server offers tools for a model's actions and resources for a client's reads.</li>
+    <li>The transport carries JSON-RPC frames, and ids do the matching, not arrival order.</li>
+    <li>One Zod schema both travels to clients and guards the server's own boundary.</li>
+    <li>Failures split into in-band tool refusals and protocol-level errors.</li>
+  </ul>
+  <p>Reprise: tools as data (lesson 0008), the boundary parse (lessons 0005 to 0011), the piped
+  probe (lesson 0002), and the port (lesson 0006).</p>
+</div>
+
+<h2>2 · Frames, not requests</h2>
+
+<p>Nothing here is HTTP. <dfn>JSON-RPC</dfn> is the message format MCP borrows: one JSON object
+per message, named by method, matched to its answer by id. On the standard-io transport, one
+frame is one line. You can therefore drive a server with a text file, and the lab's first step
+does.</p>
+
+<pre><code>// probe.jsonl → the server's answers, abridged from a measured run
+→ {"id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18",…}}
+← {"id":1,"result":{"protocolVersion":"2025-06-18",
+     "capabilities":{"tools":{…},"resources":{…}},"serverInfo":{"name":"dev-graph-mini",…}}}
+→ {"id":2,"method":"tools/list"}
+← {"id":2,"result":{"tools":[{"name":"search_nodes",…,
+     "inputSchema":{"type":"object",
+       "properties":{"query":{"type":"string","minLength":1,…},"limit":{"default":5,…}},
+       "required":["query"]}}]}}
+→ {"id":4,"method":"tools/call","params":{"name":"search_nodes","arguments":{"query":42}}}
+← {"id":4,"result":{"isError":true,"content":[{"type":"text",
+     "text":"Input validation error: … expected string, received number"}]}}</code></pre>
+
+<p>The handshake comes first. The client sends <code>initialize</code>, the server answers with
+its name and capabilities, and the client confirms. Requests flow only after that.</p>
+
+<p>The schema traveled. The <code>minLength</code>, the <code>default</code> and the
+<code>required</code> list in the reply were generated from the Zod schema at registration. A
+client learns a tool's shape from the wire, never from your source.</p>
+
+<p>The answers arrived out of order. Our run answered ids 1, 2, 5, 6, 4, 3, because handlers are
+async and finish when they finish. A response belongs to its request by id, never by
+position.</p>
+
+<p>Failure uses two channels. Bad arguments come back inside a normal result with
+<code>isError: true</code>, so a model can read the refusal and try again. An unknown resource
+URI comes back as a JSON-RPC <code>error</code> object, which is the client's problem, not the
+model's.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    participant C as client
+    participant S as server (child process)
+    C->>S: initialize (id 1)
+    S-->>C: capabilities + serverInfo (id 1)
+    C->>S: notifications/initialized
+    C->>S: tools/list (id 2)
+    S-->>C: the Zod schema, as JSON Schema (id 2)
+    C->>S: tools/call search_nodes (id 3)
+    S-->>C: content blocks, or isError (id 3)
+</pre>
+<figcaption>Diagram 2. The handshake, then requests. Every arrow is one JSON line on the
+pipe.</figcaption>
+</figure>
+
+<h2>3 · Reading the surface before using it</h2>
+
+<p>The whole server is four calls. Import <code>McpServer</code> from
+<code>@modelcontextprotocol/server</code>, construct it with a name and version, register tools
+and resources on the instance, then <code>connect</code> a transport.</p>
+
+<pre><code>// @modelcontextprotocol/server 2.0.0 — declarations, abridged
+declare class McpServer {
+  constructor(serverInfo: Implementation, options?: ServerOptions);
+  registerTool&lt;…&gt;(name: string, config: {
+    title?: string; description?: string;
+    inputSchema?: InputArgs; outputSchema?: OutputArgs; …
+  }, cb: ToolCallback&lt;InputArgs&gt;): RegisteredTool;
+  registerResource(name: string, uriOrTemplate: string,
+    config: …, readCallback: ReadResourceCallback): RegisteredResource;
+  registerResource(name: string, uriOrTemplate: ResourceTemplate,
+    config: …, readCallback: ReadResourceTemplateCallback): RegisteredResourceTemplate;
+  connect(transport: Transport): Promise&lt;void&gt;;
+}</code></pre>
+
+<table>
+  <tr><th>Piece</th><th>Syntax</th><th>Meaning</th><th>What exists at runtime</th></tr>
+  <tr><td><code>new McpServer({name, version})</code></td><td>constructor</td><td>one server
+  identity</td><td>an object holding registries, no I/O yet</td></tr>
+  <tr><td><code>inputSchema: z.object(…)</code></td><td>config property</td><td>the tool's
+  argument shape</td><td>a Zod schema, converted to JSON Schema once</td></tr>
+  <tr><td><code>cb</code></td><td>third argument</td><td>what the tool does</td><td>runs only
+  after the parse admits the arguments</td></tr>
+  <tr><td><code>connect(transport)</code></td><td>method</td><td>attach and serve</td><td>reads
+  stdin from now on, and serves until the pipe closes</td></tr>
+</table>
+
+<p><code>registerResource</code> is declared twice, and the return type depends on the second
+argument. A URI string registers one resource, and the callback receives only the URI. A
+<code>ResourceTemplate</code> registers a pattern, and the callback also receives the variables
+parsed from it. TypeScript picks the declaration from what you pass.</p>
+
+<p>A signature tells TypeScript what may be called, and the implementation does the runtime work.
+The SDK abstracts chores away from your application code, not away from TypeScript. The chores
+here: schema conversion, the parse before every handler, and frame correlation.</p>
+
+<p>A tool handler returns one type, met here as a declaration and as a measured value.</p>
+
+<pre><code>// the return type, abridged            // one value from our run
+type CallToolResult = {                   { "content": [{ "type": "text",
+  content: ContentBlock[];                    "text": "gateway · ModelGateway port · implemented
+  structuredContent?: unknown;                       \nfake-gateway · FakeModelGateway · …" }] }
+  isError?: boolean;
+};</code></pre>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>A served graph surface: one tool, one resource, one template</td><td>implemented</td>
+  <td>exercise 09, measured this lesson</td></tr>
+  <tr><td>Provenance on every evidence item</td><td>planned</td><td>lesson 0014, ROADMAP Phase
+  2</td></tr>
+  <tr><td>A scripted client and recorded fixtures for this surface</td><td>planned</td><td>lesson
+  0015</td></tr>
+  <tr><td>The loop's planning step consuming evidence</td><td>planned</td><td>lesson 0016</td></tr>
+  <tr><td>The real <code>dev_graph</code> behind a typed Python port</td><td>planned</td>
+  <td>MISSION: Python's territory, later in Phase 2</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>09-mcp-server/README.md</code>. The arc:</p>
+
+<ol>
+  <li>Pipe <code>probe.jsonl</code> into the server. Match each answer to its request by id.</li>
+  <li>Find the Zod schema's <code>minLength</code> and <code>default</code> inside the
+  <code>tools/list</code> reply.</li>
+  <li>Poke the same server with the Inspector UI, then with its CLI.</li>
+  <li>Run the three break experiments. Predict each outcome before you run.</li>
+</ol>
+
+<h2>5 · Exercise: which part owns it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each behavior with the part of the anatomy that owns it</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the tool|a resource|the transport|the client">
+    <div class="cl-item" data-cat="1" data-why="URI-addressed data, read by the client's own choice. That is the definition from §1.">
+      <p>A URI names it, and reading it spends no model turn.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="registerTool's parse admits or refuses arguments ahead of your code, measured with query: 42.">
+      <p>The Zod schema guards its arguments before any handler runs.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="Every stdout byte is a frame on the standard-io transport. Break experiment 1 shows a stray line landing between frames.">
+      <p>It owns stdout, so diagnostics must go to stderr.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="The Inspector, the probe pipe, and later Hermes all spawn the server. A closed pipe stops it.">
+      <p>It starts the server as a child process and owns its lifetime.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="tools/list carries the generated JSON Schema. The schema is discovered over the wire, not compiled in.">
+      <p>Its schema travels to anyone who sends a list request.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The ResourceTemplate pattern graph://node/{id}, plus its list callback. One declaration, eight instances.">
+      <p>One registration serves one URI per graph node.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="One conversion at registerTool serves tools/list and the pre-handler parse alike. No second copy exists to drift from the Zod source.">
+    <p class="qz-prompt">Q1. The Inspector shows <code>minLength</code>, <code>default</code> and
+    <code>maximum</code> for <code>search_nodes</code>. Where did those constraints come
+    from?</p>
+    <button class="qz-opt" type="button">The Inspector read the server's TypeScript source and rebuilt each constraint from the declarations</button>
+    <button class="qz-opt" type="button">The server keeps a JSON Schema file beside the Zod schema and ships that copy on request</button>
+    <button class="qz-opt" type="button">The SDK converted the Zod schema to JSON Schema at registration and serves it on every list</button>
+    <button class="qz-opt" type="button">The client probed the tool with calls until the pattern of refusals mapped out the limits</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="The tool refusal stays in-band so a model can read it and retry. The resource failure is addressed to the client, which chose the URI.">
+    <p class="qz-prompt">Q2. <code>query: 42</code> and <code>graph://node/nope</code> both fail.
+    What splits the two failures?</p>
+    <button class="qz-opt" type="button">Arguments fail as a protocol error, and the unknown URI fails inside a result with isError set</button>
+    <button class="qz-opt" type="button">Arguments fail inside a result with isError set, and the unknown URI fails as a protocol error</button>
+    <button class="qz-opt" type="button">Both fail as protocol errors, and only the numeric code tells the two refusals apart for clients</button>
+    <button class="qz-opt" type="button">Both fail inside results with isError set, and only the text tells the two refusals apart</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="Handlers are async and finish when they finish. The id is the join, the same job the pairing id did in lesson 0008's loop.">
+    <p class="qz-prompt">Q3. The probe's answers came back as ids 1, 2, 5, 6, 4, 3. Why is that
+    not a bug?</p>
+    <button class="qz-opt" type="button">A response is matched to its request by id, so arrival order carries no meaning at all</button>
+    <button class="qz-opt" type="button">The transport re-sorts frames before delivery, so the client always observes its own request order</button>
+    <button class="qz-opt" type="button">The server answers reads before calls by rule, so this ordering is fixed and documented behavior</button>
+    <button class="qz-opt" type="button">The probe file listed its frames out of order, and the server mirrored the order it received</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="Tools act on a model's request. Resources answer a client's read. The split keeps cheap lookups out of the model's budget.">
+    <p class="qz-prompt">Q4. The graph index could be a tool named <code>list_ids</code>. Why
+    serve it as a resource instead?</p>
+    <button class="qz-opt" type="button">A resource is cached by the transport automatically, so repeated reads cost the server nothing</button>
+    <button class="qz-opt" type="button">A tool cannot return application/json content blocks, so structured data must travel as resources</button>
+    <button class="qz-opt" type="button">Resources are listed before tools in the handshake, so clients discover the index reliably sooner</button>
+    <button class="qz-opt" type="button">A client reads a resource by its own choice, so no model turn is spent on a lookup</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Lesson 0008's tools and today's tool share a name. Say what moved out of Hermes's process,
+  and what stayed where it was.</li>
+  <li>Explain why the graph index is a resource and not a tool, and what is lost when everything
+  is a tool.</li>
+  <li>Describe both failure channels a call can use, and say who is meant to react to each
+  one.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. MCP lets a tool live in its own
+process and describe itself to any client that asks. A tool acts on a model's request, and a
+resource answers a client's read at a URI. The Zod schema travels as JSON Schema and guards the
+server's boundary before any handler runs. Answers match requests by id, and a bad argument
+fails in-band with <code>isError</code>.</p>
+
+<h2>Primary source</h2>
+
+<p>Open <code>node_modules/@modelcontextprotocol/server/dist/stdio.d.mts</code>: 106 lines, the
+whole surface of the standard-io transport, with its comments. Then skim the
+<a href="https://modelcontextprotocol.io/docs/getting-started/intro">MCP introduction</a>.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and frame here was verified against
+  <code>@modelcontextprotocol/server</code> 2.0.0, <code>zod</code> 4.4.3 and
+  <code>@modelcontextprotocol/inspector</code> 2.4.0, by piped-probe and Inspector CLI runs of
+  exercise 09 on 2026-09-02. The eight-node graph is a stand-in for the real
+  <code>dev_graph</code>, which stays Python-side behind a typed port. The Inspector asks for
+  Node 22.19 and prints a warning on 22.14, then works.</p>
+  <p><strong>Next.</strong> Lesson 0014: the evidence schema. Nodes gain provenance, and the
+  shape is designed against a published standard, W3C PROV-DM.</p>
+</footer>
+
+</body>
+</html>
