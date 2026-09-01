@@ -1,6 +1,0 @@
-Let's address a fundamental defect: the outputs of Opus 5 (e.g. the current model). It invents cryptic technical terms and uses them without defining them, as though I'm supposed to know what they mean.
-Reading AI output requires extra effort. It's verbose and frequently contains plausible-sounding nonsense.
-This is not just my experience, but a widespread phenomenon — Reddit posts about it now occur daily.  If a user has to decode a response, it is a failed response, however correct it may be. I don't want to be a meat proxy between Claude and ChatGPT. When using Opus you shouldn't talk to me like I'm a subagent.
-I could barely get through Lesson 0006—The Model Gateway, and Lesson 0006a—Hermes Architecture Primer was impossible to read.
-Substantial changes have been made to the course pedagogy, CLAUDE.md and the 'Lesson prose' output style has been toggled to fix the broken language produced through your outputs.   
-Please read this message before creating a new lesson, to help consolidate these changes and ensure that you remember to create outputs that are both human-readable and clean.

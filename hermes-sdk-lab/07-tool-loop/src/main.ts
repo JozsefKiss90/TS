@@ -377,7 +377,7 @@ async function partJ_everyRunLeavesATrace(): Promise<void> {
   if (!admission.admitted) {
     console.log("refused:", admission.rejections);
     return;
-  }
+  } 
 
   const { trace, path } = fileTrace("audit-atlas.jsonl");
   const report = await runTask(liveGateway(), admission.spec, { trace });
