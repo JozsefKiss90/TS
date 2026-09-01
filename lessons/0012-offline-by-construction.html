@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0012 — Offline by Construction</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 1 · Lesson 0012 · lab exercise 08-tested-adapters · ~45–60 min</p>
+  <h1>Offline by Construction</h1>
+  <p class="lede">The loop works when you watch it run. What proves it still works tomorrow, with no
+  model, no key, and nothing listening on any port?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Phase 1's exit criterion is this lesson: the loop testable offline, with fakes and recorded
+  exchanges. It builds toward scenario step S9 (scoring the run), which needs runs that repeat on
+  demand. The boundary rule gains a fifth surface, because a
+  recording on disk is bytes. Twenty-nine tests re-prove lessons 0007 to 0011 while no process
+  listens anywhere.
+</div>
+
+<h2>1 · A test proves what its stand-in preserves</h2>
+
+<p>An offline test replaces something real with a stand-in, and it proves only what the stand-in
+preserves. The course has two stand-ins already. The mock server (lesson 0002) is a
+real HTTP process that doubles the provider at the wire. The fake gateway (lesson 0006) answers at
+the port from a script, with no socket at all.</p>
+
+<p>The third arrives today. A <dfn>fixture</dfn> is recorded
+data that a test replays in place of the live exchange that produced it. Exercise 08 records four
+exchanges, derives a fifth, and replays them from then on.</p>
+
+<table>
+  <tr><th>Stand-in</th><th>Doubles at</th><th>Proves</th><th>Cannot prove</th></tr>
+  <tr><td>the fake gateway</td><td>the port, in memory</td><td>policy: caps, ceilings, refusals, both denials, resume</td><td>any wire spelling, because the adapter never runs</td></tr>
+  <tr><td>recorded fixtures</td><td>below the SDK, at <code>fetch</code></td><td>the adapter's translations, held to captured bytes</td><td>that the provider still behaves as recorded</td></tr>
+  <tr><td>the mock server</td><td>the wire, a live socket</td><td>timing: aborts mid-generation, the approval race</td><td>anything repeatable without a process to start</td></tr>
+</table>
+
+<p>The fixtures reach under the SDK through one constructor option:</p>
+
+<pre><code>// @anthropic-ai/sdk 0.113.0 — client.d.ts, abridged
+fetch?: Fetch | undefined;
+// internal/builtin-types.d.ts:
+type Fetch = (input: string | URL | Request, init?: RequestInit) =&gt; Promise&lt;Response&gt;;</code></pre>
+
+<p>Every request the SDK would put on a socket calls this function instead. Auth, retries and SSE
+assembly still run above it. Below it, nothing exists.
+A signature tells TypeScript what may be called, and the implementation does the runtime work.
+Here the implementation is <code>replayFetch</code> in <code>replay.ts</code>: it serves the next
+recorded response and keeps a copy of what the SDK sent.</p>
+
+<p>The test runner is vitest, and two calls cover this lab. <code>it(name, fn)</code> registers
+one test. <code>expect(value).toBe(expected)</code> fails that test when the two values
+differ.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    SUP["supervisor · gate · spec · trace<br/>imported from exercise 07"]
+    FAKE["fake gateway<br/>scripted replies"]
+    AD["adapter<br/>anthropic-gateway.ts"]
+    RP["replayFetch<br/>the committed exchanges"]
+    MOCK["mock server on 8899<br/>only while recording"]
+    SUP -->|"port"| FAKE
+    SUP -->|"port"| AD
+    AD -->|"fetch"| RP
+    AD -.->|"fetch, during pnpm record"| MOCK
+    RP -.->|"recorded from"| MOCK
+</pre>
+<figcaption>Diagram 1. Two stand-ins at two depths. Policy tests cut at the port, translation tests
+cut at <code>fetch</code>, and the mock runs only while fixtures are re-recorded.</figcaption>
+</figure>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>A test proves only what its stand-in preserves, so each depth needs its own stand-in.</li>
+    <li>The client's <code>fetch</code> option replaces the socket, so the SDK itself runs under a recording.</li>
+    <li>Fixtures are recorded by the adapter they test, and re-recording turns drift into a diff.</li>
+    <li>One test replays a whole job and holds it to the numbers earlier lessons measured live.</li>
+  </ul>
+  <p>Reprise: the mock (lesson 0002), the fake (lesson 0006), the boundary parse (lessons 0005,
+  0007, 0008, 0011), and the loop's own measured numbers (lessons 0008 to 0011).</p>
+</div>
+
+<h2>2 · Recorded bytes, with the recorder in the repo</h2>
+
+<p>A fixture file holds one exchange: the request the adapter sent, and the response the mock
+returned.</p>
+
+<pre><code>// replay.ts — the fixture schema, abridged
+const RecordedExchangeSchema = z.object({
+  scenario: z.string().min(1),
+  recordedAt: z.string().min(1),
+  request:  z.object({ method: …, path: …, headers: …, body: z.string() }),
+  response: z.object({ status: …, headers: …, body: z.string() }),
+});
+
+// fixtures/tool-ask.json — one value, abridged
+{ "scenario": "call 1 of the audit job: the reply asks for graph_health",
+  "request":  { "path": "/v1/messages",
+                "body": "{\"model\":\"claude-opus-4-8\",…,\"tools\":[…],\"stream\":true}" },
+  "response": { "status": 200,
+                "headers": { "request-id": "req_mock_0001" },
+                "body": "event: message_start\ndata: {\"type\":\"message_start\",…}\n\n
+                         event: content_block_delta\ndata: {…\"text\":\"I\"}\n\n …" } }</code></pre>
+
+<p>Nothing in that file was written by hand. The recorder, <code>record-fixtures.ts</code>, runs
+the real adapter and supervisor against the exercise 01 mock through a recording
+<code>fetch</code>. The request is what the adapter sent, and the response body is the SSE stream
+lesson 0004 dissected, byte for byte. The recorder stays in the repo. One command
+re-records everything, and a changed mock or adapter shows up as a git diff.</p>
+
+<p>Reading a fixture back is a parse. Lessons 0005, 0007, 0008 and 0011 counted four boundaries:
+replies, spec files, tool arguments, and your own trace. The fixture file is a fifth, still
+refused when its bytes fail the schema. Step 4 of the lab tampers one number into a string and
+reads the refusal.</p>
+
+<table>
+  <tr><th>Layer</th><th>Changed?</th><th>Evidence</th></tr>
+  <tr><td>the domain files</td><td>no</td><td>supervisor, gate, spec and trace are imported from exercise 07, not copied</td></tr>
+  <tr><td>the port and adapter</td><td>no</td><td>the same <code>anthropic-gateway.ts</code> runs under replay</td></tr>
+  <tr><td>the six responsibilities</td><td>no</td><td>auth, retries and SSE assembly still run inside the SDK</td></tr>
+  <tr><td>delivery below <code>fetch</code></td><td>yes</td><td>one injected function serves recorded bytes, so no socket exists</td></tr>
+  <tr><td>time</td><td>yes</td><td>a replayed stream arrives whole, so nothing happens mid-generation</td></tr>
+</table>
+
+<p>The offline wiring also sets <code>maxRetries: 0</code>. Retries
+are responsibility ⑤, absorbed by the SDK in lesson 0003, and a replayed 429 would trigger
+them. One recorded exchange answers one attempt,
+so the second attempt would find the script exhausted.</p>
+
+<h2>3 · The capstone, and what it cannot prove</h2>
+
+<p>The suite's final test replays exercise 07 Part A's whole job: admission, both model calls, the
+gate, the tool, the trace. Its base URL names a host that does not resolve, so one socket attempt
+would fail the test. The report lands with the numbers lesson 0008 measured
+live: 2 model calls, one tool run, 217 tokens. The trace holds lesson 0011's eight events, in the
+same order, through an in-memory <code>TracePort</code>.</p>
+
+<p>The supervisor regenerates call 2's request from
+call 1's replayed reply, and the test compares those bytes to the recording. They match only
+if the whole chain held: the transcript grew in order, the pairing id came back, the tool output
+crossed. The lab's step 5 breaks that chain on purpose and watches three tests name it.</p>
+
+<p>Three claims stay unproven. Timing: the fake answers instantly and a replayed
+stream arrives whole, so the mid-generation abort stays with the live mock. The provider:
+fixtures freeze the mock, and the mock's error wording is an approximation. Drift on the real
+wire stays invisible until a live run meets it. The operator: Part H's terminal approval is
+scripted here, so the port is proven and the human is not.</p>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>The whole loop green offline, 29 tests</td><td>implemented</td><td>exercise 08, measured this lesson</td></tr>
+  <tr><td>Fixtures re-recordable, drift as a diff</td><td>implemented</td><td><code>pnpm record</code>, then <code>git diff fixtures/</code></td></tr>
+  <tr><td>Golden tasks and regression gates over recorded and live runs</td><td>planned</td><td>S9, ROADMAP Phase 4</td></tr>
+  <tr><td>Evidence tools testable without an LLM</td><td>planned</td><td>ROADMAP Phase 2</td></tr>
+</table>
+
+<p>Phase 1 closes here. Its exit criterion read: a bounded loop with permissions, budgets,
+approval and termination, testable offline with fakes and recorded fixtures. Every clause now has
+a green test that names it.</p>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and the measured table live in <code>08-tested-adapters/README.md</code>. The arc:</p>
+
+<ol>
+  <li>Run <code>pnpm test</code> before starting any mock. The pass is the exercise's claim.</li>
+  <li>Read the supervisor suite beside the adapter suite. For three tests each, say what each one
+  proves that the other cannot.</li>
+  <li>Open <code>fixtures/tool-ask.json</code>. Find the tool's schema, the invented arguments,
+  and the pairing id the next fixture must carry.</li>
+  <li>Tamper one recorded number into a string. Predict which test fails before you run.</li>
+  <li>Comment out the supervisor's model-turn push, run, and read the three failures. Revert.</li>
+  <li>Re-record against a fresh mock and diff. Only <code>recordedAt</code> should change.</li>
+</ol>
+
+<h2>5 · Exercise: which stand-in proves it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each claim with the cheapest stand-in that can prove it</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the fake at the port|recorded fixtures|the live mock|only the real API">
+    <div class="cl-item" data-cat="0" data-why="A policy decision above the port. The fake answers instantly and the cap still fires, measured in the supervisor suite.">
+      <p>The loop stops at the spec's call cap.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="Translation is the adapter's work, visible only in the sent bytes. The replay captures them for comparison against the recording.">
+      <p><code>Turn[]</code> becomes the wire's <code>messages</code> array, byte for byte.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="An abort needs real time inside a delivery. Only the mock's paced deltas leave a window for one.">
+      <p>The budget abort lands mid-generation and keeps the partial text.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="The mock's wording is a disclosed approximation, and the fixtures froze it. Only the live service can show its own words.">
+      <p>The provider's error wording matches what Hermes classifies.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="Default deny is spec-and-port policy. No wire field carries approval, so no wire-level double can add proof.">
+      <p>A held tool call with no approver wired is denied.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The adapter turns response bytes into failure data, and the recorded status and retry-after header are all it reads.">
+      <p>A recorded 429 becomes <code>retry_later</code> with the header's backoff.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="0" data-why="The wiring injects replayFetch and points baseURL at a host that does not resolve. A single socket attempt would fail the test that made it.">
+    <p class="qz-prompt">Q1. The suite passes with nothing listening on any port. What makes that a proof rather than luck?</p>
+    <button class="qz-opt" type="button">The client's fetch option answers from recordings, so any test that reached for a socket would fail</button>
+    <button class="qz-opt" type="button">The runner puts every test in a sandbox, so network calls are blocked before they reach a socket</button>
+    <button class="qz-opt" type="button">The fake gateway intercepts every request above the SDK, so nothing below the port ever executes</button>
+    <button class="qz-opt" type="button">The suite starts and stops its own copy of the mock, so a private port is always listening for it</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="replayFetch serves the body unread, and the SDK assembles it without checking. WireReplySchema refuses the string where a number belongs, as it would on a socket.">
+    <p class="qz-prompt">Q2. A fixture's <code>output_tokens</code> is tampered into a string. Which layer refuses it?</p>
+    <button class="qz-opt" type="button">The replay module's fixture schema, which checks each response body before serving it to the SDK</button>
+    <button class="qz-opt" type="button">The adapter's boundary parse, the same Zod schema that would refuse a live reply from a socket</button>
+    <button class="qz-opt" type="button">The capstone's expect call, which compares the finished report against the recorded numbers</button>
+    <button class="qz-opt" type="button">The SDK's stream assembler, which validates the usage types as each delta event arrives</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="Retries are responsibility ⑤, absorbed by the SDK since lesson 0003. One recorded exchange answers one attempt, so the wiring turns the policy off.">
+    <p class="qz-prompt">Q3. The offline client is wired with <code>maxRetries: 0</code>. What goes wrong without that?</p>
+    <button class="qz-opt" type="button">The supervisor retries the throttled call itself, and the ledger books the same estimated spend twice</button>
+    <button class="qz-opt" type="button">The replayed 429 carries no retry-after header, so the SDK waits out its full default backoff</button>
+    <button class="qz-opt" type="button">Each retry re-records the fixture, and the file's request id drifts away from the mock's counter</button>
+    <button class="qz-opt" type="button">The SDK retries the replayed 429 on its own, and the second attempt finds the script exhausted</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="Fixtures freeze the mock's behavior, and the mock approximates the provider. Drift on the real wire stays invisible until a live run meets it.">
+    <p class="qz-prompt">Q4. Every test is green. Which claim is still unproven?</p>
+    <button class="qz-opt" type="button">The supervisor still refuses a tool call whose name the job's spec never permitted it to run</button>
+    <button class="qz-opt" type="button">The adapter still sends the transcript's turns in the order the pairing rule requires of it</button>
+    <button class="qz-opt" type="button">The real provider still answers the way the fixtures recorded the mock answering last time</button>
+    <button class="qz-opt" type="button">The trace still records a resumed run's carried ledger and call count on its first event</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Explain what the fake can prove that the fixtures cannot, and what the fixtures prove that
+  the fake cannot.</li>
+  <li>The capstone compares the loop's regenerated second request against the recorded bytes. Say
+  what a mismatch would mean, and name one bug it would catch.</li>
+  <li>A teammate calls the loop proven because all 29 tests are green. Name two claims that stay
+  unproven offline, and where each one gets proven instead.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A test proves only what its
+stand-in preserves: the fake preserves the port, fixtures preserve the bytes, the mock preserves
+time. A fixture is recorded data a test replays, and reading one back is still a parse. The
+recorder lives in the repo, so fixtures can be remade and drift becomes a diff. Green offline
+tests prove Hermes's side of every contract, and only a live run can prove the provider's.</p>
+
+<h2>Primary source</h2>
+
+<p>Open <code>node_modules/@anthropic-ai/sdk/client.d.ts</code> and find <code>fetch</code> among
+the client options: one optional function, and the whole offline design hangs on it. Then skim the
+<a href="https://vitest.dev/guide/">vitest guide</a>.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and number here was verified against
+  <code>@anthropic-ai/sdk</code> 0.113.0, <code>zod</code> 4.4.3 and <code>vitest</code> 3.2.7, by
+  runs of exercise 08 on 2026-09-01. Fixtures were recorded against the exercise 01 mock on a
+  private port, restarted so request ids start at 0001. The mock cannot reason, its token
+  counts are estimates, and its error wording approximates the real API's.</p>
+  <p><strong>Next.</strong> Phase 1 is complete. Phase 2 opens with MCP anatomy: the evidence
+  surface becomes typed tools, and its id is assigned when the phase opens.</p>
+</footer>
+
+</body>
+</html>

@@ -891,6 +891,98 @@ prose, one diagram, render-verified 3× in headless Edge against the vendored me
 - Bookkeeping: ROADMAP row 0011 ✅ with the trace win named, 0012 flipped to ▶; module graph synced
   (phase banner, M11 detail, artifact graph `trace ✅ 0011`, S7 row).
 
+## Update 2026-09-01 — lesson 0012 shipped: the loop runs green offline; Phase 1 complete
+
+Lesson 0012 (*Offline by Construction*) opens lab `08-tested-adapters` and closes Phase 1.
+**1,993 words, 0 errors, 3 warnings** from `tools/lesson-lint.mjs`; `fixture.md` passes 0/0, the
+map note 0/2. One new Technical Name against a budget of six: `fixture`. Zero em-dashes in prose,
+one diagram, render-verified 3× in headless Edge against the vendored mermaid.
+
+- **The design decision of the session: the tests import exercise 07's sources, and fixtures are
+  recorded, never hand-written.** `08-tested-adapters` is a new workspace package (vitest 3.2.7 is
+  the one new dev dependency) whose six suites import `../../07-tool-loop/src/*` directly — no
+  copy, so no second loop to diverge. The wire seam is the SDK's `fetch` constructor option
+  (`Fetch = (input, init?) => Promise<Response>`, verified in the installed `client.d.ts`):
+  `replayFetch` serves recorded responses and captures what the SDK sent. The recorder
+  (`record-fixtures.ts`) runs the **real adapter and supervisor** against the exercise 01 mock
+  through a recording fetch, so each fixture's request is what the adapter truly sent. Five
+  fixtures: the audit job's two calls, a 429, a 401 (elicited by a `null` default header deleting
+  `x-api-key`), and a derived stop_reason tamper. `maxRetries: 0` in both wirings, or the SDK
+  retries a 429 into an exhausted script — that became quiz Q3.
+- **Measured, not asserted:** 29 tests, 6 files, all green with nothing listening, ~12 s. The
+  capstone replays Part A's whole job and reproduces its live numbers (2 calls, 217 tokens,
+  lesson 0011's 8 trace events) and the regenerated second request is **byte-identical** to the
+  recording. Both README break-experiments were run before being taught: the tampered
+  `output_tokens` string fails exactly 1 test (call 2 ends `gave_up`, `reply refused at the
+  boundary`), and commenting out the supervisor's model-turn push fails 3 tests across 2 suites.
+  Re-recording against a fresh mock reproduced every fixture with only `recordedAt` changing.
+  `07-tool-loop` is untouched (the supervisor edit was reverted and verified by diff).
+- **07 regression rides inside the suite now:** the supervisor/spec/trace tests pin Parts A–L's
+  behavior (cap, ceiling, both denials, approval, trace order, resume round trip) as executable
+  assertions rather than README numbers alone.
+- **The term gate met a course-made collision.** *Fixture* already shipped in two senses: the
+  mock's canned `Message` (lessons 0002–0004) and "recorded fixtures" (0002's mission callout,
+  0006's quiz, 0011's footer). Registered once with a definition covering both: *recorded data
+  that a test replays in place of the live exchange that produced it*. No retro-edits.
+- **One step, one gloss, again:** the first draft coined a second S9 gloss ("runs scored against
+  golden tasks"); aligned to the module graph's existing "(scoring the run)" in all three new
+  files — the same drift the 0010 review caught for S5.
+- **Recall debt paid:** the user's lesson 0011 say-it answers (learning-records/0014) are all
+  correct at mechanism level; evaluation appended. **Promoted to `demonstrated` (2):** [[trace]]
+  (all three answers), [[partial-artifact]] (answer 3 was its designed workout and passes it).
+  **Held at `introduced`:** [[json-lines]] (untouched; its workout is 0012's fixture files) and
+  [[default-deny]] (still unstated; next workout is 0012's say-it).
+- **Judged rather than measured, per Article VIII.6:** SENT-3 (passive) read by eye; SENT-2,
+  PARA-2, PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18
+  judged. The three kept lesson warnings: two SENT-5 hits are a gerund subject (*Reading a
+  fixture back…*) and a noun opener (*Timing:*), and the SENT-6 hit (*pairing id came back*) is a
+  verb phrase. The map note's two warnings are the same two SENT-5 patterns.
+- **Ops notes:** the mock ran twice on `PORT=8899` (record, re-record) and was stopped both
+  times; nothing holds 8787 or 8899. `pnpm typecheck` in 08 is clean and checks the imported 07
+  sources too. The per-edit lint hook again reported intermediate word counts mid-trim; the fresh
+  linter run is the truth.
+- **The long-standing typecheck blocker is gone:** `cilent2.ts` no longer exists, and
+  `pnpm -r typecheck` is green across all eight packages, measured this session. Yours and
+  untouched: the deleted `help_for_claude.md` and a trailing-space edit in
+  `07-tool-loop/src/main.ts`, both uncommitted. Still pending from 2026-08-08: 0006b's demotion
+  to a reference page.
+- Bookkeeping: ROADMAP row 0012 ✅ with the measured win named, Phase 1 header flipped to
+  *complete, 7 of 7*, Phase 2 header now *gate met 2026-09-01*; module graph synced (phase
+  banner, M12 detail, artifact graph `offline suite ✅ 0012` feeding evals, S9 row, both
+  lesson-map lists).
+
+### What the two-axis review caught, and what I did about it
+
+The review ran before committing, fourth lesson running. All accepted findings are fixed in the
+shipped text; the suite, typecheck and linter re-ran green after them, and the diagram re-rendered
+after its label change.
+
+- **Provenance wording was loose (spec axis).** The lesson said "records five exchanges" while
+  the recorder's own comment says scenario 5 is DERIVED, a scripted tamper. Now "records four
+  exchanges, derives a fifth", and the diagram label no longer says "recorded" for all five. The
+  README and term note were already accurate.
+- **Banned phrase the linter missed:** "pays one more price" ("one more" is on the profile's
+  list). Gone, with three metaphor cleanups beside it ("the live mock's territory", "a green test
+  with its name on it", "Green is the claim").
+- **BAN-6 synonym cycling:** one referent wore "stand-in" and "double" in the same lesson.
+  Unified to *stand-in* (the registered [[test-double]] stays a term note, not lesson prose), and
+  the mission callout's "fifth surface" now matches §2's "fifth boundary".
+- **Duplicated capture logic (standards axis, code):** `KEPT_REQUEST_HEADERS` and the
+  request-capture shape existed in both `replay.ts` and `record-fixtures.ts` — the one
+  duplication that could quietly weaken the byte comparisons if the copies drifted. The replayer
+  now exports both, and the recorder imports them.
+
+Declined, with reasons, so the next reviewer does not re-raise them: deduplicating the offline
+client wiring across `adapter.test.ts` and `loop-offline.test.ts` (the capstone deliberately
+shows its whole wiring in one test), the thrice-repeated spec load/admit block and `MODEL`
+literal (per-file teaching visibility, the established lab pattern), and vitest's `^3.2.0` caret
+beside the verified 3.2.7 (the sibling packages pin the SDK the same way, and the lockfile holds
+it). Judged and kept, per Article VIII.6: vitest's two-sentence III.3 light touch (the 0011
+`node:readline` precedent — the full signature table went to the `fetch` option, which is the
+surface that matters here), and the closing compression's use of *port*, *fake* and *mock*
+(PARA-7 read as barring terms no lesson defined; all three are defined reprises, the same reading
+every shipped compression relies on).
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

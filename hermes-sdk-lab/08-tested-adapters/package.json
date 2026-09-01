@@ -1,0 +1,19 @@
+{
+  "name": "08-tested-adapters",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "mock": "tsx ../01-raw-http/src/mock-server.ts",
+    "record": "tsx src/record-fixtures.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.113.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0"
+  }
+}

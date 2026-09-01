@@ -17,8 +17,8 @@ Graph form of [ROADMAP.md](../../ROADMAP.md): the phases, their gates, and the l
 ```mermaid
 flowchart TD
     P0["Phase 0 · See the wire<br/>TS/SDK literacy · complete ✅"]
-    P1["Phase 1 · Own the loop<br/>manual bounded loop · 0006 to 0011 ✅ · next: 0012 ▶"]
-    P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP"]
+    P1["Phase 1 · Own the loop<br/>manual bounded loop · complete ✅ (0006 to 0012)"]
+    P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP · next ▶"]
     P3["Phase 3 · Encode the policy<br/>the workflow graph"]
     P4["Phase 4 · Prove it<br/>reliability & evaluation"]
     P5["Phase 5 · Meet the harness<br/>Claude Agent SDK"]
@@ -59,14 +59,14 @@ flowchart TD
     M9["0009 Bounds and Termination ✅<br/>lab 07-tool-loop continues · spec-owned bounds<br/>abort mid-generation, partial kept"]
     M10["0010 Approval Gates and Permissions ✅<br/>lab 07-tool-loop continues · three permission levels<br/>the operator is a port, and the wait races the bounds"]
     M11["0011 The Trace Is What Happened ✅<br/>lab 07-tool-loop continues · one event per decision<br/>diagnose and resume from the file alone"]
-    M12["0012 Offline by Construction ▶<br/>Phase 1 capstone"]
+    M12["0012 Offline by Construction ✅<br/>lab 08-tested-adapters · 29 tests, no network<br/>fakes at the port, fixtures under fetch"]
     M6 -->|"failures as data → the spec that gates them"| M7
     M7 -->|"validated work enters the loop"| M8
     M8 --> M9 --> M10 --> M11 --> M12
     M6 -.->|"FakeModelGateway seeds the offline toolkit"| M12
 ```
 
-Lesson maps: [[lesson-0006-the-model-gateway]] · [[lesson-0007-the-taskspec-is-a-contract]] · [[lesson-0008-tool-use-the-loops-heartbeat]] · [[lesson-0009-bounds-and-termination]] · [[lesson-0010-approval-gates-and-permissions]] · [[lesson-0011-the-trace-is-what-happened]].
+Lesson maps: [[lesson-0006-the-model-gateway]] · [[lesson-0007-the-taskspec-is-a-contract]] · [[lesson-0008-tool-use-the-loops-heartbeat]] · [[lesson-0009-bounds-and-termination]] · [[lesson-0010-approval-gates-and-permissions]] · [[lesson-0011-the-trace-is-what-happened]] · [[lesson-0012-offline-by-construction]].
 
 Supplements: 0006a has no map note, so see [[course-architecture]]. [[lesson-0006b-the-hermes-control-plane]] covers the Hermes OS control plane from the governance record. Read 0006 §1 first, then 0006b, then 0006a, then the rest.
 
@@ -86,6 +86,7 @@ flowchart LR
         SPEC["TaskSpec ✅ 0007"]
         TLOOP["tool loop ✅ 0008<br/>bounds ✅ 0009 · gates ✅ 0010"]
         TR["trace ✅ 0011"]
+        TESTS["offline suite ✅ 0012<br/>fakes + fixtures"]
     end
     MOCK --> GWY
     SIX --> GWY
@@ -93,9 +94,11 @@ flowchart LR
     SPEC --> TLOOP
     GWY --> TLOOP
     TLOOP --> TR
+    TLOOP --> TESTS
     EV["MCP evidence tools — Phase 2"] --> TLOOP
     TLOOP --> WG["workflow graph — Phase 3"]
     TR --> EVAL["golden tasks + evals — Phase 4"]
+    TESTS --> EVAL
     EVAL -->|"gates"| P5P6["Phases 5–6 decisions"]
 ```
 
@@ -111,4 +114,4 @@ Scenario steps these feed (see [[hermes-integration]]):
 | S6 (budget enforcement) | Phase 0's cancellation, enforced by lesson 0009's bounds |
 | S7 (the durable record) | Phase 1 since lesson 0011, deepened in Phase 4 |
 | S8 (landing the outputs) | Phase 4 |
-| S9 (scoring the run) | Phase 4 |
+| S9 (scoring the run) | Phase 4, growing from lesson 0012's offline suite |

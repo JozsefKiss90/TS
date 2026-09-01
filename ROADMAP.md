@@ -30,7 +30,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 ---
 
-## Phase 1 — The manual bounded loop — *open; next up: 0012*
+## Phase 1 — The manual bounded loop — *complete, 7 of 7 shipped (2026-09-01)*
 
 **Goal:** implement the Hermes loop by hand — bounded, permissioned, budgeted, traceable — before any framework touches it.
 **Entry decision:** provider neutrality vs Claude-only — **decided in lesson 0006 (2026-07-29): provider-neutral port, exactly one live adapter.** Neutrality is a property of the seam (Hermes-owned vocabulary in `gateway.ts`); provider choice is policy above the port; the `FakeModelGateway` is the second implementation that keeps the contract honest. Rationale in NOTES.md.
@@ -44,11 +44,11 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 | 0009 | [Bounds and Termination](lessons/0009-bounds-and-termination.html) | `07-tool-loop` | every bound moves into the spec (call cap, token ceiling, deadline); the gateway streams so an `AbortController` can kill a generation mid-flight; the partial output is kept | ✅ |
 | 0010 | [Approval Gates and Permissions](lessons/0010-approval-gates-and-permissions.html) | `07-tool-loop` | permission gets a third level (unlisted / permitted / approval-required), all spec data; the operator is a port, absent means denied; a denial goes back as a failed tool result; the approval wait races the bounds | ✅ |
 | 0011 | [The Trace Is What Happened](lessons/0011-the-trace-is-what-happened.html) | `07-tool-loop` | every supervisor decision appended as one JSON Lines event, through a third port, at the moment it happens; a finished run diagnosed and an interrupted run resumed from the file alone (ledger carried, clock restarted); reading your own past is the fourth Zod boundary | ✅ |
-| 0012 | Offline by Construction | `08-tested-adapters` | the whole loop runs green with fakes and recorded fixtures — no LLM, no network; Phase 1's capstone | ▶ |
+| 0012 | [Offline by Construction](lessons/0012-offline-by-construction.html) | `08-tested-adapters` | the whole loop runs green with fakes and recorded fixtures — no LLM, no network; 29 tests reproduce Part A's 217 tokens and 8 trace events from recorded bytes, and the regenerated request matches the recording byte-for-byte; Phase 1's capstone | ✅ |
 
 *Provisional shape: labs `07-tool-loop` onward evolve one codebase across lessons rather than starting fresh each time. Expect this table to compress or split as sessions reveal pace.*
 
-*Lesson maps in the wiki: [[lesson-0006-the-model-gateway]] · [[lesson-0007-the-taskspec-is-a-contract]] · [[lesson-0008-tool-use-the-loops-heartbeat]] · [[lesson-0009-bounds-and-termination]] · [[lesson-0010-approval-gates-and-permissions]] · [[lesson-0011-the-trace-is-what-happened]].*
+*Lesson maps in the wiki: [[lesson-0006-the-model-gateway]] · [[lesson-0007-the-taskspec-is-a-contract]] · [[lesson-0008-tool-use-the-loops-heartbeat]] · [[lesson-0009-bounds-and-termination]] · [[lesson-0010-approval-gates-and-permissions]] · [[lesson-0011-the-trace-is-what-happened]] · [[lesson-0012-offline-by-construction]].*
 
 *Supplement (2026-07-29): [0006a — Hermes Architecture Primer: Where the Model Gateway Fits](lessons/0006a-hermes-architecture-primer.html) — the Spec-to-Evidence Loop drawn end to end, "policy" defined operationally, and an implemented/seeded/planned ledger for exercise 05 (a one-call policy seed; no routing, budgets, permissions, or trace yet). Durable reference: [wiki/course/course-architecture.md](wiki/course/course-architecture.md). Defect record: [[course-pedagogy]] row 12. Adds no capability and shifts no lesson — 0007 remains next.*
 
@@ -56,7 +56,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 ---
 
-## Phase 2 — Graph RAG through MCP — *gated on Phase 1 exit*
+## Phase 2 — Graph RAG through MCP — *gate met 2026-09-01; opens next, ids assigned then*
 
 **Goal:** expose the existing (Python-side) Graph RAG capability as typed MCP tools with provenance-bearing evidence — *exposing*, not re-teaching retrieval (prior experience: learning-records/0003).
 **Guardrail:** graph fluency will tempt a merged schema — knowledge, workflow, and trace graphs stay separate.

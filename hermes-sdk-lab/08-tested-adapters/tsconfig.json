@@ -1,0 +1,9 @@
+{
+  // Same shared config as every exercise. One addition: this package's
+  // tests import exercise 07's source files directly (../07-tool-loop/src),
+  // so the compiler pulls those files into this program and checks them
+  // too. The tests and the jobs run the SAME files — nothing is copied,
+  // because a copy would be a second loop that could silently diverge.
+  "extends": "../tsconfig.base.json",
+  "include": ["src", "tests"]
+}

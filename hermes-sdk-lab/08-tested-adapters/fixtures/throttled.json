@@ -1,0 +1,24 @@
+{
+  "scenario": "x-mock-scenario: rate-limit — 429 with a retry-after header",
+  "recordedAt": "2026-09-01",
+  "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "x-api-key": "mock-key-any-value-passes",
+      "x-mock-scenario": "rate-limit"
+    },
+    "body": "{\"model\":\"claude-opus-4-8\",\"max_tokens\":1024,\"messages\":[{\"role\":\"user\",\"content\":\"Summarize the atlas graph health check in three bullet points.\"}],\"stream\":true}"
+  },
+  "response": {
+    "status": 429,
+    "headers": {
+      "content-type": "application/json",
+      "request-id": "req_mock_0003",
+      "retry-after": "5"
+    },
+    "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"rate_limit_error\",\n    \"message\": \"Number of requests has exceeded your rate limit (simulated by x-mock-scenario)\"\n  },\n  \"request_id\": \"req_mock_0003\"\n}"
+  }
+}

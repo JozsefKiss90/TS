@@ -1,0 +1,21 @@
+{
+  "scenario": "the x-api-key header removed — 401 authentication_error",
+  "recordedAt": "2026-09-01",
+  "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01"
+    },
+    "body": "{\"model\":\"claude-opus-4-8\",\"max_tokens\":1024,\"messages\":[{\"role\":\"user\",\"content\":\"Summarize the atlas graph health check in three bullet points.\"}],\"stream\":true}"
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "request-id": "req_mock_0004"
+    },
+    "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"authentication_error\",\n    \"message\": \"x-api-key header is required\"\n  },\n  \"request_id\": \"req_mock_0004\"\n}"
+  }
+}
