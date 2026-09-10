@@ -56,7 +56,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 ---
 
-## Phase 2 — Graph RAG through MCP — *opened 2026-09-02, 1 of 4 shipped; 0014 next up*
+## Phase 2 — Graph RAG through MCP — *opened 2026-09-02, 2 of 4 shipped; 0015 next up*
 
 **Goal:** expose the existing (Python-side) Graph RAG capability as typed MCP tools with provenance-bearing evidence — *exposing*, not re-teaching retrieval (prior experience: learning-records/0003).
 **Guardrail:** graph fluency will tempt a merged schema — knowledge, workflow, and trace graphs stay separate.
@@ -65,13 +65,13 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 | # (prov.) | Lesson | Lab (prov.) | The win | Status |
 |---|---|---|---|---|
 | 0013 | [MCP Anatomy](lessons/0013-mcp-anatomy.html) | `09-mcp-server` | the tool leaves the process: served over stdio, schema discovered via `tools/list` (measured), arguments parsed before the handler; poked raw, then by Inspector UI and CLI — no LLM anywhere | ✅ |
-| 0014 | Evidence With Provenance | `10-graph-evidence` | the Zod evidence schema, designed against W3C PROV-DM and the user's own `dev_graph` practice; the knowledge-graph port; Python stays behind a typed adapter | ▶ |
-| 0015 | Test It Without an LLM | `10-graph-evidence` continues | Inspector plus a scripted MCP client; recorded evidence fixtures join the fake-first toolkit that lesson 0012 built | ○ |
+| 0014 | [Evidence With Provenance](lessons/0014-evidence-with-provenance.html) | `10-graph-evidence` | the Zod evidence schema designed against W3C PROV-DM (attribution, generation, derivation as three fields) with `dev_graph`'s five confidence labels and its first promotion rule as a refinement; the `KnowledgeGraph` port with one adapter over a JSON export the Python side wrote, parsed in dev_graph's spellings and translated once; the MCP tool gains an `outputSchema` — measured: the schema travels in `tools/list` without its refinement, a malformed bundle is refused in-band, 18 tests green | ✅ |
+| 0015 | Test It Without an LLM | `10-graph-evidence` continues | Inspector plus a scripted MCP client; a fake adapter behind the same port; recorded evidence fixtures join the fake-first toolkit that lesson 0012 built | ▶ |
 | 0016 | Evidence Enters the Loop | `11-evidence-in-the-loop` | the Phase 1 loop's planning step consumes provenance-bearing evidence from the MCP surface — scenario step S2 (evidence assembled) goes live; knowledge and trace graphs stay separate | ○ |
 
-*Id 0014 is firm; 0015–0016 are placeholders per the firmness gradient. Labs `10`–`11` continue the `hermes-sdk-lab/` numbering; expect the table to compress or split as sessions reveal pace.*
+*Id 0015 is firm; 0016 is a placeholder per the firmness gradient. Labs `10`–`11` continue the `hermes-sdk-lab/` numbering; expect the table to compress or split as sessions reveal pace.*
 
-*Lesson maps in the wiki: [[lesson-0013-mcp-anatomy]].*
+*Lesson maps in the wiki: [[lesson-0013-mcp-anatomy]] · [[lesson-0014-evidence-with-provenance]].*
 
 **Exit criteria (from MISSION):** Graph RAG capabilities exposed and consumed through MCP, testable without an LLM.
 

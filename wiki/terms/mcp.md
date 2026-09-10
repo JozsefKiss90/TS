@@ -6,8 +6,9 @@ type: glossary-term
 lesson: "0013"
 phase: 2
 category: protocol
-status: introduced
+status: demonstrated
 introduced: 2026-09-02
+demonstrated: 2026-09-10
 tags:
   - glossary
   - protocol

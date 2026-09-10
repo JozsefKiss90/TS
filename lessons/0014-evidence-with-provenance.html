@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0014 — Evidence With Provenance</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 2 · Lesson 0014 · lab exercise 10-graph-evidence · ~45–60 min</p>
+  <h1>Evidence With Provenance</h1>
+  <p class="lede">Lesson 0013's server answered with a title and a status. What must an answer
+  carry before Hermes may believe it?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  This lesson builds toward scenario step S2 (evidence assembled), where every Context Pack
+  item carries provenance. Today the evidence schema exists, the server returns it, and a
+  malformed answer is refused before a client sees it. The boundary rule gains a sixth surface:
+  a file that another language wrote. Provenance describes what Hermes knows. What Hermes did
+  stays in the trace of lesson 0011, a separate record.
+</div>
+
+<h2>1 · Three questions an answer must carry</h2>
+
+<p>A node from exercise 09 has an id, a title and a status. Nothing in it says who stands behind
+the claim, how it was produced, or how far to trust it. A Context Pack cannot admit such a
+node.</p>
+
+<p><dfn>Provenance</dfn> is the record of a claim's origin: who stands behind it, which activity
+produced it, and what it was made from. W3C PROV-DM is the published standard for that record.
+It uses three nouns. An entity is a thing with fixed aspects. An activity is something that
+occurs over time and acts on entities. An agent bears responsibility for an entity or an
+activity.</p>
+
+<p>Two of those words already mean something else here.</p>
+
+<table>
+  <tr><th>Term</th><th>Meaning in this course</th><th>Meaning in PROV-DM or dev_graph</th></tr>
+  <tr><td>agent</td><td>a loop that acts on a model's decisions (Phases 5 and 6)</td><td>PROV-DM:
+  whoever is responsible for an entity. The schema says <code>sources</code> instead.</td></tr>
+  <tr><td>evidence</td><td>one claim packaged with its provenance (this lesson)</td><td>dev_graph:
+  a list of the kinds of backing a node has, such as <code>code</code> or <code>ADR</code></td></tr>
+</table>
+
+<p>The schema keeps three PROV-DM relations, each as one field.</p>
+
+<table>
+  <tr><th>PROV-DM relation</th><th>Field</th><th>Question answered</th></tr>
+  <tr><td><code>wasAttributedTo</code></td><td><code>sources</code></td><td>who stands behind
+  this claim?</td></tr>
+  <tr><td><code>wasGeneratedBy</code></td><td><code>generatedBy</code></td><td>which activity
+  produced it, and when?</td></tr>
+  <tr><td><code>wasDerivedFrom</code></td><td><code>derivedFrom</code></td><td>which earlier
+  record was it made from?</td></tr>
+</table>
+
+<p>A <dfn>derivation</dfn> is the link from a record to the earlier record it was made from. An
+item is derived from one export row, and the row from a markdown note.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    SRC["sources<br/>code file · ADR"] -->|"wasAttributedTo"| ITEM["evidence item<br/>claim + provenance"]
+    ACT["activity<br/>graph-export, at 18:00"] -->|"wasGeneratedBy"| ITEM
+    ROW["export row<br/>dev-graph-2026-09-09#MOD-001"] -->|"wasDerivedFrom"| ITEM
+    ITEM --> B["bundle<br/>assembledBy · snapshot · assembledAt"]
+</pre>
+<figcaption>Diagram 1. PROV-DM's three relations as three fields, and the bundle that carries
+provenance of its own.</figcaption>
+</figure>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>A claim without provenance cannot be admitted, and provenance answers three questions.</li>
+    <li>Confidence is a label from a closed list with a promotion rule, never a number.</li>
+    <li>An output schema travels and guards the answer, as the input schema guards the arguments.</li>
+    <li>The knowledge graph gets a port, and the export's spellings stop at the adapter.</li>
+    <li>A bundle of items carries provenance of its own.</li>
+  </ul>
+  <p>Reprise: the port (lesson 0006), refinements (lesson 0007), the boundary parse (lesson
+  0005), tools and resources (lesson 0013).</p>
+</div>
+
+<h2>2 · The schema, as declaration and as value</h2>
+
+<p>An <dfn>evidence item</dfn> is one claim from the knowledge graph, packaged with its
+provenance.</p>
+
+<pre><code>// src/evidence.ts, abridged                  // graph://evidence/MOD-001, measured
+export const ProvenanceSchema = z.object({     {
+  sources: z.array(SourceSchema).min(1),         "id": "MOD-001",
+  generatedBy: z.object({                        "claim": "ModelGateway port is implemented (module).",
+    activity: ActivitySchema,                    "provenance": {
+    at: z.iso.datetime(),                          "sources": [
+  }),                                                { "kind": "code", "ref": "07-tool-loop/src/gateway.ts" },
+  derivedFrom: z.array(z.string()).default([]),      { "kind": "adr",  "ref": "ADR provider-neutral port …" }
+  confidence: ConfidenceSchema,                    ],
+}).refine(                                         "generatedBy": { "activity": "graph-export",
+  (p) =&gt; p.confidence !== "confirmed"                              "at": "2026-09-09T18:00:00Z" },
+        || p.sources.length &gt;= 2,                "derivedFrom": ["dev-graph-2026-09-09#MOD-001"],
+  { message: "confirmed needs at least two sources",   "confidence": "confirmed"
+    path: ["confidence"] });                     }
+                                               }
+export const EvidenceItemSchema = z.object({
+  id: z.string().min(1),
+  claim: z.string().min(1),
+  provenance: ProvenanceSchema,
+});</code></pre>
+
+<p>A source is a kind and a reference a person can open. The seven kinds come from dev_graph's
+list of backing kinds. An item needs at least one source.</p>
+
+<p><dfn>Confidence</dfn> is a label from a closed list that says how well a claim is supported.
+It is not a probability. The five labels are dev_graph's, and each has a rule for moving to the
+next.</p>
+
+<table>
+  <tr><th>Label</th><th>What it says</th><th>How a claim gets there</th></tr>
+  <tr><td><code>confirmed</code></td><td>two independent sources agree</td><td>a second source
+  corroborates</td></tr>
+  <tr><td><code>single-source</code></td><td>one source states it directly</td><td>a source
+  document is found</td></tr>
+  <tr><td><code>inferred</code></td><td>it follows from confirmed facts</td><td>a derivation is
+  written down</td></tr>
+  <tr><td><code>speculative</code></td><td>a guess, or a contradiction was found</td><td>any
+  label drops here when sources disagree</td></tr>
+  <tr><td><code>experimental</code></td><td>a hypothesis under test</td><td>an experiment
+  starts</td></tr>
+</table>
+
+<p>The first row is a cross-field rule, so it is a refinement. A <code>confirmed</code> item
+must carry two sources. Measured: an export row marked <code>confirmed</code> with one source
+stops the server at wiring.</p>
+
+<p>A query's answer is a bundle: the items, plus who assembled them, from which snapshot, and
+when. PROV-DM lets a set of provenance descriptions be an entity itself, so provenance can have
+provenance.</p>
+
+<h2>3 · The port, the adapter, and the guard on the way out</h2>
+
+<p>The loop reaches the graph through a port. The path is short: import the adapter, construct
+it over the export, hold it as a <code>KnowledgeGraph</code>, and call <code>search</code>. A
+miss is an empty bundle, never a throw, because "not in the graph" is an answer the loop must
+read.</p>
+
+<pre><code>// src/graph-port.ts                        // src/evidence.ts, the bundle
+export interface KnowledgeGraph {            export const EvidenceBundleSchema = z.object({
+  search(query: string, limit: number):        query: z.string(),
+    Promise&lt;EvidenceBundle&gt;;                   assembledAt: z.iso.datetime(),
+  node(id: string):                            assembledBy: z.object({
+    Promise&lt;EvidenceItem | undefined&gt;;           adapter: z.string().min(1),
+  all(): Promise&lt;EvidenceItem[]&gt;;                snapshot: z.string().min(1),
+}                                              }),
+                                               items: z.array(EvidenceItemSchema),
+                                             });</code></pre>
+
+<p>The adapter reads a JSON file the Python side wrote, a stand-in for dev_graph's own export.
+Bytes from another program are untrusted, so the adapter parses the file against a schema
+written in dev_graph's spellings: <code>canonical_id</code>, <code>source_paths</code>,
+<code>related_decisions</code>. Measured: <code>confidence: "probably"</code> is refused at
+<code>nodes[0].confidence</code>.</p>
+
+<p>The adapter translates each row once. Code paths and decision records become sources.
+The export time becomes the generating activity. The snapshot name and canonical id become the
+derivation. The confidence label crosses untranslated, because Hermes adopts dev_graph's
+scale.</p>
+
+<p>The server registers the tool with one new property.</p>
+
+<table>
+  <tr><th>Piece</th><th>Syntax</th><th>Meaning</th><th>What exists at runtime</th></tr>
+  <tr><td><code>outputSchema: EvidenceBundleSchema</code></td><td>config property</td><td>the
+  answer's shape</td><td>converted to JSON Schema once, served on every list</td></tr>
+  <tr><td><code>structuredContent: bundle</code></td><td>field of the returned value</td>
+  <td>the answer, as data</td><td>parsed against the output schema after the handler
+  returns</td></tr>
+</table>
+
+<p>A signature tells TypeScript what may be called, and the implementation does the runtime
+work. The SDK abstracts chores away from your application code, not away from TypeScript. The
+new chore: the parse on the way out.</p>
+
+<pre><code>// probe.jsonl → the server's answers, measured, abridged
+→ {"id":2,"method":"tools/list"}
+← {"id":2,"result":{"tools":[{"name":"search_evidence","inputSchema":{…},
+     "outputSchema":{"type":"object","properties":{"query":{"type":"string"},
+       "assembledAt":{"type":"string","format":"date-time",…},"assembledBy":{…},
+       "items":{"type":"array","items":{…"provenance":{…"sources":{"minItems":1,
+         "items":{…"kind":{"enum":["code","test","adr","design","wiki","benchmark","external"]}…
+→ {"id":3,"method":"tools/call","params":{"name":"search_evidence","arguments":{"query":"gate"}}}
+← {"id":3,"result":{"content":[{"type":"text","text":"MOD-001 · ModelGateway port … [confirmed]\n…"}],
+     "structuredContent":{"query":"gate","assembledAt":"2026-09-10T00:01:27.859Z",
+       "assembledBy":{"adapter":"JsonExportAdapter","snapshot":"dev-graph-2026-09-09"},
+       "items":[{"id":"MOD-001","claim":"…","provenance":{…}}, …]}}}
+
+// the same call, with a handler that drops assembledBy on purpose
+← {"id":3,"result":{"isError":true,"content":[{"type":"text","text":
+     "Output validation error: Invalid structured content for tool search_evidence:
+      assembledBy: Invalid input: expected object, received undefined"}]}}</code></pre>
+
+<p>The malformed answer never reached the client as data. It came back in-band, the channel a
+bad argument used in lesson 0013, so a model can read the refusal.</p>
+
+<p>One rule does not travel. The <code>tools/list</code> reply carries the seven kinds and
+<code>minItems: 1</code>, and no two-sources rule, because JSON Schema cannot express a
+refinement. The rule guards the server's boundary only. A client that wants it parses with the
+Zod schema itself, in lesson 0015.</p>
+
+<p>"The server now returns evidence" is true at some layers and false at others.</p>
+
+<table>
+  <tr><th>Layer</th><th>Exercise 09</th><th>Exercise 10</th></tr>
+  <tr><td>output schema</td><td>none</td><td>the evidence schema, served in
+  <code>tools/list</code></td></tr>
+  <tr><td>handler reads</td><td><code>graph.ts</code> directly</td><td>the port, wired to one
+  adapter</td></tr>
+  <tr><td>answer</td><td>text lines</td><td>text lines plus <code>structuredContent</code></td></tr>
+  <tr><td>guard on the answer</td><td>none</td><td>a parse after the handler, refusal in-band</td></tr>
+  <tr><td>Python's role</td><td>absent</td><td>author of a file, parsed at load</td></tr>
+</table>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    PY["Python exporter<br/>(planned)"] -.-> F["graph-export.json"]
+    F --> P1["parse: ExportSchema<br/>dev_graph's spellings"]
+    P1 --> AD["JsonExportAdapter<br/>three translations"]
+    AD --> PORT["KnowledgeGraph port<br/>Hermes's words"]
+    PORT --> H["search_evidence handler"]
+    H --> P2["parse: outputSchema"]
+    P2 --> C["client<br/>structuredContent"]
+</pre>
+<figcaption>Diagram 2. Two parses guard one answer: one where the file enters, one where the
+bundle leaves.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>The evidence schema, the port, one adapter over a JSON export</td><td>implemented</td>
+  <td>exercise 10, 18 tests and a piped probe, measured this lesson</td></tr>
+  <tr><td>A fake adapter and recorded evidence fixtures</td><td>planned</td><td>lesson 0015</td></tr>
+  <tr><td>The loop's planning step consuming a bundle</td><td>planned</td><td>lesson 0016,
+  ROADMAP Phase 2</td></tr>
+  <tr><td>A Python exporter behind the adapter</td><td>planned</td><td>MISSION: Python's
+  territory. The file is a hand-written stand-in</td></tr>
+  <tr><td>dev_graph's five confidence labels and promotion table</td><td>accepted</td>
+  <td>dev_graph <code>CLAUDE.md</code>, Confidence Lifecycle</td></tr>
+  <tr><td>dev_graph answers cite ids and carry an evidence class</td><td>accepted</td>
+  <td>dev_graph <code>decisions/ADR - JARVIS GraphRAG Integration.md</code>, decision 3</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>10-graph-evidence/README.md</code>. The arc:</p>
+
+<ol>
+  <li>Run the 18 tests. Read the two that refuse a row, and say which boundary each guards.</li>
+  <li>Pipe <code>probe.jsonl</code> in. Find the output schema in the list reply.</li>
+  <li>Read <code>graph://evidence/MOD-001</code> and answer the three questions from it.</li>
+  <li>Run the three break experiments. Predict each outcome before you run.</li>
+</ol>
+
+<h2>5 · Exercise: which part of provenance is it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each field with the question it answers</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="who stands behind it|which activity produced it|what it was made from|how far to trust it">
+    <div class="cl-item" data-cat="0" data-why="A code path is a source. PROV-DM calls this attribution.">
+      <p><code>{ "kind": "code", "ref": "07-tool-loop/src/gateway.ts" }</code></p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="An activity name and a completion time. That is generation.">
+      <p><code>{ "activity": "graph-export", "at": "2026-09-09T18:00:00Z" }</code></p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="A snapshot name and a row id point at the earlier record. That is derivation.">
+      <p><code>"dev-graph-2026-09-09#MOD-001"</code></p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="A label from the closed list, and not a probability.">
+      <p><code>"single-source"</code></p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="A decision record is a source of kind adr.">
+      <p><code>{ "kind": "adr", "ref": "ADR provider-neutral port" }</code></p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The bundle header says which adapter assembled the items and when. Generation, one level up.">
+      <p><code>"assembledBy": { "adapter": "JsonExportAdapter", … }, "assembledAt": …</code></p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="1" data-why="The SDK parses structuredContent against outputSchema after the handler. A failure is refused in-band, the same channel as a bad argument.">
+    <p class="qz-prompt">Q1. A handler returns a bundle with no <code>assembledBy</code>. What does the
+    client receive?</p>
+    <button class="qz-opt" type="button">The bundle as sent, because output schemas only describe the answer for the list reply</button>
+    <button class="qz-opt" type="button">A result with isError set and a validation message, and no structured content at all</button>
+    <button class="qz-opt" type="button">A JSON-RPC error object with a numeric code, because the server itself is at fault here</button>
+    <button class="qz-opt" type="button">The bundle with assembledBy filled in by the SDK from the server's own name and version</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="JSON Schema has no way to say one field's value depends on another. The refinement runs only where the Zod schema runs.">
+    <p class="qz-prompt">Q2. The two-sources rule is missing from the <code>tools/list</code> reply.
+    Why?</p>
+    <button class="qz-opt" type="button">The server strips refinements from the list reply on purpose so clients cannot see its rules</button>
+    <button class="qz-opt" type="button">The rule lives in the adapter rather than the schema, so the conversion never sees it at all</button>
+    <button class="qz-opt" type="button">A cross-field rule cannot be expressed in JSON Schema, so the conversion leaves it out</button>
+    <button class="qz-opt" type="button">The Inspector hides constraints longer than one line, and the raw probe would show it</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The label comes from dev_graph's closed list with a promotion rule. No arithmetic applies, and the schema refuses a number.">
+    <p class="qz-prompt">Q3. Why is <code>confidence</code> an enum of five labels and not a number
+    between zero and one?</p>
+    <button class="qz-opt" type="button">Each label names a state with a rule for reaching it, and no arithmetic on the labels is meaningful</button>
+    <button class="qz-opt" type="button">Numbers do not survive JSON Schema conversion, so the SDK requires string enums for all output fields</button>
+    <button class="qz-opt" type="button">The Python side stores floats, and the adapter rounds each one to the nearest of five named bands</button>
+    <button class="qz-opt" type="button">A model reads labels more reliably than decimals, so the text channel needs words rather than digits</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="An empty bundle is a valid answer that says not in the graph. An invented item or a failure would hide the miss.">
+    <p class="qz-prompt">Q4. <code>search_evidence</code> with <code>query: "kubernetes"</code> returns
+    an empty bundle and no error. Why is that the right answer?</p>
+    <button class="qz-opt" type="button">The refusal channel is reserved for argument errors, so a miss has nowhere else to go</button>
+    <button class="qz-opt" type="button">The output schema requires at least zero items, and the SDK fills the rest with defaults</button>
+    <button class="qz-opt" type="button">The adapter caches the last successful bundle and returns it stripped of items on a miss</button>
+    <button class="qz-opt" type="button">A miss is an answer the loop must read, and a graph that never invents has to say so</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Name the three questions that provenance answers, and the field that answers each
+  one.</li>
+  <li>Explain why the two-sources rule guards the server but does not reach a client, and what
+  a client must do about it.</li>
+  <li>Describe both parses that stand between the export file and a client, and say what each
+  one refuses.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. Provenance answers who stands
+behind a claim, which activity produced it, and what it was made from. Confidence is a label
+from a closed list with a promotion rule, not a number. The output schema travels and guards
+the answer after the handler runs, but a refinement guards only the boundary. The adapter
+parses the export in dev_graph's words and translates once, so the port speaks only
+Hermes's.</p>
+
+<h2>Primary source</h2>
+
+<p>Read <a href="https://www.w3.org/TR/prov-dm/">W3C PROV-DM</a> section 2, the starting points.
+Then open dev_graph's <code>CLAUDE.md</code> at <em>Confidence Lifecycle</em> and compare its
+table with section 2's.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and frame here was verified against
+  <code>@modelcontextprotocol/server</code> 2.0.0, <code>zod</code> 4.4.3 and
+  <code>vitest</code> 3.2.7, by the 18-test suite and piped-probe runs of exercise 10 on
+  2026-09-10. PROV-DM is the W3C Recommendation of 30 April 2013. The export file is a
+  hand-written stand-in for dev_graph's Python-side export. The <code>confidence</code> labels
+  are quoted from the user's dev_graph and are not part of PROV-DM.</p>
+  <p><strong>Next.</strong> Lesson 0015: test it without an LLM. A scripted MCP client, a fake
+  adapter behind the same port, and recorded evidence fixtures.</p>
+</footer>
+
+</body>
+</html>

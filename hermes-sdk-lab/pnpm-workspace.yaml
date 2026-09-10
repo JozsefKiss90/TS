@@ -1,8 +1,10 @@
-# Every exercise folder (01-raw-http … 08-tested-adapters) is a workspace
+# Every exercise folder (01-raw-http … 10-graph-evidence) is a workspace
 # package: one `pnpm install` at this root serves them all, and the shared
 # toolchain (typescript, tsx) lives once in the root package.json.
+# Two globs, because "0*" stopped matching at the tenth exercise.
 packages:
   - "0*"
+  - "1*"
 # pnpm 10 blocks dependency install scripts by default (supply-chain
 # protection). esbuild (tsx's compiler core) needs its script to place the
 # platform binary, so it is allowed explicitly.

@@ -1070,6 +1070,111 @@ render-verified 3× in headless Edge (2 SVGs each run).
   *1 of 4 shipped*; module graph synced (phase banner, N13/N14 detail, artifact graph EV node,
   S2 row, lesson-map lists).
 
+## Update 2026-09-10 — lesson 0014 shipped: evidence gains provenance; the knowledge graph gets a port
+
+Lesson 0014 (*Evidence With Provenance*) opens lab `10-graph-evidence`. **1,993 words, 0 errors,
+2 warnings** from `tools/lesson-lint.mjs` (the two kept table-header warnings, same class as
+0011–0013); the map note and all four term notes pass 0/0. Four new Technical Names against a
+budget of six: `provenance`, `evidence-item`, `derivation`, `confidence`. Zero em-dashes in
+prose, two diagrams, render-verified 3× in headless Edge (2 SVGs each run, no Mermaid errors).
+
+- **The design decision of the session: PROV-DM's three relations become three fields, and
+  its nouns do not become words.** `wasAttributedTo` → `sources`, `wasGeneratedBy` →
+  `generatedBy`, `wasDerivedFrom` → `derivedFrom`. PROV-DM's *agent* collides with the course's
+  use of the word (Phases 5–6), so the field is `sources` and *agent* appears only in the
+  collision table. PROV-DM's *bundle* is used in ordinary English for the query answer's header
+  (assembledBy · snapshot · assembledAt) and was not registered, to keep the term count at four.
+  Verified against the W3C Recommendation of 30 April 2013 (definitions quoted in the lesson's
+  first table were fetched this session, not recalled).
+- **dev_graph practice adopted verbatim, and labelled as such.** The five confidence labels
+  (`confirmed | single-source | inferred | speculative | experimental`) and the promotion table
+  come from `C:\Code\el_nino\dev_graph\CLAUDE.md`, Confidence Lifecycle. The first promotion
+  step ("single-source → confirmed: a second independent source corroborates") is a Zod
+  refinement, `confirmed needs at least two sources`, path `provenance.confidence`. The seven
+  source kinds map dev_graph's `evidence` enum (`ADR` → `adr`, `layer2` dropped as
+  project-specific, `test` added). The lesson's status table grades both as **accepted**
+  against the dev_graph record and says the labels are not PROV-DM. Content-addressed ids
+  (dev_graph's Runtime Decision Record) were considered and cut for budget; the lab uses the
+  canonical id.
+- **The lab's teaching move is lesson 0006's port/adapter at the evidence boundary, plus a
+  parse on the way out.** `graph-port.ts` (`KnowledgeGraph`: `search` → bundle, `node` → item
+  or undefined; a miss is an empty bundle, never a throw — ADR JARVIS §3's cite-or-abstain).
+  `export-adapter.ts` parses `data/graph-export.json` against `ExportSchema` written in
+  dev_graph's spellings (snake_case, `canonical_id`) and translates once in `toItem`. The
+  export is a hand-written stand-in for dev_graph's `graph.json`; the Python exporter is
+  **planned** and the lesson says so. `server.ts` registers `search_evidence` with
+  `outputSchema: EvidenceBundleSchema` and returns `structuredContent`.
+- **Measured before taught** (`@modelcontextprotocol/server` 2.0.0, zod 4.4.3, vitest 3.2.7):
+  probe answers arrive as ids 1, 2, 5, 6, 3, 4; the `tools/list` reply carries the output
+  schema with the seven kinds, `minItems: 1` and the `date-time` pattern, **and no refinement**
+  (JSON Schema cannot express it — taught as "the rule guards the boundary but does not
+  travel"); a handler that drops `assembledBy` fails **in-band**, `isError: true`, `Output
+  validation error: … expected object, received undefined` — verified in the SDK source
+  (`validateToolOutput` → caught → `createToolError`); an export row marked `confirmed` on one
+  source stops the server at wiring; `sourcePaths` for `source_paths` is refused at
+  `nodes[1].source_paths`; `resources/list` returns eight items named by claim.
+- **Scope decision: a vitest suite in lab 10, unlike 09.** The `/implement` skill asked for
+  TDD at agreed seams, and the schema *is* the seam 0015 and 0016 will test against, so the
+  rules were pinned red-first: 18 tests in two files (schema rules, the export boundary, the
+  translation, the injected clock, the JSON-Schema conversion dropping the refinement). This
+  does not pre-empt 0015: no fake adapter, no recorded fixtures, no scripted client exist yet.
+- **Workspace fix:** `pnpm-workspace.yaml`'s `"0*"` glob stopped matching at the tenth
+  exercise — `pnpm install` reported "already up to date" and left `10-graph-evidence` without
+  `node_modules`. Added `"1*"` with a comment. `pnpm -r typecheck` green across all ten
+  packages; exercise 08's 29 tests re-run green.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged.
+  Budget was hit by cutting, not compressing: the first draft was 2,282 words; the PROV-DM
+  meaning column, two layer-table rows, two status-table rows and the content-addressed-id
+  discussion were removed, per Article VII's subtraction rule.
+- **Recall debt paid:** the user's lesson 0013 say-it answers were in the repo as
+  `learning-records/0016`, all three correct at mechanism level; evaluation appended.
+  **Promoted to `demonstrated` (2):** [[mcp]] and [[resource]]. **Held at `introduced`:**
+  [[transport]] (its two rules not exercised) and [[json-rpc]] (id-matching untouched); lesson
+  0015's scripted client is the next workout for both. Still held from earlier: [[json-lines]],
+  [[default-deny]].
+- Bookkeeping: ROADMAP row 0014 ✅ with the measured win named, 0015 flipped to ▶, Phase 2
+  header *2 of 4 shipped*; module graph synced (phase banner, N14/N15 detail, EV node, S2 row,
+  lesson-map lists). Lab 09's `graph.ts` comment ("provenance arrives in lesson 0014") left as
+  shipped history.
+
+### What the two-axis review caught, and what I did about it
+
+- **Article IV.1, hard:** `vitest 3.2` is not an exact pin. Now `3.2.7` (the lockfile's
+  resolution) in the footer, README, map and here; the README's verified line also names
+  Inspector 2.4.0, which step 3 uses.
+- **Article III.3/III.4, hard:** the `KnowledgeGraph` port and `EvidenceBundleSchema` were
+  paraphrased, never declared. Both now appear as a side-by-side declaration block after the
+  port paragraph, with the object path in prose (import the adapter → construct it over the
+  export → hold it as the port → call `search`). Code blocks are outside the word count, so
+  the budget held: 1,987 words after the fixes.
+- **Article III.1, partial:** the `tools/call` request was a comment and the `tools/list`
+  reply carrying `outputSchema` was described, not shown. The wire block now opens with both
+  frames as measured.
+- **Article III.5, a collision I missed:** lesson 0012's callout already claims "a fifth
+  surface" for the fixture file. The export is the **sixth**; callout, map and the test file's
+  header now say so.
+- **ROADMAP Phase 2 guardrail, partial:** the lesson never said which record provenance belongs
+  to. One sentence in the callout now does: provenance describes what Hermes knows; what it did
+  stays in lesson 0011's trace, a separate file. Paid for by cutting a "here is the schema"
+  sentence (PARA-4 anyway) and three short trims.
+- **Quiz option lengths (NOTES preference):** Q4's correct option was longest by 5 chars, a
+  format clue; Q3 spread 8. Balanced to Q3 97–101, Q4 84–88.
+- **Aliases:** `PROV-DM` on `provenance.md` and `evidence bundle` on `evidence-item.md` made a
+  standard resolve to a concept and a bundle to an item (TERM-3). Both removed; *bundle* stays
+  ordinary English, as decided above.
+- **Lab smells, all fixed:** `server.ts` listed resources via `search("", 20)` (a magic limit
+  that would truncate past 20) — the port gained `all()`; the adapter kept two parallel arrays
+  with a dead `undefined` filter — now one `entries` array of `{row, item}`; `toItem` took the
+  whole export for two fields — now `(row, snapshot, exportedAt)`; the test's "raw" export was
+  produced *after* the parse it meant to bypass — now `readFileSync` + `JSON.parse`. Re-verified:
+  18 tests, `tsc` clean, probe order and numbers unchanged, `resources/list` still 8.
+- **Not changed:** the status table sits at the end of §3, before the exercise, as in 0013
+  (precedent); the kicker's `lab exercise 10-graph-evidence` matches 0013; the `ActivitySchema`
+  one-value enum stays, because a client reads it from the wire and a new activity is a schema
+  change (comment reworded to say that instead of promising more values). The stray trailing
+  space in lab 09's `server.ts` pre-dated this session and was reverted rather than committed.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

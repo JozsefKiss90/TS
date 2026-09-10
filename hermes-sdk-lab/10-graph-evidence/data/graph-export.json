@@ -1,0 +1,103 @@
+{
+  "exported_by": "dev_graph export_graph_json.py (stand-in)",
+  "exported_at": "2026-09-09T18:00:00Z",
+  "snapshot": "dev-graph-2026-09-09",
+  "nodes": [
+    {
+      "canonical_id": "MOD-001",
+      "slug": "gateway",
+      "title": "ModelGateway port",
+      "type": "module",
+      "status": "implemented",
+      "confidence": "confirmed",
+      "source_paths": ["07-tool-loop/src/gateway.ts"],
+      "related_decisions": ["ADR provider-neutral port (NOTES 2026-07-29)"],
+      "updated": "2026-08-15",
+      "depends_on": []
+    },
+    {
+      "canonical_id": "MOD-002",
+      "slug": "anthropic-adapter",
+      "title": "Anthropic adapter",
+      "type": "module",
+      "status": "implemented",
+      "confidence": "confirmed",
+      "source_paths": ["07-tool-loop/src/anthropic-gateway.ts", "08-tested-adapters/tests/adapter.test.ts"],
+      "related_decisions": [],
+      "updated": "2026-09-01",
+      "depends_on": ["MOD-001"]
+    },
+    {
+      "canonical_id": "MOD-003",
+      "slug": "fake-gateway",
+      "title": "FakeModelGateway",
+      "type": "module",
+      "status": "implemented",
+      "confidence": "single-source",
+      "source_paths": ["07-tool-loop/src/fake-gateway.ts"],
+      "related_decisions": [],
+      "updated": "2026-08-15",
+      "depends_on": ["MOD-001"]
+    },
+    {
+      "canonical_id": "SCH-001",
+      "slug": "taskspec",
+      "title": "TaskSpec schema",
+      "type": "contract",
+      "status": "implemented",
+      "confidence": "confirmed",
+      "source_paths": ["07-tool-loop/src/task-spec.ts", "08-tested-adapters/tests/task-spec.test.ts"],
+      "related_decisions": [],
+      "updated": "2026-09-01",
+      "depends_on": []
+    },
+    {
+      "canonical_id": "MOD-004",
+      "slug": "supervisor",
+      "title": "Job supervisor loop",
+      "type": "module",
+      "status": "implemented",
+      "confidence": "confirmed",
+      "source_paths": ["07-tool-loop/src/supervisor.ts", "08-tested-adapters/tests/supervisor.test.ts"],
+      "related_decisions": [],
+      "updated": "2026-09-01",
+      "depends_on": ["MOD-001", "SCH-001"]
+    },
+    {
+      "canonical_id": "MOD-005",
+      "slug": "approval-gate",
+      "title": "Approval gate",
+      "type": "module",
+      "status": "implemented",
+      "confidence": "single-source",
+      "source_paths": ["07-tool-loop/src/supervisor.ts"],
+      "related_decisions": [],
+      "updated": "2026-08-20",
+      "depends_on": ["MOD-004"]
+    },
+    {
+      "canonical_id": "MOD-006",
+      "slug": "trace-log",
+      "title": "JSON Lines trace",
+      "type": "module",
+      "status": "implemented",
+      "confidence": "confirmed",
+      "source_paths": ["07-tool-loop/src/trace.ts", "08-tested-adapters/tests/trace.test.ts"],
+      "related_decisions": [],
+      "updated": "2026-09-01",
+      "depends_on": ["MOD-004"]
+    },
+    {
+      "canonical_id": "SCH-002",
+      "slug": "evidence-schema",
+      "title": "Evidence schema",
+      "type": "contract",
+      "status": "planned",
+      "confidence": "inferred",
+      "source_paths": [],
+      "related_decisions": ["ROADMAP Phase 2 row 0014"],
+      "updated": "2026-09-02",
+      "depends_on": []
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  // Same shared config as every exercise. `tests` is included so the
+  // compiler checks the suite against the same source files the server
+  // runs — exercise 08's rule, carried forward.
+  "extends": "../tsconfig.base.json",
+  "include": ["src", "tests"]
+}
