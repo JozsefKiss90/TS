@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0015 — Test It Without an LLM</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 2 · Lesson 0015 · lab exercise 10-graph-evidence · ~45–60 min</p>
+  <h1>Test It Without an LLM</h1>
+  <p class="lede">Lesson 0014's server answers with provenance. How do you prove that the whole
+  surface works when no model is in the room?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  This lesson builds toward scenario step S2 (evidence assembled) and step S9 (scoring the
+  run). Today a program connects to the evidence server the way Hermes will in lesson 0016. A
+  test suite proves the surface with no model, no key and no pipe. Recorded bundles join the
+  fakes and fixtures of lesson 0012, so Phase 2's exit rule, testable without an LLM, holds
+  before the loop consumes anything.
+</div>
+
+<h2>1 · A client is a program</h2>
+
+<p>Lesson 0013 drove the server two ways: raw frames from a file, and the Inspector. Neither
+is a program, and Hermes will be one. It will start the server, run the handshake, and call
+the tool. An <dfn>MCP client</dfn> is that program: it connects to one server over a
+transport and calls what the server serves.</p>
+
+<p>The SDK ships one as a class. The path is short: import <code>Client</code>, construct it
+with a name, connect it to a transport, and call <code>callTool</code>.</p>
+
+<pre><code>// src/client.ts, abridged                    // measured output of pnpm client
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport }                dev-graph-evidence serving on stdio
+  from "@modelcontextprotocol/client/stdio";   connected to dev-graph-evidence in 864 ms
+                                               tool search_evidence: outputSchema present
+const client = new Client(                     search "gate": 3 item(s) from JsonExportAdapter@dev-graph-2026-09-09
+  { name: "scripted-client", version: "0.1.0" });   MOD-001 [confirmed] 2 source(s)
+const transport = new StdioClientTransport({     MOD-003 [single-source] 1 source(s)
+  command: process.execPath,                     MOD-005 [single-source] 1 source(s)
+  args: ["--import", "tsx", "src/server.ts"],  search "kubernetes": 0 item(s) from JsonExportAdapter@dev-graph-2026-09-09
+});                                            resource MOD-001: application/json, 504 bytes
+await client.connect(transport);               closed; the server process ends with the pipe
+const result = await client.callTool({
+  name: "search_evidence", arguments: { query: "gate" } });
+const bundle = EvidenceBundleSchema.parse(result.structuredContent);</code></pre>
+
+<p>Four things happen inside <code>connect</code> and <code>callTool</code> that lesson 0013's
+probe file did by hand.</p>
+
+<table>
+  <tr><th>Piece</th><th>Syntax</th><th>Meaning</th><th>What exists at runtime</th></tr>
+  <tr><td><code>client.connect(transport)</code></td><td>method, awaited</td><td>open the
+  channel and shake hands</td><td>a child process, then the <code>initialize</code> frame and
+  the <code>initialized</code> notification</td></tr>
+  <tr><td><code>client.callTool({ name, arguments })</code></td><td>method, awaited</td>
+  <td>one <code>tools/call</code> request</td><td>a frame with a fresh id, and a promise that
+  settles when the frame with that id returns</td></tr>
+  <tr><td><code>result.content</code></td><td>property</td><td>the text channel</td><td>the
+  same blocks the probe saw</td></tr>
+  <tr><td><code>result.structuredContent</code></td><td>property, typed
+  <code>unknown</code></td><td>the data channel</td><td>an object the SDK checked against
+  the advertised JSON Schema, and nothing more</td></tr>
+</table>
+
+<p>A signature tells TypeScript what may be called, and the implementation does the runtime
+work. The SDK abstracts chores away from your
+application code, not away from TypeScript. The type of the data channel is
+<code>unknown</code>, because the SDK cannot know your schema. Your parse is what makes it a
+bundle.</p>
+
+<pre><code>// CallToolResult, abridged from the SDK        // one measured value, over the fake, abridged
+interface CallToolResult {                       {
+  content: ContentBlock[];                         "content": [{ "type": "text",
+  structuredContent?: unknown;                       "text": "MOD-001 · ModelGateway port … [single-source]\n…" }],
+  isError?: boolean;                               "structuredContent": { "query": "gate",
+}                                                    "assembledAt": "2026-09-20T09:00:00.000Z",
+                                                     "assembledBy": { "adapter": "FakeKnowledgeGraph",
+                                                                      "snapshot": "fake-snapshot" },
+                                                     "items": [ … ] }
+                                                 }</code></pre>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>A client is a program, and its data channel arrives typed as <code>unknown</code>.</li>
+    <li>An in-memory transport joins a real client and a real server in one process.</li>
+    <li>The server becomes a function of its port, so a fake can stand behind it.</li>
+    <li>Three guards check one answer, and only two of them run the refinement.</li>
+    <li>A recorded bundle is a fixture: parsed on the way in, replayed through a fake.</li>
+  </ul>
+  <p>Reprise: the fake (lesson 0006), fixtures (lesson 0012), the transport and the frames
+  (lesson 0013), the output schema (lesson 0014).</p>
+</div>
+
+<h2>2 · The same server, no pipe</h2>
+
+<p>The stdio test above takes about a second, most of it spent starting Node and
+compiling TypeScript. The SDK offers a second channel for tests the pipe has nothing to do
+with. An
+<dfn>in-memory transport</dfn> is a pair of linked transports that carry frames between a
+client and a server inside one process.</p>
+
+<pre><code>// tests/server-in-memory.test.ts, the setup
+const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+const client = new Client({ name: "test", version: "0.0.0" });
+await buildServer(graph).connect(serverSide);
+await client.connect(clientSide);</code></pre>
+
+<p>The frames are the same JSON-RPC messages. The handshake runs. Ids are matched. What is
+absent is the child process, the pipe, and the rule that stdout belongs to the transport.
+Measured: five tests over this channel take 141 ms together, and one connect takes 68 ms.</p>
+
+<p>That setup needs the server as a value, not as a file that connects itself at load. So
+lesson 0014's <code>server.ts</code> split in two. <code>buildServer(graph)</code> registers the
+tool and the resource over whatever port it is given and returns the server. The wiring file
+keeps two decisions: which adapter, and which transport.</p>
+
+<p>A fake now fits behind the port. <code>FakeKnowledgeGraph</code> answers from a list it was
+handed, stamps the bundle with its own name, and records every query. It does not parse its
+items.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    subgraph TEST["one vitest process, 141 ms for five tests"]
+        FAKE["FakeKnowledgeGraph<br/>items handed in"] -->|"port"| SRV["buildServer(graph)"]
+        SRV <-->|"in-memory transport<br/>same frames, no pipe"| CL["Client"]
+    end
+    subgraph PIPE["child process, 1,130 ms for one test"]
+        AD["JsonExportAdapter"] -->|"port"| SRV2["server.ts wiring"]
+        SRV2 <-->|"stdio transport"| CL2["Client"]
+    end
+</pre>
+<figcaption>Diagram 1. Two ways to put a real client on a real server. The pipe proves spawn
+and stdout discipline, so one test keeps it.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Layer</th><th>Piped frames (0013)</th><th>In-memory client</th><th>Stdio client</th></tr>
+  <tr><td>process</td><td>a child, started by the shell</td><td>none, one process</td><td>a
+  child, started by the SDK</td></tr>
+  <tr><td>handshake and id matching</td><td>by hand, in a file</td><td>the SDK</td><td>the
+  SDK</td></tr>
+  <tr><td>graph behind the port</td><td>the export only</td><td>any, a fake included</td>
+  <td>the export only</td></tr>
+  <tr><td>what it proves</td><td>the wire shape</td><td>the handler and the protocol</td>
+  <td>spawn, stdout discipline, and shutdown</td></tr>
+</table>
+
+<h2>3 · Three guards on one answer</h2>
+
+<p>Lesson 0014 measured a rule that does not travel. The two-sources refinement runs in Zod
+and has no JSON Schema form, so <code>tools/list</code> never carries it. A client exists
+now, so the guards on its side of the wire can be counted.</p>
+
+<table>
+  <tr><th>Guard</th><th>Where it runs</th><th>Checks against</th><th>Runs the refinement?</th></tr>
+  <tr><td>the server's output parse</td><td>after the handler, before the frame leaves</td>
+  <td>the Zod schema</td><td>yes, and refuses in-band</td></tr>
+  <tr><td>the SDK client's check</td><td>inside <code>callTool</code>, after the frame
+  arrives</td><td>the JSON Schema from <code>tools/list</code></td><td>no, because JSON Schema
+  cannot say it</td></tr>
+  <tr><td>your parse</td><td>your code, on <code>structuredContent</code></td><td>the Zod
+  schema, imported</td><td>yes, and narrows <code>unknown</code> to a bundle</td></tr>
+</table>
+
+<p>The first guard is testable now without editing the server. A fake holds an item marked
+<code>confirmed</code> with one source. The item is well typed, so the fake accepts it and
+the handler returns it. The server's parse refuses the whole answer.</p>
+
+<pre><code>// measured, over the fake, in memory
+← { "isError": true, "content": [{ "type": "text", "text":
+      "Output validation error: Invalid structured content for tool search_evidence:
+       items.0.provenance.confidence: confirmed needs at least two sources" }] }</code></pre>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    H["handler returns<br/>a bundle"] --> G1["guard 1: server parse<br/>Zod, refinement runs"]
+    G1 -->|"refused"| E["isError: true<br/>in-band"]
+    G1 -->|"admitted"| W["frame on the transport"]
+    W --> G2["guard 2: SDK client check<br/>JSON Schema, no refinement"]
+    G2 --> U["structuredContent: unknown"]
+    U --> G3["guard 3: your parse<br/>Zod, refinement runs"]
+    G3 --> B["EvidenceBundle"]
+</pre>
+<figcaption>Diagram 2. Three guards between a handler and a typed bundle. The middle one
+cannot see cross-field rules.</figcaption>
+</figure>
+
+<h2>4 · Recorded bundles</h2>
+
+<p>Lesson 0012 recorded whole wire exchanges under the model SDK and replayed them. The same
+move works here, one layer up. The recorder, <code>pnpm record</code>, runs the real adapter
+under a real client over the in-memory transport. It writes each request and its parsed
+bundle to <code>fixtures/</code>. The adapter gets a fixed clock, so only
+<code>recordedAt</code> moves between runs. Re-record, then read the diff.</p>
+
+<pre><code>// fixtures/search-gate.json, abridged           // src/fixtures.ts
+{ "recordedAt": "2026-09-20T00:15:02.729Z",      export const RecordedCallSchema = z.object({
+  "request": { "name": "search_evidence",          recordedAt: z.iso.datetime(),
+               "arguments": { "query": "gate" } },  request: z.object({
+  "result": { "query": "gate",                       name: z.literal("search_evidence"),
+    "assembledAt": "2026-09-10T09:00:00.000Z",       arguments: z.object({ query: …, limit: … }),
+    "assembledBy": { "adapter": "JsonExportAdapter",  }),
+                     "snapshot": "dev-graph-2026-09-09" },  result: EvidenceBundleSchema,
+    "items": [ … 3 items … ] } }                   });</code></pre>
+
+<p>The loader is a parse, and its schema nests the evidence schema. So the refinement runs on
+every fixture at load. Measured: a source kind changed to <code>blog</code> is refused
+at <code>result.items[0].provenance.sources[0].kind</code>, and MOD-003 promoted by hand to
+<code>confirmed</code> is refused with the two-sources message.</p>
+
+<p>A replay builds a fake from the recording's items and serves it, then calls the recorded
+request. The items come back equal to the recording. One field differs, and the test says so:
+<code>assembledBy.adapter</code> now reads <code>FakeKnowledgeGraph</code>, because the fake
+assembled it this time.</p>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or when it arrives</th></tr>
+  <tr><td>A scripted client over stdio, and one test that spawns</td><td>implemented</td>
+  <td><code>src/client.ts</code>, <code>tests/client-stdio.test.ts</code>, measured this
+  lesson</td></tr>
+  <tr><td>The server as a function of its port, with a fake behind it</td><td>implemented</td>
+  <td><code>build-server.ts</code>, <code>fake-graph.ts</code>, five in-memory tests</td></tr>
+  <tr><td>Recorded bundles, parsed on read, replayed through the tool</td><td>implemented</td>
+  <td><code>pnpm record</code>, three fixtures, five tests</td></tr>
+  <tr><td>The loop's planning step consuming a bundle</td><td>planned</td><td>lesson 0016,
+  ROADMAP Phase 2</td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>10-graph-evidence/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm client</code>. Match each printed line to a method call in
+  <code>src/client.ts</code>.</li>
+  <li>Run the 32 tests. Read the timing column and say what the slow test proves that the
+  fast ones cannot.</li>
+  <li>Run the three break experiments. Predict each outcome before you run.</li>
+</ol>
+
+<h2>6 · Exercise: which guard catches it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each fault with the guard that refuses it first</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the server's output parse|the SDK client's check|your own parse|no guard, by design">
+    <div class="cl-item" data-cat="0" data-why="The item is well typed, so the fake returns it. The server's Zod parse runs the refinement and refuses in-band.">
+      <p>A fake hands the server an item marked <code>confirmed</code> with one source.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="This server never sends it, but a server you did not write might. The SDK checks the frame against the advertised JSON Schema.">
+      <p>A third-party server returns <code>structuredContent</code> with no <code>items</code> field.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="Only the third guard reads a fixture. The nested evidence schema runs the refinement at load.">
+      <p>A fixture on disk has MOD-003 edited to <code>confirmed</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="The adapter name is provenance of the bundle, and the fake is who assembled it. The replay test expects the change.">
+      <p>A replayed bundle says <code>FakeKnowledgeGraph</code> where the recording said <code>JsonExportAdapter</code>.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="The SDK checks the frame against the JSON Schema it fetched from tools/list, which has no refinement. The property stays unknown because the SDK does not know your Zod schema.">
+    <p class="qz-prompt">Q1. The client's <code>result.structuredContent</code> is typed
+    <code>unknown</code>. What did the SDK already check before returning it?</p>
+    <button class="qz-opt" type="button">Nothing at all, because output checking is the server's job and a client only forwards bytes</button>
+    <button class="qz-opt" type="button">The full Zod schema, refinement included, because the server sent the schema in the handshake</button>
+    <button class="qz-opt" type="button">The JSON Schema advertised in tools/list, which carries the shape and not the cross-field rule</button>
+    <button class="qz-opt" type="button">Only that the value is a JSON object, since the wire shape in this protocol era forbids arrays</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="Spawn, stdout discipline and shutdown exist only when there is a process and a pipe. The in-memory channel has neither, so it cannot prove them.">
+    <p class="qz-prompt">Q2. One test spawns the server and takes over a second. Why keep it
+    when the in-memory suite covers the same tool?</p>
+    <button class="qz-opt" type="button">It proves the wiring starts, stdout carries only frames, and a closed pipe stops the process</button>
+    <button class="qz-opt" type="button">It exercises the JSON export, which the in-memory tests cannot reach through the fake port</button>
+    <button class="qz-opt" type="button">The in-memory transport skips the handshake, so only the stdio test proves that initialize works</button>
+    <button class="qz-opt" type="button">Vitest requires at least one test per transport type before it reports the suite as green</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The fake takes typed items and does not parse. The handler returns the bundle, and the server's output parse is the first guard that runs the refinement.">
+    <p class="qz-prompt">Q3. A test hands the fake an item marked <code>confirmed</code> with one
+    source. Which guard refuses it, and on which channel?</p>
+    <button class="qz-opt" type="button">The fake's constructor, which parses every item against the evidence schema before it is served</button>
+    <button class="qz-opt" type="button">The SDK client's check, which fails the frame as a protocol error with a numeric code attached</button>
+    <button class="qz-opt" type="button">TypeScript, because the item's confidence field does not match the count of its sources array</button>
+    <button class="qz-opt" type="button">The server's output parse, which refuses the whole answer in-band with isError and a message</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="The adapter is constructed with a fixed clock, so assembledAt is stable. Only recordedAt, written by the recorder, takes the current time.">
+    <p class="qz-prompt">Q4. You re-record the fixtures with nothing changed. What does
+    <code>git diff fixtures/</code> show?</p>
+    <button class="qz-opt" type="button">Every assembledAt and every recordedAt, because both are stamped from the real clock at record time</button>
+    <button class="qz-opt" type="button">Only recordedAt in each file, because the adapter ran under a fixed clock and the graph did not change</button>
+    <button class="qz-opt" type="button">Nothing at all, because the recorder compares against the existing file and skips an identical bundle</button>
+    <button class="qz-opt" type="button">The item order, because the in-memory transport answers out of order and the recorder keeps arrival order</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Name the three guards on one answer, say where each runs, and say which ones run the
+  refinement.</li>
+  <li>Explain what the in-memory transport keeps from stdio and what it drops, and what one
+  stdio test still proves.</li>
+  <li>Describe how a recorded bundle becomes a replay, and name the one field the replay is
+  expected to change.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A client is a program that
+connects over a transport, and its data channel arrives as <code>unknown</code> until your parse
+makes it a bundle. An in-memory transport carries the same frames inside one process, so a
+suite needs no pipe. The server is a function of its port, so a fake can stand behind it. A
+recorded bundle is parsed on the way in and replayed through the real tool.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the SDK's <a href="https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/testing.md">testing guide</a>,
+the section on <code>InMemoryTransport.createLinkedPair</code>. Then read the comment above
+<code>callTool</code> in the installed client's <code>index.d.mts</code>.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>@modelcontextprotocol/client</code> 2.0.0, <code>@modelcontextprotocol/server</code>
+  2.0.0, <code>zod</code> 4.4.3 and <code>vitest</code> 3.2.7 on Node 22.14.0. The evidence is
+  the 32-test suite plus <code>pnpm client</code> and <code>pnpm record</code> runs of exercise
+  10 on 2026-09-20. Timings are from one machine and one run each. The client-side check was
+  read in the SDK's compiled source, <code>callTool</code>, and not only in its
+  documentation.</p>
+  <p><strong>Next.</strong> Lesson 0016: evidence enters the loop. The Phase 1 planning step
+  calls this client and reads a bundle.</p>
+</footer>
+
+</body>
+</html>

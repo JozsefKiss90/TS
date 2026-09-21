@@ -1175,6 +1175,72 @@ prose, two diagrams, render-verified 3× in headless Edge (2 SVGs each run, no M
   change (comment reworded to say that instead of promising more values). The stray trailing
   space in lab 09's `server.ts` pre-dated this session and was reverted rather than committed.
 
+## Update 2026-09-20 — lesson 0015 shipped: the surface is proven with no LLM; Phase 2 is 3 of 4
+
+Lesson 0015 (*Test It Without an LLM*) continues lab `10-graph-evidence`. **2,000 words, 0 errors,
+0 warnings** from `tools/lesson-lint.mjs`; the map note and both term notes pass (one SENT-6
+warning on `in-memory-transport.md`, a false positive on "server inside one process"). Two new
+Technical Names against a budget of six: `mcp-client`, `in-memory-transport`. Zero em-dashes in
+prose, two diagrams, render-verified 3× in headless Edge (2 SVGs each run, no Mermaid errors).
+
+- **The design decision of the session: three guards on one answer, counted from the client's
+  side.** Lesson 0014 measured that the two-sources refinement does not travel in `tools/list`.
+  With a client in hand, the guards are: (1) the server's Zod output parse, refinement runs,
+  refuses in-band; (2) the SDK client's own check of `structuredContent` against the advertised
+  JSON Schema inside `callTool`, **no refinement** — verified in the compiled source of
+  `@modelcontextprotocol/client` 2.0.0 (`_compileOutputValidator` → AJV → `ProtocolError`
+  "Structured content does not match the tool's output schema"), not only in the docs; (3) the
+  client's own `EvidenceBundleSchema.parse`, refinement runs again, and the only one that yields
+  a typed value, because `structuredContent` is declared `unknown` on the client. Guard 2 never
+  fires against our server (guard 1 is stricter and earlier) and the lesson says so.
+- **Lab refactor, deliberate and bounded:** `server.ts` split into `build-server.ts`
+  (`buildServer(graph): McpServer`, registration only) and the wiring (adapter + stdio). This is
+  the seam the whole lesson depends on — without it a test could not put a fake behind the port
+  or an in-memory transport under the server. Behaviour unchanged: the 0014 probe still draws
+  ids 1, 2, 5, 6, 3, 4; the 18 tests from 0014 are untouched and green.
+- **The fake at the evidence port:** `FakeKnowledgeGraph(items, snapshot?, clock?)` — typed
+  items in, no parse, records `queries`, matches on id and claim (no slug/title outside the
+  export row). Its refusal to parse is the teaching point: lesson 0014's break experiment 1 is
+  now a test — a well-typed `confirmed`-on-one-source item is served by the fake and refused
+  by the server's output parse, measured text `Output validation error: Invalid structured
+  content for tool search_evidence: items.0.provenance.confidence: confirmed needs at least two
+  sources`.
+- **Measured before taught** (`@modelcontextprotocol/client` 2.0.0 added to lab 10, exact pin;
+  server 2.0.0, zod 4.4.3, vitest pinned from `^3.2.0` to `3.2.7`, Node 22.14.0): 32 tests in
+  six files; in-memory suite 5 tests / 141 ms, 68 ms per connect, 7 ms per call; the one stdio
+  test 1,130 ms; `pnpm client` connects in 864 ms and prints 3 items for `gate`, 0 for
+  `kubernetes`, 504 bytes for `graph://evidence/MOD-001`. The stdio test spawns
+  `process.execPath --import tsx src/server.ts` with `cwd` from `import.meta.url`, which works
+  on Windows without `npx`; `transport.pid` is null after `close()`.
+- **Recorded bundles:** `pnpm record` runs the real adapter (fixed clock) under a real client
+  over `InMemoryTransport.createLinkedPair()` and writes three fixtures (`gate` → 3 items,
+  `kubernetes` → 0, a recorded miss, `trace` with `limit: 1` → 1). `RecordedCallSchema` nests
+  `EvidenceBundleSchema`, so the refinement runs at load: a `blog` source kind is refused at
+  `result.items[0].provenance.sources[0].kind`, and MOD-003 hand-promoted to `confirmed` is
+  refused with the two-sources message. Replay = fake built from the recording's items,
+  snapshot and `assembledAt`; items equal, `assembledBy.adapter` differs and the test asserts
+  the difference rather than hiding it.
+- **Not registered, on purpose:** "scripted client" (alias on `mcp-client`), "recorded bundle"
+  (ordinary English over the existing `fixture`), "guard" (ordinary English). Term count held
+  at two.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2,
+  PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged.
+  Budget was hit by cutting, not compressing: first draft 2,216 words; removed the
+  "second guard never fires" paragraph's duplicate, the measured-cost table row, two status
+  rows, two classification items, one exercise step, and one "read this row twice" sentence
+  (PARA-4). Quiz option spreads after balancing: Q1 7→2, Q2 7, Q3 3, Q4 6, correct option never
+  the longest.
+- **Recall debt paid:** the user's lesson 0014 say-it answers were in the repo as
+  `learning-records/0017`, evaluated this session and appended. **Promoted to `demonstrated`
+  (3):** [[provenance]], [[confidence]], [[derivation]]. **Held at `introduced`:**
+  [[evidence-item]] (the lesson's meaning, one claim packaged with its provenance, was not
+  stated), [[transport]] and [[json-rpc]] (0015's say-it question 2 is their next workout).
+- Bookkeeping: ROADMAP row 0015 ✅ with the measured win named, 0016 flipped to ▶ and made
+  firm (it closes the phase), Phase 2 header *3 of 4 shipped*; module graph synced (phase
+  banner, N15/N16, EV node, S2 row, lesson-map lists); lab README rewritten for both lessons.
+  Lab 10's uncommitted `evidence.ts` whitespace change (one trailing space in a comment)
+  pre-dated this session and is left as found.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

@@ -1,0 +1,18 @@
+{
+  "recordedAt": "2026-09-20T00:15:02.734Z",
+  "request": {
+    "name": "search_evidence",
+    "arguments": {
+      "query": "kubernetes"
+    }
+  },
+  "result": {
+    "query": "kubernetes",
+    "assembledAt": "2026-09-10T09:00:00.000Z",
+    "assembledBy": {
+      "adapter": "JsonExportAdapter",
+      "snapshot": "dev-graph-2026-09-09"
+    },
+    "items": []
+  }
+}

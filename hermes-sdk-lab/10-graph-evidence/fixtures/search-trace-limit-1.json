@@ -1,0 +1,44 @@
+{
+  "recordedAt": "2026-09-20T00:15:02.735Z",
+  "request": {
+    "name": "search_evidence",
+    "arguments": {
+      "query": "trace",
+      "limit": 1
+    }
+  },
+  "result": {
+    "query": "trace",
+    "assembledAt": "2026-09-10T09:00:00.000Z",
+    "assembledBy": {
+      "adapter": "JsonExportAdapter",
+      "snapshot": "dev-graph-2026-09-09"
+    },
+    "items": [
+      {
+        "id": "MOD-006",
+        "claim": "JSON Lines trace is implemented (module).",
+        "provenance": {
+          "sources": [
+            {
+              "kind": "code",
+              "ref": "07-tool-loop/src/trace.ts"
+            },
+            {
+              "kind": "code",
+              "ref": "08-tested-adapters/tests/trace.test.ts"
+            }
+          ],
+          "generatedBy": {
+            "activity": "graph-export",
+            "at": "2026-09-09T18:00:00Z"
+          },
+          "derivedFrom": [
+            "dev-graph-2026-09-09#MOD-006"
+          ],
+          "confidence": "confirmed"
+        }
+      }
+    ]
+  }
+}

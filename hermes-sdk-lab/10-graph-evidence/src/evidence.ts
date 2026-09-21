@@ -6,7 +6,7 @@
  * describes provenance with three nouns and a handful of relations. This
  * file keeps three of the relations and renames the nouns into Hermes's
  * vocabulary:
- *
+ * 
  *   PROV-DM            here              the question it answers
  *   ─────────────────  ────────────────  ─────────────────────────────────
  *   wasAttributedTo    sources           who is responsible for the claim?

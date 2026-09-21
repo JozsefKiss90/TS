@@ -1,0 +1,83 @@
+{
+  "recordedAt": "2026-09-20T00:15:02.729Z",
+  "request": {
+    "name": "search_evidence",
+    "arguments": {
+      "query": "gate"
+    }
+  },
+  "result": {
+    "query": "gate",
+    "assembledAt": "2026-09-10T09:00:00.000Z",
+    "assembledBy": {
+      "adapter": "JsonExportAdapter",
+      "snapshot": "dev-graph-2026-09-09"
+    },
+    "items": [
+      {
+        "id": "MOD-001",
+        "claim": "ModelGateway port is implemented (module).",
+        "provenance": {
+          "sources": [
+            {
+              "kind": "code",
+              "ref": "07-tool-loop/src/gateway.ts"
+            },
+            {
+              "kind": "adr",
+              "ref": "ADR provider-neutral port (NOTES 2026-07-29)"
+            }
+          ],
+          "generatedBy": {
+            "activity": "graph-export",
+            "at": "2026-09-09T18:00:00Z"
+          },
+          "derivedFrom": [
+            "dev-graph-2026-09-09#MOD-001"
+          ],
+          "confidence": "confirmed"
+        }
+      },
+      {
+        "id": "MOD-003",
+        "claim": "FakeModelGateway is implemented (module).",
+        "provenance": {
+          "sources": [
+            {
+              "kind": "code",
+              "ref": "07-tool-loop/src/fake-gateway.ts"
+            }
+          ],
+          "generatedBy": {
+            "activity": "graph-export",
+            "at": "2026-09-09T18:00:00Z"
+          },
+          "derivedFrom": [
+            "dev-graph-2026-09-09#MOD-003"
+          ],
+          "confidence": "single-source"
+        }
+      },
+      {
+        "id": "MOD-005",
+        "claim": "Approval gate is implemented (module).",
+        "provenance": {
+          "sources": [
+            {
+              "kind": "code",
+              "ref": "07-tool-loop/src/supervisor.ts"
+            }
+          ],
+          "generatedBy": {
+            "activity": "graph-export",
+            "at": "2026-09-09T18:00:00Z"
+          },
+          "derivedFrom": [
+            "dev-graph-2026-09-09#MOD-005"
+          ],
+          "confidence": "single-source"
+        }
+      }
+    ]
+  }
+}
