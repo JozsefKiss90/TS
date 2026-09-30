@@ -139,5 +139,5 @@ Predict each outcome before you run.
 
 ## What this exercise does not do
 
-No model, no API key, no network, no Python process. The loop does not consume a
-bundle until lesson 0016.
+No model, no API key, no network, no Python process. The loop consumes a bundle in
+exercise 11, which imports this one.

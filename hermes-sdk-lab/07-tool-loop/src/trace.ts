@@ -99,10 +99,37 @@ const ToolResult = z.object({
   output: z.string(),
 });
 
+/**
+ * Which evidence a job was dispatched with (lesson 0016). A REFERENCE, not
+ * a copy: the queries, the snapshot they were answered from, the canonical
+ * ids, and how many characters the pack added to the first turn.
+ *
+ * The claims themselves are not here. They live in the knowledge graph, and
+ * these ids plus this snapshot are enough to read them back. The trace
+ * records what the job did; the graph records what Hermes knows.
+ */
+const EvidenceUsed = z.object({
+  kind: z.literal("evidence_used"),
+  at,
+  queries: z.array(z.string().min(1)).min(1),
+  snapshot: z.string().min(1),
+  assembledAt: z.iso.datetime(),
+  ids: z.array(z.string().min(1)),
+  chars: z.number().int().nonnegative(),
+});
+
 const JobEnded = z.object({
   kind: z.literal("job_ended"),
   at,
-  outcome: z.enum(["landed", "retry_later", "gave_up", "over_budget", "out_of_time"]),
+  outcome: z.enum([
+    "landed",
+    "retry_later",
+    "gave_up",
+    "over_budget",
+    "out_of_time",
+    // Lesson 0016: the spec named evidence and no admitted pack arrived.
+    "no_evidence",
+  ]),
   modelCalls: z.number().int().nonnegative(),
   tokensSpent: z.number().int().nonnegative(),
   notes: z.array(z.string()),
@@ -117,6 +144,7 @@ const JobEnded = z.object({
  */
 export const TraceEventSchema = z.discriminatedUnion("kind", [
   JobStarted,
+  EvidenceUsed,
   CallStarted,
   Reply,
   Gate,

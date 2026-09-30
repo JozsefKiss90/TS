@@ -1241,6 +1241,151 @@ prose, two diagrams, render-verified 3× in headless Edge (2 SVGs each run, no M
   Lab 10's uncommitted `evidence.ts` whitespace change (one trailing space in a comment)
   pre-dated this session and is left as found.
 
+## Update 2026-09-30 — lesson 0016 shipped: evidence enters the loop; Phase 2 complete
+
+Lesson 0016 (*Evidence Enters the Loop*) opens lab `11-evidence-in-the-loop` and closes Phase 2.
+**1,999 words, 0 errors, 0 warnings** from `tools/lesson-lint.mjs`; the map note and the one new
+term note also pass 0/0. **One new Technical Name** against a budget of six: `evidence-port` (registered as `evidence-source` and renamed on review, see below).
+Zero em-dashes in prose, two diagrams, render-verified 3× in headless Edge (2 SVGs each run, no
+"Syntax error" text; the `error-icon` matches in the DOM are mermaid's own injected CSS classes,
+not failures).
+
+- **The design decision of the session: the supervisor is handed text and a reference, never the
+  evidence schema.** `runTask`'s new option is `pack?: AdmittedPack` = `{ text, queries,
+  snapshot, assembledAt, ids }`. The pack schema, the port and the assembler live in lab 11
+  (`src/context-pack.ts`), which imports lab 07 and lab 10; neither imports lab 11. The
+  alternative — putting `ContextPackSchema` in `07-tool-loop/src` — would have made lab 07 import
+  lab 10's `evidence.ts`, i.e. an earlier lab depending on a later one. The split also earns a
+  real teaching line: the supervisor cannot query anything and never learns what a source kind or
+  a confidence label is.
+- **S2 is a parse with four rules, and the fourth was inherited rather than written.**
+  `items.min(1)` is "no pack, no dispatch"; `assembledFrom.min(1)`; one snapshot per pack
+  (refinement); each id once (refinement). The fourth is lesson 0014's `confirmed needs at least
+  two sources`, which runs because `ContextPackSchema` nests `EvidenceItemSchema`. Both new
+  refinements were proved load-bearing by relaxing them and watching exactly two tests go red,
+  then restoring.
+- **Where the pack enters, decided against two alternatives.** Not a tool result (evidence is
+  input to planning, not an answer to a model request) and not a system prompt (the port carries
+  no such field, and the wire body measured shows one `user` message). It renders in front of the
+  operator's instruction in the first turn. Measured body: 1,005 bytes, `messages[0].role ==
+  "user"`.
+- **Measured before taught** (`@modelcontextprotocol/client` 2.0.0, server 2.0.0,
+  `@anthropic-ai/sdk` 0.113.0, zod 4.4.3, vitest 3.2.7, Node 22.14.0): two queries return one
+  item each from snapshot `dev-graph-2026-09-09`; the pack renders to 509 characters; the grounded
+  job spends 494 tokens against the bare job's 236; input tokens per call are 162 then 248 against
+  33 then 119. **Both differences are 129**, which is the finding — the pack is charged on every
+  call, because the whole transcript is resent. A spec that names queries with no pack ends at
+  `no_evidence` with 0 model calls and the fake recorded 0 calls. Each rule's refusal text and
+  path were captured from `pnpm job d`.
+- **Honest limit on the token number, disclosed in the lesson and the README:** the mock estimates
+  `input_tokens` as `ceil(JSON.stringify(messages).length / 4)`, so 129 is the mock's arithmetic.
+  The per-call repetition is the part that does not depend on the estimator.
+- **Changes to lab 07 are additive, and exercise 08's 29 tests are the proof.** `task-spec.ts`
+  gained `evidenceQueries` and `evidenceLimit`, both `.default([])`/`.default(5)`;
+  `supervisor.ts` gained the option, the `AdmittedPack` type and the `no_evidence` outcome;
+  `trace.ts` gained the `evidence_used` event and one enum value; `trace-story.ts` gained its
+  case, which TypeScript demanded as soon as the union grew. With nothing wired, every earlier
+  part runs unchanged.
+- **The knowledge/trace separation is now an assertion, not a promise.** `evidence_used` carries
+  queries, snapshot, ids and a character count. One test serializes the events and asserts that
+  `MOD-004` is present and `Job supervisor loop is implemented` is absent. To read the claims back
+  you take the ids and the snapshot to the graph.
+- **TDD at the agreed seam.** `tests/context-pack.test.ts` was written before
+  `src/context-pack.ts`. The red run was not captured before the implementation landed, so the red
+  state was proved afterwards by relaxing the two new refinements (2 of 11 tests failed) and
+  restoring. Recorded here rather than claimed as a clean red-green cycle.
+- **Not registered, on purpose:** "pack" (ordinary English, and [[context-pack]] already carries
+  the Technical Name), "grounded" and "bare" (ordinary English, used of the two runs), "assembler"
+  (ordinary English for the function). Term count held at one.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2, PARA-4,
+  PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Budget was hit
+  by cutting: the first draft was 2,054 words, and the cuts were four over-long sentences split, a
+  "six layers see the change" line, one status-table row's wording, the "Gathering is not
+  admitting" flourish (also a SENT-5 warning), and "That last parse is not optional" (implied by
+  the sentence after it). Nothing was compressed into denser prose.
+- **Recall debt paid:** the user's lesson 0015 say-it answers were in the repo as
+  `learning-records/0018`, evaluated this session and appended. Answers 2 and 3 are correct at
+  mechanism level. Answer 1 misplaces two of the three guards: it adds the tool *input* guard,
+  which guards the request and was not one of the three, and it merges the server's output parse
+  with the client's schema check while concluding refinements are not to be relied on. The
+  server's output parse *is* Zod and does run the refinement; only the middle guard is blind to
+  it. **Promoted to `demonstrated` (2):** [[mcp-client]] and [[in-memory-transport]]. **Held at
+  `introduced`:** [[transport]] (its two rules still unstated), [[json-rpc]] (id matching
+  untouched), [[evidence-item]] (its meaning still not said back). Still held from earlier:
+  [[json-lines]], [[default-deny]] — lesson 0016's classification exercise is the next workout for
+  the second.
+- **Ops notes:** `pnpm -r typecheck` green across all eleven packages. Lab 11 holds 21 tests in
+  three files; lab 10's 32 and lab 08's 29 were re-run green this session, 82 in total. Lab 10's
+  three uncommitted fixture files and lab 10's `evidence.ts` whitespace change pre-dated this
+  session; the fixtures were left as found. Learning records are outside Article VIII's scope, so
+  `0018` is not linted to the profile.
+- Bookkeeping: ROADMAP row 0016 ✅ with the measured win named, Phase 2 header *complete, 4 of 4
+  shipped*, Phase 2 exit criteria marked met, Phase 3 header *next up*; module graph synced (phase
+  graph, N16 detail, the artifact graph's new Context Pack node, the S2 row, lesson-map lists).
+
+### What the two-axis review caught, and what I did about it
+
+- **Spec axis, the real defect: `evidenceQueries` was a demand and not an authority.** The
+  supervisor gated only "the spec named queries and no pack arrived". It never compared the pack
+  against the spec, so a pack assembled for other questions, or a pack handed to a spec that asked
+  for none, was rendered into turn 1 and logged as evidence the job used. `packFault(spec, pack)`
+  now answers one comparison for three faults: nothing arrived, the wrong questions were answered,
+  or the spec asked for none. A pack that fails it is never rendered and never recorded, because
+  the check runs before the transcript is built. **The new rule immediately failed one of my own
+  tests**, which had assembled a two-query pack for a one-query spec. Fixed, plus two tests for the
+  rule: 19 tests became 21. Part c now prints all three refusals, 0 model calls across them. The
+  order-sensitivity is deliberate and recorded as untested in the map note, with break experiment 4
+  aimed at it.
+- **Spec axis: the mission callout had the direction backwards.** It read "What the job was shown
+  goes to the knowledge graph", which describes a merge, against the guardrail it was meant to
+  state. Now: the claims stay in the graph, and the trace keeps only the ids of the ones a job
+  used.
+- **Spec axis, partial: the status table cited the record's nine checks without its grade.** Row 4
+  of `hermes-job-control-plane.md` grades Context-Pack Assembly **scaffolded**, which is the
+  closest analogue to what the lab built. The status row now says "accepted in the record,
+  scaffolded as a component" and cites row 4.
+- **Standards axis, TERM-3: the course was overloading "source" three ways** — the port
+  (`EvidenceSource`), `provenance.sources` from lesson 0014, and `PackSourceSchema`. The profile's
+  answer to a self-inflicted overload is to rename, not to add a collision table, so: `EvidencePort`
+  (which also matches `ApprovalPort` and `TracePort` in the same loop), `McpEvidenceAdapter` (after
+  `JsonExportAdapter`), and `PackQuerySchema`. *Source* now means one thing in the course: who
+  stands behind a claim. The term note moved to `wiki/terms/evidence-port.md`.
+- **Standards axis, TERM-3 again: `wiki/terms/context-pack.md` still carried the 0006b meaning
+  only** (8-step protocol, 9 checks), while the lesson defined a four-rule pack. One Technical Name,
+  two meanings. The note now states one meaning at two scopes, with the record's scope and the
+  lesson's scope as sections. Editing it put the file under Article VIII, and it failed the linter
+  on inherited 0006b-era prose (4 em-dashes, a 48-word sentence, an ungloss S2). I repaired the
+  mechanics without changing a single claim, rather than ship a file I had touched that fails the
+  gate. Not a content retro-edit, and recorded here as the bounded decision it is.
+- **Standards axis, Article III.4: `AdmittedPack` was named but never shown.** It is the session's
+  central design decision and §4 asked the learner to name its fields. It now appears as a
+  declaration beside its measured value. Code blocks sit outside the word count, so this cost
+  nothing.
+- **Standards axis, TERM-6: two metaphors.** "the pack rides in the first turn" → "goes into";
+  "the graph still owns what it said" → "the graph keeps the claims".
+- **Standards axis, smells, all fixed:** `main.ts` read the trace back by matching
+  `'"kind":"reply"'` against raw lines, which is the skipped parse this course spends its length
+  refusing — now `parseTrace`. `renderPack` and `packForDispatch` each carried their own
+  unreachable fallback for `assembledFrom[0]`; one `packHeader` helper now holds it, with a comment
+  saying why the compiler still needs it. Part d's hand-built candidates stay hand-built, because
+  a typed builder cannot express three of the four faults, and a comment now says so.
+- **Standards axis, judged and acted on:** SENT-2 in the mission callout (three statements in one
+  sentence, split); SENT-3 passives ("the pack is charged again each time" → "every call pays for
+  the pack again", "whether the job may be dispatched" → "whether the supervisor may dispatch the
+  job"); PARA-5 (the token table stated four numbers and the finding sat in the paragraph below —
+  the table gained a "the pack's own cost" row reading "129 then 129, so once per call", and the
+  paragraph lost the restatement). SENT-8, found by hand rather than by the linter, which treats
+  semicolons as a warning: one semicolon joined two independent clauses in the callout.
+- **Declined, with reasons:** `@anthropic-ai/sdk` stays `^0.113.0` in lab 11's `package.json`,
+  matching labs 07 and 08, with the exact version pinned in the README and the footer where
+  Article IV.1 asks for it. Making lab 11 the one lab that pins it differently would be a
+  workspace inconsistency for no gain.
+- **Budget held through all of it:** 1,999 words. The fifth rule's paragraph and the `AdmittedPack`
+  prose were paid for by cuts, not by compression: the S1/S2 parallel left the callout (it is
+  already made in §2), "That placement has a price", "Five layers of the loop change", the
+  restatement under the token table, and eight short trims. The lesson ends 0 errors, 0 warnings,
+  diagrams re-verified 3× after the edits.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

@@ -18,8 +18,8 @@ Graph form of [ROADMAP.md](../../ROADMAP.md): the phases, their gates, and the l
 flowchart TD
     P0["Phase 0 · See the wire<br/>TS/SDK literacy · complete ✅"]
     P1["Phase 1 · Own the loop<br/>manual bounded loop · complete ✅ (0006 to 0012)"]
-    P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP · open ▶ (0013–0015 ✅ · 0016 next)"]
-    P3["Phase 3 · Encode the policy<br/>the workflow graph"]
+    P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP · complete ✅ (0013 to 0016)"]
+    P3["Phase 3 · Encode the policy<br/>the workflow graph · next ▶"]
     P4["Phase 4 · Prove it<br/>reliability & evaluation"]
     P5["Phase 5 · Meet the harness<br/>Claude Agent SDK"]
     P6["Phase 6 · Scale the agents<br/>multi-agent"]
@@ -72,21 +72,21 @@ Supplements: 0006a has no map note, so see [[course-architecture]]. [[lesson-000
 
 ## Phase 2, module detail
 
-Opened 2026-09-02. Id 0016 is firm and closes the phase.
+Opened 2026-09-02, complete 2026-09-30.
 
 ```mermaid
 flowchart TD
     N13["0013 MCP Anatomy ✅<br/>lab 09-mcp-server · tool, resource, transport<br/>schema travels via tools/list, measured raw and by Inspector"]
     N14["0014 Evidence With Provenance ✅<br/>lab 10-graph-evidence · Zod evidence schema from PROV-DM<br/>KnowledgeGraph port, JSON-export adapter, outputSchema guard"]
     N15["0015 Test It Without an LLM ✅<br/>lab 10-graph-evidence continues · scripted client, fake behind the port<br/>in-memory transport, recorded bundles, 32 tests, no LLM"]
-    N16["0016 Evidence Enters the Loop ▶<br/>lab 11-evidence-in-the-loop · S2 goes live<br/>the Phase 1 loop queries the MCP surface through the 0015 client"]
+    N16["0016 Evidence Enters the Loop ✅<br/>lab 11-evidence-in-the-loop · S2 goes live<br/>EvidencePort, Context Pack admitted by a parse<br/>pack in the first turn, reference in the trace, 21 tests"]
     N13 -->|"the tool surface exists"| N14
     N14 -->|"the evidence shape is fixed"| N15
     N15 -->|"testable without an LLM"| N16
     N14 -.->|"knowledge graph stays apart from workflow & trace"| N16
 ```
 
-Lesson maps: [[lesson-0013-mcp-anatomy]] · [[lesson-0014-evidence-with-provenance]] · [[lesson-0015-test-it-without-an-llm]].
+Lesson maps: [[lesson-0013-mcp-anatomy]] · [[lesson-0014-evidence-with-provenance]] · [[lesson-0015-test-it-without-an-llm]] · [[lesson-0016-evidence-enters-the-loop]].
 
 ## What accumulates (artifacts → the loop)
 
@@ -113,7 +113,8 @@ flowchart LR
     GWY --> TLOOP
     TLOOP --> TR
     TLOOP --> TESTS
-    EV["MCP evidence tools — Phase 2<br/>surface ✅ 0013 · provenance ✅ 0014 · offline tests ✅ 0015 · loop consumes next"] --> TLOOP
+    EV["MCP evidence tools ✅ Phase 2<br/>surface 0013 · provenance 0014 · offline tests 0015"] -->|"EvidencePort ✅ 0016"| PACK["Context Pack ✅ 0016<br/>admitted, or no dispatch"]
+    PACK -->|"first turn"| TLOOP
     TLOOP --> WG["workflow graph — Phase 3"]
     TR --> EVAL["golden tasks + evals — Phase 4"]
     TESTS --> EVAL
@@ -125,7 +126,7 @@ Scenario steps these feed (see [[hermes-integration]]):
 | Step | Where the course builds it |
 |---|---|
 | S1 (the envelope check) | Phase 0's boundary parse, then Phase 1's TaskSpec |
-| S2 (evidence assembled) | Phase 2, over MCP — the served surface exists since lesson 0013, every item carries provenance since lesson 0014, and a client program reads it under test since lesson 0015 |
+| S2 (evidence assembled) | Phase 2, over MCP — served since lesson 0013, with provenance since 0014. A client reads it under test since 0015. The loop plans from an admitted Context Pack since 0016 |
 | S3 (dispatch under the graph) | Phase 3 |
 | S4 (model calls) | Phase 0's mechanics, below Phase 1's port |
 | S5 (the loop iterates) | Phase 1, from lesson 0008, with the approval gate since lesson 0010 |

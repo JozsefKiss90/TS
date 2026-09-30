@@ -7,8 +7,9 @@ type: glossary-term
 lesson: "0015"
 phase: 2
 category: protocol
-status: introduced
+status: demonstrated
 introduced: 2026-09-20
+demonstrated: 2026-09-30
 tags:
   - glossary
   - protocol

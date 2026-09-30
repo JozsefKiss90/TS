@@ -18,6 +18,14 @@ function describe(event: TraceEvent): string {
           : "";
       return `job "${event.title}" for ${event.owner}, ceiling ${event.costCeilingTokens} tokens${carried}`;
     }
+    // Lesson 0016. The ids print, the claims do not: the story says which
+    // evidence the job ran on, and the graph still owns what it said.
+    case "evidence_used":
+      return (
+        `evidence: ${event.ids.length} item(s) from ${event.snapshot} ` +
+        `for [${event.queries.join(", ")}], ${event.chars} chars in the first turn` +
+        (event.ids.length > 0 ? `\n           ${event.ids.join(", ")}` : "")
+      );
     case "call_started":
       return `model call ${event.call} started`;
     case "reply": {

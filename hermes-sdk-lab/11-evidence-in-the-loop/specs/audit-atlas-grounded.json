@@ -1,0 +1,10 @@
+{
+  "title": "Audit the atlas graph",
+  "owner": "themis",
+  "instruction": "Summarize the atlas graph health check in three bullet points. Cite a canonical id for every claim.",
+  "costCeilingTokens": 2000,
+  "allowedTools": ["graph_health"],
+  "evidenceQueries": ["supervisor", "trace"],
+  "evidenceLimit": 3,
+  "outputPath": "vault/audits/atlas.md"
+}

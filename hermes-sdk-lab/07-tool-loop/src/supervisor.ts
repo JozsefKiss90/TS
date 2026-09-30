@@ -27,6 +27,15 @@
  * trace wired, `record` is a no-op and Parts A to I run exactly as before.
  * A resumed job starts from a ResumePoint instead of from scratch: the
  * transcript and the ledger carry over, and the clock starts fresh.
+ *
+ * Lesson 0016 grounds the planning step. An admitted Context Pack arrives
+ * as an option and goes into the FIRST turn, in front of the operator's
+ * words: evidence is input to planning, not an answer to a tool call. The
+ * spec decides which questions a job may be grounded in, so a pack that
+ * answers other questions, or arrives for a spec that asked for none, is
+ * refused with the job. That is lesson 0010's absent-means-denied rule one
+ * port over. With no pack wired and no queries named, every part above runs
+ * unchanged.
  */
 import { type ApprovalPort, gateToolCall } from "./approval.js";
 import type { CallProgress, ModelGateway, ToolOutcome, Turn } from "./gateway.js";
@@ -34,9 +43,37 @@ import type { TaskSpec } from "./task-spec.js";
 import { offerTools, runTool } from "./tools.js";
 import type { ResumePoint, TraceEvent, TracePort } from "./trace.js";
 
+/**
+ * What the loop needs from an admitted Context Pack (lesson 0016).
+ *
+ * Two halves, for two readers. `text` goes to the model, rendered by
+ * whoever assembled the pack. Everything else goes to the trace as a
+ * reference: which questions were asked, which snapshot answered them, and
+ * which canonical ids came back.
+ *
+ * The evidence SCHEMA is not here, and neither is the graph. The supervisor
+ * cannot query anything, cannot parse an item, and never learns what a
+ * source or a confidence label is. It takes text to send and ids to record.
+ */
+export interface AdmittedPack {
+  /** The rendered pack, as the model will read it. */
+  text: string;
+  queries: string[];
+  snapshot: string;
+  assembledAt: string;
+  ids: string[];
+}
+
 export interface JobReport {
   task: string;
-  outcome: "landed" | "retry_later" | "gave_up" | "over_budget" | "out_of_time";
+  outcome:
+    | "landed"
+    | "retry_later"
+    | "gave_up"
+    | "over_budget"
+    | "out_of_time"
+    /** The spec demanded evidence and no admitted pack arrived (lesson 0016). */
+    | "no_evidence";
   /**
    * How many times the job called the model. One tool call answered costs
    * two: the ask, then the answer.
@@ -44,6 +81,8 @@ export interface JobReport {
   modelCalls: number;
   toolRuns: string[];
   tokensSpent: number;
+  /** The canonical ids this job was grounded in. Empty when none were asked for. */
+  evidenceIds: string[];
   notes: string[];
 }
 
@@ -74,6 +113,36 @@ function raceBounds(
   });
 }
 
+/**
+ * Why a pack may not be used for this job, or null when it may (lesson 0016).
+ *
+ * The SPEC is the authority on which questions a job may be grounded in, so
+ * the pack has to answer those questions and no others. The pack's own parse
+ * cannot check this: `ContextPackSchema` never sees the spec. One comparison
+ * therefore covers three faults at once.
+ *
+ *   spec asks, nothing arrived      → no pack, no dispatch
+ *   spec asks A, the pack answers B → not this job's evidence
+ *   spec asks nothing, a pack came  → evidence the policy never authorized
+ *
+ * Order matters, because the assembler queries in the spec's order. A pack
+ * whose rows arrive in another order came from another assembly.
+ */
+function packFault(spec: TaskSpec, pack: AdmittedPack | undefined): string | null {
+  const asked = spec.evidenceQueries;
+  if (pack === undefined) {
+    if (asked.length === 0) return null;
+    return `spec asks for evidence on ${asked.join(", ")} and no admitted pack arrived`;
+  }
+  const answered = pack.queries;
+  const same = asked.length === answered.length && asked.every((q, i) => q === answered[i]);
+  if (same) return null;
+  return (
+    `the pack answers [${answered.join(", ")}] and the spec asks for ` +
+    `[${asked.join(", ") || "nothing"}]`
+  );
+}
+
 export async function runTask(
   gateway: ModelGateway,
   spec: TaskSpec,
@@ -82,6 +151,7 @@ export async function runTask(
     approver?: ApprovalPort;
     trace?: TracePort;
     resume?: ResumePoint;
+    pack?: AdmittedPack;
   },
 ): Promise<JobReport> {
   // The spec decides which tools exist for this job. A tool that is not
@@ -94,6 +164,21 @@ export async function runTask(
   const transcript: Turn[] = resume
     ? [...resume.transcript]
     : [{ from: "operator", text: spec.instruction }];
+
+  // Authorize first, then use. A pack the spec did not ask for is never
+  // rendered into a turn and never recorded as evidence this job used.
+  const fault = packFault(spec, options?.pack);
+  const pack = fault === null ? options?.pack : undefined;
+
+  // The pack goes in front of the operator's words, in the same turn. A
+  // resumed run rebuilt its first turn from the instruction alone, so a
+  // freshly assembled pack lands in the same place there. Re-assembly can
+  // return a different snapshot, and the second evidence_used event says so.
+  const opening = transcript[0];
+  if (pack !== undefined && opening !== undefined && opening.from === "operator") {
+    transcript[0] = { from: "operator", text: `${pack.text}\n\n${opening.text}` };
+  }
+
   const firstCall = (resume?.modelCalls ?? 0) + 1;
   const toolRuns: string[] = [];
   const alerts: string[] = [];
@@ -114,6 +199,18 @@ export async function runTask(
     costCeilingTokens: spec.costCeilingTokens,
     ...(resume ? { carriedCalls: resume.modelCalls, carriedTokens: resume.tokensSpent } : {}),
   });
+
+  if (pack !== undefined) {
+    record({
+      kind: "evidence_used",
+      at: Date.now(),
+      queries: pack.queries,
+      snapshot: pack.snapshot,
+      assembledAt: pack.assembledAt,
+      ids: pack.ids,
+      chars: pack.text.length,
+    });
+  }
 
   // One controller serves every bound. The deadline arms it now, the budget
   // check can fire it mid-call, and AbortSignal.any merges it with the
@@ -153,11 +250,16 @@ export async function runTask(
       modelCalls,
       toolRuns,
       tokensSpent,
+      evidenceIds: pack?.ids ?? [],
       notes: finalNotes,
     };
   };
 
   try {
+    // S2's gate, on the loop's side: no pack, no dispatch. The refusal costs
+    // zero model calls, like an inadmissible spec (lesson 0007).
+    if (fault !== null) return report("no_evidence", 0, [fault]);
+
     for (let modelCall = firstCall; modelCall <= spec.maxModelCalls; modelCall++) {
       // BEFORE: a job that has reached its ceiling makes no further calls.
       if (tokensSpent >= spec.costCeilingTokens) {

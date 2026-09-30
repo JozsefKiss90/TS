@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0016 — Evidence Enters the Loop</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 2 · Lesson 0016 · lab exercise 11-evidence-in-the-loop · ~45–60 min</p>
+  <h1>Evidence Enters the Loop</h1>
+  <p class="lede">The evidence surface answers with provenance, and the loop plans without it.
+  Where does the evidence go, and what stops a job that has none?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  This lesson builds scenario step S2 (evidence assembled) and closes Phase 2. The Phase 1 loop
+  gains a fourth port and asks its questions before it plans. It will not dispatch a job whose
+  evidence never arrived, or whose evidence answers other questions. The claims stay in the
+  knowledge graph. The trace of S7 (the run is recorded) keeps only the ids of the ones a job
+  used.
+</div>
+
+<h2>1 · The loop asks before it plans</h2>
+
+<p>A job that must cite the graph needs its answers before the first model call. So the questions
+belong in the spec, and the answers arrive through a port. An <dfn>evidence port</dfn> is that
+port: a query and a limit go in, and one bundle of items comes back.</p>
+
+<pre><code>// src/context-pack.ts, the port          // 10-graph-evidence: the port below it
+export interface EvidencePort {            export interface KnowledgeGraph {
+  search(                                    search(q: string, n: number): Promise&lt;EvidenceBundle&gt;;
+    query: string,                           node(id: string): Promise&lt;EvidenceItem | undefined&gt;;
+    limit: number,                           all(): Promise&lt;EvidenceItem[]&gt;;
+  ): Promise&lt;EvidenceBundle&gt;;              }
+}</code></pre>
+
+<p>One method, where lesson 0014's port has three. A job being planned only asks questions. The
+adapter below is lesson 0015's client: import
+<code>Client</code>, connect it over a transport, call <code>callTool</code>, and parse
+<code>structuredContent</code> with the evidence schema. The SDK checks the frame against the
+JSON Schema from <code>tools/list</code>, and the two-sources rule has no JSON Schema form.</p>
+
+<p>Two queries, two requests. The second, measured:</p>
+
+<pre><code>→ {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+     "name":"search_evidence","arguments":{"query":"supervisor","limit":3}}}
+
+← {"jsonrpc":"2.0","id":2,"result":{
+     "content":[{"type":"text","text":"MOD-004 · Job supervisor loop is implemented (module). [confirmed]"}],
+     "structuredContent":{"query":"supervisor","assembledAt":"2026-09-29T23:33:37.513Z",
+       "assembledBy":{"adapter":"JsonExportAdapter","snapshot":"dev-graph-2026-09-09"},
+       "items":[{"id":"MOD-004","claim":"Job supervisor loop is implemented (module).",
+         "provenance":{"sources":[{"kind":"code","ref":"07-tool-loop/src/supervisor.ts"}, …],
+           "generatedBy":{"activity":"graph-export","at":"2026-09-09T18:00:00Z"},
+           "derivedFrom":["dev-graph-2026-09-09#MOD-004"],"confidence":"confirmed"}}]}}}</code></pre>
+
+<p>What crosses into the loop is narrower: text for the model, and a reference for the trace.</p>
+
+<pre><code>// 07-tool-loop/src/supervisor.ts               // the measured value, abridged
+export interface AdmittedPack {                  { text: "EVIDENCE from dev-graph-2026-09-09, 2 item(s)
+  /** The rendered pack, as the model reads it. */          for: supervisor (1), trace (1)
+[MOD-004] …",
+  text: string;                                    queries: ["supervisor", "trace"],
+  queries: string[];                               snapshot: "dev-graph-2026-09-09",
+  snapshot: string;                                assembledAt: "2026-09-29T23:33:37.513Z",
+  assembledAt: string;                             ids: ["MOD-004", "MOD-006"] }
+  ids: string[];
+}</code></pre>
+
+<p>No item, no source kind, no confidence label: the evidence schema stays below this line.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>The loop's fourth port asks for evidence, and one adapter answers over MCP.</li>
+    <li>Several bundles merge into one Context Pack, which carries its own provenance.</li>
+    <li>Four rules decide admissibility, and one of them is lesson 0014's, unrestated.</li>
+    <li>The pack goes into the first turn, so every model call pays for it again.</li>
+    <li>The trace records which evidence a job used, never what the evidence said.</li>
+  </ul>
+  <p>Reprise: the port and its adapter (lesson 0006), the admission union (0007), the spec's
+  default-empty lists (0010), the trace event (0011), the client (0015).</p>
+</div>
+
+<h2>2 · What an admitted pack is</h2>
+
+<p>A job asks several questions, and the loop plans from one thing. A <dfn>Context Pack</dfn> is
+that thing: the merged answers to a job's evidence queries, admitted at the boundary before
+dispatch. The assembler keeps the first match for a repeated id, and records every query.</p>
+
+<pre><code>// src/context-pack.ts, abridged                // one measured pack, abridged
+const PackShape = z.object({                     { "job": "Audit the atlas graph",
+  job: z.string().min(1),                           "assembledFrom": [
+  assembledFrom: z.array(PackQuerySchema)              { "query": "supervisor",
+    .min(1),                                             "adapter": "JsonExportAdapter",
+  items: z.array(EvidenceItemSchema).min(1),             "snapshot": "dev-graph-2026-09-09",
+});                                                      "assembledAt": "2026-09-29T23:33:37.513Z",
+                                                         "matched": 1 },
+export const ContextPackSchema = PackShape         { "query": "trace", … "matched": 1 }],
+  .refine(oneSnapshot, {                            "items": [ { "id": "MOD-004", … },
+    error: "a pack must be assembled from …",                   { "id": "MOD-006", … } ] }
+    path: ["assembledFrom"] })
+  .refine(idsAreUnique, {
+    error: "a pack may cite each id once",
+    path: ["items"] });</code></pre>
+
+<p>Four rules decide whether the supervisor may dispatch the job. Two are field rules and two are
+refinements, because no single field is wrong on its own.</p>
+
+<table>
+  <tr><th>Rule</th><th>Why the pack needs it</th><th>Measured refusal</th></tr>
+  <tr><td><code>items</code> has at least one entry</td><td>no pack, no dispatch: a job that
+  asked and got nothing must not run on guesses</td><td><code>items: [too_small] Too small:
+  expected array to have &gt;=1 items</code></td></tr>
+  <tr><td>every row names one snapshot</td><td>two snapshots can contradict each other, and the
+  pack could not say which one the job believed</td><td><code>assembledFrom: a pack must be
+  assembled from one snapshot of the graph</code></td></tr>
+  <tr><td>each id appears once</td><td>a repeat pays twice in tokens and reads as two
+  independent confirmations</td><td><code>items: a pack may cite each id
+  once</code></td></tr>
+  <tr><td>every item satisfies the evidence schema</td><td>the pack nests it, so lesson 0014's
+  rules run here without being restated</td><td><code>items.0.provenance.confidence: confirmed
+  needs at least two sources</code></td></tr>
+</table>
+
+<p><code>admitContextPack(raw: unknown)</code> answers with the pack or with reasons, and never
+throws. Lesson 0007's <code>admitTaskSpec</code> returns the same shape. S1 (envelope parsed)
+admits the job, S2 admits its evidence, and both answers narrow the same way. The assembler builds
+a candidate typed <code>unknown</code> and hands it over.</p>
+
+<p>A fifth rule lives in the supervisor instead, because the schema never sees the spec. The pack
+must answer the spec's queries, in that order, and no others. One comparison catches three faults:
+nothing arrived, the wrong questions were answered, or a pack turned up for a job that asked for
+none.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    SPEC["TaskSpec<br/>evidenceQueries, evidenceLimit"] --> ASM["assembleContextPack"]
+    ASM -->|"one query each"| SRC["EvidencePort"]
+    SRC -->|"tools/call"| SRV["MCP server<br/>over the graph"]
+    SRV -->|"structuredContent"| SRC
+    ASM -->|"merged candidate: unknown"| GATE["admitContextPack"]
+    GATE -->|"rejections"| STOP["no dispatch<br/>0 model calls"]
+    GATE -->|"admitted pack"| LOOP["runTask<br/>does it answer the spec?"]
+</pre>
+<figcaption>Diagram 1. Assembly gathers, the parse admits, and only an admitted pack reaches the
+loop.</figcaption>
+</figure>
+
+<h2>3 · Where the pack lands, and what it costs</h2>
+
+<p>The pack goes into the first turn, in front of the operator's instruction. One
+<code>user</code> message, 1,005 bytes in the measured request, holding the rendered pack, a
+blank line, and the question. It is not a system prompt and not a tool result. Evidence is input
+to planning, not an answer to a request the model made.</p>
+
+<p>The whole transcript is resent on every call, so every call pays for the pack again. The audit
+job ran twice against the mock, once grounded and once bare:</p>
+
+<table>
+  <tr><th>Run</th><th>Model calls</th><th>Tokens</th><th>Input tokens per call</th></tr>
+  <tr><td>grounded, 509 characters of pack</td><td>2</td><td>494</td><td>162 then 248</td></tr>
+  <tr><td>bare, same instruction</td><td>2</td><td>236</td><td>33 then 119</td></tr>
+  <tr><td>the pack's own cost</td><td>0</td><td>258</td><td>129 then 129, so once per call</td></tr>
+</table>
+
+<p>That is why <code>evidenceLimit</code> is a bound and not a preference.</p>
+
+<table>
+  <tr><th>Layer</th><th>What evidence changes</th></tr>
+  <tr><td>spec</td><td><code>evidenceQueries</code> and <code>evidenceLimit</code>, both
+  default-empty, so an older spec file still admits</td></tr>
+  <tr><td>transcript</td><td>the first turn grows. No new turn kind, and the wire still sees one
+  <code>user</code> message</td></tr>
+  <tr><td>ledger</td><td>input tokens rise per call, against the same ceiling</td></tr>
+  <tr><td>trace</td><td>one <code>evidence_used</code> event, and one more outcome,
+  <code>no_evidence</code></td></tr>
+  <tr><td>termination</td><td>a job whose pack is missing, or answers other questions, ends
+  before call 1, measured at 0 model calls</td></tr>
+  <tr><td>gateway, tool catalogue, approval gate</td><td>nothing. The supervisor never learns
+  what an item or a confidence label is</td></tr>
+</table>
+
+<p>The event is a reference: queries, snapshot, ids, character count, and no claim text. The ids
+and the snapshot are enough to read the claims back. The graph holds what Hermes knows, and the
+trace holds what one job did.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TD
+    PACK["admitted pack"] -->|"rendered text"| TURN["first turn<br/>evidence, then the instruction"]
+    PACK -->|"queries, snapshot, ids, chars"| EV["trace: evidence_used"]
+    TURN --> MODEL["model calls 1..n<br/>resent every call"]
+    EV --> DIAG["diagnosis later:<br/>which evidence ran"]
+    DIAG -->|"ids + snapshot"| GRAPH["knowledge graph<br/>holds the claims"]
+</pre>
+<figcaption>Diagram 2. Text to the model, the reference to the trace, the claims left in the
+graph.</figcaption>
+</figure>
+
+<p>One English word covers four things, at four levels.</p>
+
+<table>
+  <tr><th>Term</th><th>What it is</th><th>Who owns it</th></tr>
+  <tr><td><code>EvidenceItem</code></td><td>one claim with its provenance</td><td>the evidence
+  schema, lesson 0014</td></tr>
+  <tr><td><code>EvidenceBundle</code></td><td>one query's answer, with the header that says who
+  assembled it</td><td>the MCP tool</td></tr>
+  <tr><td>Context Pack</td><td>one job's merged, admitted evidence</td><td>the assembler, before
+  dispatch</td></tr>
+  <tr><td><code>evidence_used</code></td><td>the reference to a pack, in one trace
+  line</td><td>the trace, lesson 0011</td></tr>
+</table>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td>Pack assembly over MCP, four rules in the schema and one in the supervisor</td>
+  <td>implemented</td><td><code>src/context-pack.ts</code>, 21 tests, measured this lesson</td></tr>
+  <tr><td>The pack in the first turn, and its reference in the trace</td><td>implemented</td>
+  <td><code>supervisor.ts</code>, <code>trace.ts</code>, part b of the lab</td></tr>
+  <tr><td>A typed pack of canonical nodes and code truth, marked
+  <code>admitted</code></td><td>accepted</td><td>ADR-0002/0020, per
+  <code>hermes-job-control-plane.md</code></td></tr>
+  <tr><td>Nine admissibility checks, and an eight-step assembly protocol</td><td>accepted in the
+  record, scaffolded as a component</td><td>same document, row 4. The lab has four rules and one
+  step</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>11-evidence-in-the-loop/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm job a</code>. Read the rendered pack and name the fields the supervisor
+  gets.</li>
+  <li>Start the mock, then run <code>pnpm job b</code>. Explain the 129 before you read on.</li>
+  <li>Run <code>pnpm job c</code> and <code>pnpm job d</code>. Predict each refusal first.</li>
+  <li>Run the four break experiments in the README.</li>
+</ol>
+
+<h2>5 · Exercise: what refuses it, and when?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each fault with the check that catches it first</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the spec's parse|the pack's parse|the supervisor, before call 1|nothing, it is admitted">
+    <div class="cl-item" data-cat="0" data-why="Two spec fields contradict each other, so the refinement from lesson 0010 fires at admission. The job never reaches assembly.">
+      <p><code>approvalRequired</code> names a tool that <code>allowedTools</code> omits.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="Both queries were asked and both matched nothing, so items is empty. That is the items.min(1) rule: no pack, no dispatch.">
+      <p>The graph holds nothing for either query the spec names.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="Nothing was parsed, because nothing was assembled. The spec demands evidence, the option is absent, and absent means denied.">
+      <p>The spec names two queries and the wiring passes no pack.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="The assembler keeps the first and skips the repeat, so the pack the parse sees cites the id once. The row for the second query still shows what it matched.">
+      <p>Two queries both match <code>MOD-004</code>, and the pack cites it once.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="1" data-why="The measured body holds one user message: the rendered pack, a blank line, then the instruction. Evidence is input to planning, so it arrives before the model says anything.">
+    <p class="qz-prompt">Q1. Where does the pack appear in the request the adapter sends?</p>
+    <button class="qz-opt" type="button">In a tool result block, paired by id with the tool call that the model made for it</button>
+    <button class="qz-opt" type="button">In the first user message, ahead of the operator's instruction, as one block of text</button>
+    <button class="qz-opt" type="button">In a system prompt field, which the gateway fills from the spec before the transcript</button>
+    <button class="qz-opt" type="button">In a separate turn of its own, which the adapter maps to a third role on the wire</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The supervisor checks the spec against the option before the loop. No pack arrived, so the job ends with no_evidence, and the fake recorded zero calls.">
+    <p class="qz-prompt">Q2. A spec names two evidence queries and the wiring forgets the pack.
+    What does the job cost?</p>
+    <button class="qz-opt" type="button">One model call, because the first call runs before the supervisor checks the spec</button>
+    <button class="qz-opt" type="button">Two model calls, since the loop plans first and only then reads the evidence policy</button>
+    <button class="qz-opt" type="button">Nothing, and it lands: an empty pack is treated as a job that wanted no evidence</button>
+    <button class="qz-opt" type="button">Nothing at all, and it does not land: zero model calls, and the outcome says why</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The whole transcript is resent on every call, and the pack sits in the first turn. Measured: 162 minus 33 and 248 minus 119 are both 129.">
+    <p class="qz-prompt">Q3. The pack added 129 input tokens to each of two calls, not 129 to the
+    job. Why?</p>
+    <button class="qz-opt" type="button">Every call resends the whole transcript, and the pack is part of its first turn</button>
+    <button class="qz-opt" type="button">The assembler runs once per call, so each call pays for a freshly assembled pack</button>
+    <button class="qz-opt" type="button">The mock charges the pack twice, once for input bytes and once for the tool schema</button>
+    <button class="qz-opt" type="button">The supervisor books the pack against the ceiling again after each tool result</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="The event carries queries, snapshot, ids and a character count. The claims live in the graph, and those ids plus that snapshot are how you read them back.">
+    <p class="qz-prompt">Q4. Months later you ask what evidence a job ran on. What does the trace
+    give you?</p>
+    <button class="qz-opt" type="button">The claims themselves, copied into the event, so the file answers without the graph</button>
+    <button class="qz-opt" type="button">The rendered pack text, stored once per job, which the reader parses back into items</button>
+    <button class="qz-opt" type="button">The ids and the snapshot, which is what you take to the graph to read the claims</button>
+    <button class="qz-opt" type="button">The queries alone, so you re-run them and accept whatever the graph answers today</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say where a Context Pack enters the loop, and why it is not a tool result.</li>
+  <li>Name the four rules that decide admissibility, and say which one the pack did not
+  write.</li>
+  <li>Explain what the trace records about evidence, what it leaves out, and how you would read
+  the claims back.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. The loop asks its questions
+through a port before it plans, and one adapter answers them over MCP. Several bundles merge into
+one pack, which is admitted by a parse or the job is not dispatched. The pack goes into the first
+turn, so every model call pays for it again. The trace records which evidence a job used, and the
+graph keeps the claims.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the Context Pack entry in
+<a href="../docs/hermes_os/architecture/hermes-job-control-plane.md">hermes-job-control-plane.md</a>,
+then row 4 of its component table. Compare the nine admissibility checks it names with the four
+in <code>ContextPackSchema</code>.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>@modelcontextprotocol/client</code> 2.0.0, <code>@modelcontextprotocol/server</code>
+  2.0.0, <code>@anthropic-ai/sdk</code> 0.113.0, <code>zod</code> 4.4.3 and <code>vitest</code>
+  3.2.7 on Node 22.14.0. The evidence is exercise 11's four parts and its 21 tests, run on
+  2026-09-30, with exercise 08's 29 and exercise 10's 32 re-run green. The
+  mock estimates input tokens as one per four characters of the serialized messages. Treat the 129
+  as its arithmetic, and the per-call repetition as the finding. The <code>tools/call</code> frames
+  above are one raw exchange with the real server.</p>
+  <p><strong>Next.</strong> Phase 2 is complete. Phase 3 opens with the loop's control flow
+  leaving the code and becoming a state graph, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

@@ -56,7 +56,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 ---
 
-## Phase 2 — Graph RAG through MCP — *opened 2026-09-02, 3 of 4 shipped; 0016 next up*
+## Phase 2 — Graph RAG through MCP — *complete, 4 of 4 shipped (2026-09-30)*
 
 **Goal:** expose the existing (Python-side) Graph RAG capability as typed MCP tools with provenance-bearing evidence — *exposing*, not re-teaching retrieval (prior experience: learning-records/0003).
 **Guardrail:** graph fluency will tempt a merged schema — knowledge, workflow, and trace graphs stay separate.
@@ -67,17 +67,17 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 | 0013 | [MCP Anatomy](lessons/0013-mcp-anatomy.html) | `09-mcp-server` | the tool leaves the process: served over stdio, schema discovered via `tools/list` (measured), arguments parsed before the handler; poked raw, then by Inspector UI and CLI — no LLM anywhere | ✅ |
 | 0014 | [Evidence With Provenance](lessons/0014-evidence-with-provenance.html) | `10-graph-evidence` | the Zod evidence schema designed against W3C PROV-DM (attribution, generation, derivation as three fields) with `dev_graph`'s five confidence labels and its first promotion rule as a refinement; the `KnowledgeGraph` port with one adapter over a JSON export the Python side wrote, parsed in dev_graph's spellings and translated once; the MCP tool gains an `outputSchema` — measured: the schema travels in `tools/list` without its refinement, a malformed bundle is refused in-band, 18 tests green | ✅ |
 | 0015 | [Test It Without an LLM](lessons/0015-test-it-without-an-llm.html) | `10-graph-evidence` continues | a scripted MCP client over stdio (`@modelcontextprotocol/client` 2.0.0) whose `structuredContent` arrives `unknown` and is parsed on the client's side; the server becomes `buildServer(graph)` so a `FakeKnowledgeGraph` stands behind the port; `InMemoryTransport` runs the whole server under a real client with no pipe (5 tests, 141 ms) beside one stdio test that proves spawn and shutdown (1,130 ms); recorded bundles parsed on read and replayed through the real tool — measured: three guards on one answer, only the JSON-Schema one blind to the refinement; 32 tests green | ✅ |
-| 0016 | Evidence Enters the Loop | `11-evidence-in-the-loop` | the Phase 1 loop's planning step consumes provenance-bearing evidence from the MCP surface through the lesson-0015 client — scenario step S2 (evidence assembled) goes live; knowledge and trace graphs stay separate | ▶ |
+| 0016 | [Evidence Enters the Loop](lessons/0016-evidence-enters-the-loop.html) | `11-evidence-in-the-loop` | the loop gains a fourth port (`EvidencePort`, one method) whose adapter is the lesson-0015 client; several bundles merge into one Context Pack admitted by a parse with four rules, the fourth inherited from the evidence schema rather than restated, plus a fifth the schema cannot hold (the pack must answer the spec’s queries and no others); the pack goes into the first turn and the trace gets a reference, not a copy — measured: 509 chars of pack costing 129 input tokens on *every* call (494 tokens grounded against 236 bare), and three unauthorized-evidence faults each ending at `no_evidence` with 0 model calls; 21 tests green, 82 across labs 08/10/11 | ✅ |
 
-*Id 0016 is now firm and closes the phase. Labs `10`–`11` continue the `hermes-sdk-lab/` numbering.*
+*Labs `10`–`11` continue the `hermes-sdk-lab/` numbering. Lab 11 adds nothing to the loop that an older spec file notices: `evidenceQueries` and `evidenceLimit` default empty, and exercise 08's 29 tests are the regression proof.*
 
-*Lesson maps in the wiki: [[lesson-0013-mcp-anatomy]] · [[lesson-0014-evidence-with-provenance]] · [[lesson-0015-test-it-without-an-llm]].*
+*Lesson maps in the wiki: [[lesson-0013-mcp-anatomy]] · [[lesson-0014-evidence-with-provenance]] · [[lesson-0015-test-it-without-an-llm]] · [[lesson-0016-evidence-enters-the-loop]].*
 
-**Exit criteria (from MISSION):** Graph RAG capabilities exposed and consumed through MCP, testable without an LLM.
+**Exit criteria (from MISSION):** Graph RAG capabilities exposed and consumed through MCP, testable without an LLM. **Met 2026-09-30:** exposed in 0013–0014, proven with no model in 0015, consumed by the loop in 0016; lab 11’s 21 tests run the grounded loop with a fake model and a fake graph and real MCP in between.
 
 ---
 
-## Phase 3 — The workflow graph — *gated on Phase 2 exit*
+## Phase 3 — The workflow graph — *next up; Phase 2 exit met 2026-09-30*
 
 **Goal:** the loop's control flow becomes an explicit state graph — what Hermes *may* do, encoded as data.
 **Framework decision:** LangGraph.js is the candidate (persistence, interruption); evaluated, not assumed — and never learned alongside an alternative in the same phase.

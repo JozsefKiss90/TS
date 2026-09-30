@@ -5,7 +5,10 @@
  * defaults: maxModelCalls and deadlineMs. Every bound the loop enforces now
  * comes from this file, which means every bound is the operator's to set.
  * Lesson 0010 added approvalRequired: the names whose calls must wait for
- * an operator, so the permission POLICY is spec data end to end.
+ * an operator, so the permission POLICY is spec data end to end. Lesson
+ * 0016 added evidenceQueries and evidenceLimit, so the EVIDENCE policy is
+ * spec data too: which questions this job must be grounded in, and how
+ * many items one question may contribute.
  *
  * Lesson 0005 parsed bytes arriving from a provider. This file parses bytes
  * arriving from an operator: a JSON file on disk, written by a human or by
@@ -51,6 +54,14 @@ import { formatIssues } from "./issues.js";
  *                         for an operator's decision (lesson 0010). Empty by
  *                         default: permitting a tool and gating it are two
  *                         separate choices, both the operator's.
+ *   evidenceQueries     — the questions the knowledge graph must answer
+ *                         before this job is dispatched (lesson 0016).
+ *                         Empty by default: a job that names no
+ *                         evidence needs none. A job that names some
+ *                         cannot run without an admitted Context Pack.
+ *   evidenceLimit       — items per query. A cap, because every item
+ *                         rides in the first turn and is charged as
+ *                         input tokens on every call of the job.
  *   outputPath          — where the artifact lands (S8).
  */
 export const TaskSpecSchema = z
@@ -79,6 +90,15 @@ export const TaskSpecSchema = z
     // operator names it here. Gating everything by default would make every
     // job interactive, and the audit job must run unattended.
     approvalRequired: z.array(z.string()).default([]),
+
+    // The evidence policy (lesson 0016). Default-empty, like the two
+    // permission lists: a spec that says nothing about evidence asks for
+    // none, and the job runs on its instruction alone. Naming a query here
+    // is a demand, and the supervisor refuses to dispatch without a pack.
+    evidenceQueries: z.array(z.string().min(1)).default([]),
+    // How many items one query may contribute. Bounded, because evidence
+    // is charged as input tokens on every model call of the job.
+    evidenceLimit: z.number().int().min(1).max(20).default(5),
 
     outputPath: z.string().min(1),
   })

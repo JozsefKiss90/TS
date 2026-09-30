@@ -1,0 +1,9 @@
+{
+  // Same shared config as every exercise. This package imports two earlier
+  // ones directly: the loop from ../07-tool-loop/src and the evidence
+  // surface from ../10-graph-evidence/src. Those files are pulled into this
+  // program and checked here too. Nothing is copied — a copy would be a
+  // second loop and a second schema, free to drift apart.
+  "extends": "../tsconfig.base.json",
+  "include": ["src", "tests"]
+}
