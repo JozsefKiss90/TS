@@ -1,0 +1,17 @@
+{
+  "name": "12-workflow-graph",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "job": "tsx src/main.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "3.2.7"
+  }
+}

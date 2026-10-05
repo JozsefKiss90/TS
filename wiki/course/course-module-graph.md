@@ -19,7 +19,7 @@ flowchart TD
     P0["Phase 0 · See the wire<br/>TS/SDK literacy · complete ✅"]
     P1["Phase 1 · Own the loop<br/>manual bounded loop · complete ✅ (0006 to 0012)"]
     P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP · complete ✅ (0013 to 0016)"]
-    P3["Phase 3 · Encode the policy<br/>the workflow graph · next ▶"]
+    P3["Phase 3 · Encode the policy<br/>the workflow graph · underway ▶ (0017 shipped)"]
     P4["Phase 4 · Prove it<br/>reliability & evaluation"]
     P5["Phase 5 · Meet the harness<br/>Claude Agent SDK"]
     P6["Phase 6 · Scale the agents<br/>multi-agent"]
@@ -88,6 +88,26 @@ flowchart TD
 
 Lesson maps: [[lesson-0013-mcp-anatomy]] · [[lesson-0014-evidence-with-provenance]] · [[lesson-0015-test-it-without-an-llm]] · [[lesson-0016-evidence-enters-the-loop]].
 
+## Phase 3, module detail
+
+Opened 2026-10-06. Rows 0018 to 0021 are provisional, per the roadmap's firmness gradient.
+
+```mermaid
+flowchart TD
+    Q17["0017 Thinking in State Graphs ✅<br/>lab 12-workflow-graph · 13 nodes, 26 edges, 6 guards as data<br/>strict parse, four rules · six recordings replayed, 0 model calls"]
+    Q18["0018 The Loop Walks the Graph ▶<br/>lab 12 continues · the if statements leave<br/>interpreter, typed refusal, checkpoint per step"]
+    Q19["0019 Interruption Is a State ○<br/>lab 12 continues · awaiting_approval as a parked checkpoint<br/>the queue lesson 0010 promised"]
+    Q20["0020 LangGraph.js, Evaluated ○<br/>lab 13-graph-orchestration · same graph on StateGraph<br/>which-layer-moved table, exact version pinned"]
+    Q21["0021 The Workflow Graph Is Policy ○<br/>lab 13 continues · per-job graph derived from the spec<br/>adopt / wrap / skip decision"]
+    Q17 -->|"the graph describes the loop"| Q18
+    Q18 -->|"the graph drives the loop"| Q19
+    Q19 -->|"persistence and interruption by hand"| Q20
+    Q20 -->|"the framework, measured"| Q21
+    Q17 -.->|"the graph holds no claims and no events"| Q21
+```
+
+Lesson maps: [[lesson-0017-thinking-in-state-graphs]].
+
 ## What accumulates (artifacts → the loop)
 
 Each module leaves an artifact that a later module consumes.
@@ -115,7 +135,8 @@ flowchart LR
     TLOOP --> TESTS
     EV["MCP evidence tools ✅ Phase 2<br/>surface 0013 · provenance 0014 · offline tests 0015"] -->|"EvidencePort ✅ 0016"| PACK["Context Pack ✅ 0016<br/>admitted, or no dispatch"]
     PACK -->|"first turn"| TLOOP
-    TLOOP --> WG["workflow graph — Phase 3"]
+    TLOOP --> WG["workflow graph ✅ 0017<br/>as data, replayed against the trace<br/>drives the loop — 0018"]
+    TR -->|"recordings replayed"| WG
     TR --> EVAL["golden tasks + evals — Phase 4"]
     TESTS --> EVAL
     EVAL -->|"gates"| P5P6["Phases 5–6 decisions"]
@@ -127,7 +148,7 @@ Scenario steps these feed (see [[hermes-integration]]):
 |---|---|
 | S1 (the envelope check) | Phase 0's boundary parse, then Phase 1's TaskSpec |
 | S2 (evidence assembled) | Phase 2, over MCP — served since lesson 0013, with provenance since 0014. A client reads it under test since 0015. The loop plans from an admitted Context Pack since 0016 |
-| S3 (dispatch under the graph) | Phase 3 |
+| S3 (dispatch under the graph) | Phase 3. The graph exists as data since lesson 0017 and describes the loop; it drives the loop from 0018 |
 | S4 (model calls) | Phase 0's mechanics, below Phase 1's port |
 | S5 (the loop iterates) | Phase 1, from lesson 0008, with the approval gate since lesson 0010 |
 | S6 (budget enforcement) | Phase 0's cancellation, enforced by lesson 0009's bounds |

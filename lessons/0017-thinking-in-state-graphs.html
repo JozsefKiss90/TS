@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0017 — Thinking in State Graphs</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 3 · Lesson 0017 · lab exercise 12-workflow-graph · ~45–60 min</p>
+  <h1>Thinking in State Graphs</h1>
+  <p class="lede">The supervisor decides what a job does next with <code>if</code> statements.
+  What are the states those statements move between, and can the rules be data?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  This lesson opens Phase 3 and builds scenario step S3 (dispatch under the graph). The loop's
+  control flow becomes data that a parse admits, like the spec and the pack before it. A walker
+  replays the trace of S7 (the run is recorded) against that data, and every recorded run is a
+  path the graph allows. The graph holds no claims and no events, so the knowledge graph, the
+  workflow graph and the trace stay apart.
+</div>
+
+<h2>1 · The states hiding in the code</h2>
+
+<p>Every event the supervisor writes to the trace is a moment the run is in. The trace has eight
+event kinds, and each one enters one state. A <dfn>workflow graph</dfn> is the states
+a job may be in and the moves it may make, held as data.</p>
+
+<table>
+  <tr><th>Trace event</th><th>State it enters</th></tr>
+  <tr><td><code>job_started</code></td><td><code>started</code></td></tr>
+  <tr><td><code>evidence_used</code></td><td><code>grounded</code></td></tr>
+  <tr><td><code>call_started</code></td><td><code>calling</code></td></tr>
+  <tr><td><code>reply</code></td><td><code>replied</code></td></tr>
+  <tr><td><code>gate</code></td><td><code>gating</code></td></tr>
+  <tr><td><code>approval</code></td><td><code>awaiting_approval</code></td></tr>
+  <tr><td><code>tool_result</code></td><td><code>tool_ran</code></td></tr>
+  <tr><td><code>job_ended</code></td><td>its outcome, one of six</td></tr>
+</table>
+
+<p>An edge is a pair of events the code can write back to back. After a <code>reply</code>, the
+job lands, a gate decision follows, or the job gives up. Which move is taken depends on the
+reply's stop reason. A <dfn>guard</dfn> is a named rule on an edge that says whether the move is
+allowed.</p>
+
+<p>Six outcomes end a run and nothing follows them. A <dfn>terminal node</dfn> is a state a run
+may end in, and no edge leaves it. That reading of the supervisor yields 13 states, 26 edges and
+6 guards.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    S["started"] --> G["grounded"]
+    S --> C["calling"]
+    S --> NE["no_evidence"]
+    G --> C
+    C --> R["replied"]
+    C --> F["retry_later · gave_up<br/>over_budget · out_of_time"]
+    R -->|"reply_finished"| L["landed"]
+    R -->|"reply_wants_tool"| GT["gating"]
+    GT -->|"gate_decided"| T["tool_ran"]
+    GT -->|"gate_held"| A["awaiting_approval"]
+    A -->|"verdict_answered"| T
+    T --> GT
+    T --> C
+</pre>
+<figcaption>Diagram 1. The job lifecycle graph, with the six exits drawn once. Guarded edges carry
+the guard's name.</figcaption>
+</figure>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>The loop's states are the nodes its trace events enter, and its branches are edges.</li>
+    <li>The graph is a file of names, admitted by a parse with four rules.</li>
+    <li>A guard is a name in the graph and a function in code.</li>
+    <li>A walker replays a trace along the graph and refuses with a line number.</li>
+    <li>The graph holds no claims and no events, and a strict parse proves it.</li>
+  </ul>
+  <p>Reprise: the safe parse (lesson 0005), the admission union (0007), the trace vocabulary
+  (0011), the fake gateway (0012), the pack's refusal (0016).</p>
+</div>
+
+<h2>2 · The graph as data</h2>
+
+<p>The graph is a JSON file with six fields, and every field is a name or a list of names.</p>
+
+<pre><code>// src/workflow-graph.ts, abridged          // graphs/job-lifecycle.json, abridged
+const Shape = z.strictObject({               { "name": "job-lifecycle",
+  name: z.string().min(1),                     "nodes": ["started", "grounded", "calling", …],
+  nodes: z.array(Name).min(1),                 "start": "started",
+  start: Name,                                 "terminal": ["landed", "retry_later", …],
+  terminal: z.array(Name).min(1),              "guards": ["reply_wants_tool", "reply_finished", …],
+  guards: z.array(Name),                       "edges": [
+  edges: z.array(z.strictObject({                { "from": "started", "to": "grounded" },
+    from: Name, to: Name,                        { "from": "replied", "to": "landed",
+    guard: Name.optional(),                        "guard": "reply_finished" },
+  })).min(1),                                    … ] }
+});</code></pre>
+
+<p>A file is bytes, so a parse admits the graph. The function
+<code>admitWorkflowGraph(raw: unknown)</code> answers with the graph or with reasons, the union
+lesson 0007 introduced. Four rules are refinements, because no single field is wrong on its
+own.</p>
+
+<table>
+  <tr><th>Rule</th><th>Why the graph needs it</th><th>Measured refusal</th></tr>
+  <tr><td>the start node is declared</td><td>a run has to begin somewhere the graph knows</td>
+  <td><code>start: the start node must be one of the declared nodes</code></td></tr>
+  <tr><td>every edge joins declared nodes</td><td>an edge to a state no event enters can never be
+  taken</td><td><code>edges: edge calling &gt; published names a node the graph does not
+  declare</code></td></tr>
+  <tr><td>every guard an edge cites is declared</td><td>the walker refuses a graph whose guard it
+  cannot run</td><td><code>edges: edge calling &gt; replied cites a guard the graph does not
+  declare: moon_is_full</code></td></tr>
+  <tr><td>no edge leaves a terminal node</td><td>a job that ended cannot continue</td>
+  <td><code>edges: edge landed &gt; calling leaves a terminal node</code></td></tr>
+</table>
+
+<p>A guard is a name in the file and a function in <code>guards.ts</code>. The name tells the
+parse which rule an edge needs, and the function does the check at run time. That is lesson
+0003's split: a signature says what may be called, and the implementation does the work.</p>
+
+<pre><code>// src/guards.ts                                       // the move it decides
+reply_finished:  (leaving) =&gt;                           replied &gt; landed
+  leaving.kind === "reply" &amp;&amp; leaving.stop !== "wants_tool",
+gate_held:       (leaving) =&gt;                           gating &gt; awaiting_approval
+  leaving.kind === "gate" &amp;&amp; leaving.decision === "hold",</code></pre>
+
+<p>Every guard reads the event being left, because that event decided the branch in the
+supervisor. None reads the spec, the ledger or the clock.</p>
+
+<h2>3 · Replaying the record against the rules</h2>
+
+<p>The function <code>walk(graph, guards, events)</code> replays one trace.</p>
+
+<table>
+  <tr><th>Part</th><th>Meaning</th><th>At run time</th></tr>
+  <tr><td><code>walk</code></td><td>the replay, exported by <code>walker.ts</code></td><td>one loop over consecutive event pairs</td></tr>
+  <tr><td><code>graph</code></td><td>an admitted workflow graph</td><td>13 names and 26 edges, read once</td></tr>
+  <tr><td><code>guards</code></td><td>functions keyed by the names the graph declares</td><td>six functions from <code>guards.ts</code></td></tr>
+  <tr><td><code>events</code></td><td>one trace, parsed by lesson 0011's reader</td><td>4 to 9 events per recording</td></tr>
+</table>
+
+<p>For each event it names the node entered, looks for an edge from the current node, and asks
+the edge's guard. It keeps the current node and the path, and no event. The first missing edge
+or refused guard ends the walk with a line number.</p>
+
+<pre><code>// src/walker.ts                              // measured, tight-budget.jsonl
+export type Walk =                              { ok: true,
+  | { ok: true;                                   path: ["started", "calling", "replied",
+      path: string[];                                    "gating", "tool_ran", "calling",
+      complete: boolean;                                 "over_budget"],
+      edgesTaken: string[] }                      complete: true,
+  | { ok: false;                                  edgesTaken: ["started&gt;calling", …] }
+      line: number;
+      from: string;                             // measured, one line moved
+      to: string;                               { ok: false, line: 3,
+      reason: string };                           from: "calling", to: "grounded",
+                                                  reason: "no edge calling &gt; grounded" }</code></pre>
+
+<p>Six recordings from labs 07 and 11 replay with no model and no network.</p>
+
+<table>
+  <tr><th>Recording</th><th>Events</th><th>Verdict</th></tr>
+  <tr><td><code>audit-atlas.jsonl</code></td><td>8</td><td>legal, complete, ends at <code>landed</code></td></tr>
+  <tr><td><code>tight-budget.jsonl</code></td><td>7</td><td>legal, complete, ends at <code>over_budget</code></td></tr>
+  <tr><td><code>tight-deadline.jsonl</code></td><td>7</td><td>legal, complete, ends at <code>out_of_time</code></td></tr>
+  <tr><td><code>tight-deadline-resume.jsonl</code></td><td>4</td><td>legal, complete, no tool turn</td></tr>
+  <tr><td><code>audit-atlas-grounded.jsonl</code></td><td>9</td><td>legal, complete, visits <code>grounded</code></td></tr>
+  <tr><td><code>audit-atlas-bare.jsonl</code></td><td>8</td><td>legal, complete</td></tr>
+</table>
+
+<p>Together they take 10 of the 26 edges. The other 16 come from reading the code, and no recording
+happened to take them. The tests run the real supervisor against a fake gateway and walk four
+more, listed in the README.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    FILE["graphs/job-lifecycle.json<br/>bytes"] -->|"safeParse, four rules"| GRAPH["WorkflowGraph"]
+    TRACE["trace file<br/>bytes"] -->|"parseTrace"| EVENTS["TraceEvent[]"]
+    GRAPH --> WALK["walk<br/>holds no event"]
+    EVENTS --> WALK
+    GUARDS["guards.ts<br/>six functions"] --> WALK
+    WALK -->|"every move has an open edge"| OK["path, complete"]
+    WALK -->|"first move without one"| NO["line, from, to, reason"]
+</pre>
+<figcaption>Diagram 2. Two parses feed the walker, and the walker reads both records without
+holding either.</figcaption>
+</figure>
+
+<p>The graph refuses to hold claims or events, because its shape is strict. Any key the
+shape does not name fails at the root with <code>unrecognized_keys</code>, so a
+<code>claims</code> key or an <code>events</code> key is refused.</p>
+
+<p>Two words now carry several meanings across the course.</p>
+
+<table>
+  <tr><th>Term</th><th>What it is</th><th>Who owns it</th></tr>
+  <tr><td>knowledge graph</td><td>claims with provenance, served over MCP</td><td>lesson 0014</td></tr>
+  <tr><td>workflow graph</td><td>states and allowed moves, as data</td><td>this lesson</td></tr>
+  <tr><td>node, in the workflow graph</td><td>one state a run can be in</td><td>this lesson</td></tr>
+  <tr><td><code>KnowledgeGraph.node(id)</code></td><td>one evidence item by id</td><td>lesson 0014's port</td></tr>
+</table>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td>The graph as data, four rules, strict shape</td><td>implemented</td>
+  <td><code>src/workflow-graph.ts</code>, measured this lesson</td></tr>
+  <tr><td>Replay of recorded and in-process runs, six guards</td><td>implemented</td>
+  <td><code>src/walker.ts</code>, <code>src/guards.ts</code>, 32 tests</td></tr>
+  <tr><td>The graph drives the loop, and a checkpoint is written per step</td><td>planned</td>
+  <td>lesson 0018, per <code>ROADMAP.md</code></td></tr>
+  <tr><td><code>awaiting_approval</code> as a parked state a second process answers</td>
+  <td>planned</td><td>lesson 0019. Today it is the moment the operator answers</td></tr>
+  <tr><td>A canonical job state set for Hermes</td><td>proposed clarification</td>
+  <td><code>hermes-job-control-plane.md</code> §4. The lab's 13 names come from the supervisor,
+  not from that proposal</td></tr>
+  <tr><td>Gate rejection is a typed refusal with no ledger row</td><td>accepted</td>
+  <td>same document, §4. <code>no_evidence</code> at 0 model calls is the lab's form</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>12-workflow-graph/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm job a</code>. Find the three edges out of <code>replied</code> in the
+  supervisor.</li>
+  <li>Run <code>pnpm job b</code>. Name two edges no recording took, from memory.</li>
+  <li>Run <code>pnpm job c</code>. Predict which rule each case breaks first.</li>
+  <li>Run the four break experiments in the README.</li>
+</ol>
+
+<h2>5 · Exercise: which record holds it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each fact where it lives</h3>
+  <p class="rules">Answer from memory before you click. Feedback is immediate.</p>
+
+  <div class="cl" data-cats="the graph file|guards.ts|the trace|the knowledge graph">
+    <div class="cl-item" data-cat="0" data-why="That is an edge from replied to gating with the guard's name on it. The file holds the name, not the check.">
+      <p>After a reply that wants a tool, a gate decision may follow.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="A check reads a gate event's decision field, and the file cannot read fields. The function gate_held does it.">
+      <p>A gate decision of <code>hold</code> means the operator is asked.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="A token count is something that happened to one run. It is a value in a reply event, and the graph has no field that could hold it.">
+      <p>Call 2 of the grounded run used 248 input tokens.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="A claim with provenance is evidence. The trace keeps only its id, and the graph refuses a claims key at the root.">
+      <p><code>MOD-004</code>: the job supervisor loop is implemented.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="The file is names only, so a parse can admit it and it can hold nothing but structure. The check reads an event, which is work for code.">
+    <p class="qz-prompt">Q1. Why is a guard a name in the graph file and a function in code?</p>
+    <button class="qz-opt" type="button">Because JSON cannot hold a function, and the walker would otherwise have to evaluate strings</button>
+    <button class="qz-opt" type="button">Because the parse runs before the trace exists, so no guard could be checked at load time</button>
+    <button class="qz-opt" type="button">Because the file then stays data a parse can admit, and the check that reads an event stays code</button>
+    <button class="qz-opt" type="button">Because the graph is shared with Hermes, whose record names guards it has not implemented</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The walker found no edge from calling to grounded, and the graph was drawn from the code. The supervisor records evidence before call 1 or never.">
+    <p class="qz-prompt">Q2. The evidence line of a recording is moved after the first call, and the
+    walker refuses at line 3. What does that show?</p>
+    <button class="qz-opt" type="button">That the graph forbids evidence after planning began, because the supervisor cannot do that</button>
+    <button class="qz-opt" type="button">That the trace parse rejects an event whose timestamp is out of order with its neighbours</button>
+    <button class="qz-opt" type="button">That the guard on the edge into grounded read the call event and found no pack reference</button>
+    <button class="qz-opt" type="button">That a resumed run must re-assemble its pack, so the second evidence line was never written</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The graph was read from the code, and six recordings only happen to take ten edges. The tests walk four more through the real supervisor and a fake.">
+    <p class="qz-prompt">Q3. Six recordings take 10 of 26 edges. What are the other 16?</p>
+    <button class="qz-opt" type="button">Edges the schema generated to make every pair of nodes reachable, so a walk never dead-ends</button>
+    <button class="qz-opt" type="button">Edges Hermes's lifecycle proposal names and the supervisor does not yet implement</button>
+    <button class="qz-opt" type="button">Edges that only a live provider can take, which is why the lab makes zero model calls</button>
+    <button class="qz-opt" type="button">Edges read from the supervisor's branches that no recording took, four of them walked in tests</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="The shape is strict, so an unknown key fails at the root before any refinement runs. The graph holds names, and a claim is content.">
+    <p class="qz-prompt">Q4. Someone adds a <code>claims</code> key with one evidence item to the
+    graph file. What happens?</p>
+    <button class="qz-opt" type="button">The parse admits it and the walker ignores the key, because the walker reads edges only</button>
+    <button class="qz-opt" type="button">The parse refuses the whole file at the root, naming the key, before any of the four rules runs</button>
+    <button class="qz-opt" type="button">The parse admits it, and one of the four rules refuses it as an item with no node to enter</button>
+    <button class="qz-opt" type="button">The parse admits it, and the trace test fails because the claim text now appears in the events</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer these in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say how you read a state and an edge out of the supervisor's code, using one example of
+  each.</li>
+  <li>Explain why a guard has a name in one place and a body in another, and what the walker does
+  when they disagree.</li>
+  <li>Describe what the walker holds while it runs, and what it refuses to hold.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A job's states are the nodes its
+trace events enter, and its branches are the edges between them. The workflow graph is a file of
+names and guard names, admitted by a parse with four rules. The walker replays a trace along the
+graph, holds no event, and refuses with a line number. The graph holds no claims and
+no events, and the trace and the knowledge graph keep theirs.</p>
+
+<h2>Primary source</h2>
+
+<p>Read §4 of
+<a href="../docs/hermes_os/architecture/hermes-job-control-plane.md">hermes-job-control-plane.md</a>,
+the job lifecycle. Compare its nine proposed states with the lab's thirteen nodes, and say which of
+its accepted transition facts the graph already holds.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>zod</code> 4.4.3 and <code>vitest</code> 3.2.7 on Node 22.14.0. The evidence is exercise
+  12's three parts and its 32 tests, run on 2026-10-06, with exercise 08's 29 and exercise 11's
+  21 re-run green. The recordings are the trace files labs 07 and 11 wrote against the mock. The
+  refusal texts in the tables omit their issue-code prefixes. This lesson does not change the
+  supervisor, and the graph describes it after the fact.</p>
+  <p><strong>Next.</strong> Lesson 0018 makes the graph the thing that advances the loop, and
+  writes a checkpoint after every step, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

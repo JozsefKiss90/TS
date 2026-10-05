@@ -1386,6 +1386,142 @@ not failures).
   restatement under the token table, and eight short trims. The lesson ends 0 errors, 0 warnings,
   diagrams re-verified 3× after the edits.
 
+## Update 2026-10-05 — Phase 3 lessons defined (provisional ids 0017–0021)
+
+ROADMAP's Phase 3 section goes from three bullets to a five-row table, same shape as Phases 0–2.
+No lesson is authored; 0017 is marked ▶ and the rest ○. The why:
+
+- **Hand-written graph before the framework.** The original three bullets put LangGraph.js in the
+  second lesson. That would have had the learner meet checkpointing and interruption as framework
+  features, which is the "SDK first" order Phase 0 refused. 0017–0019 build the graph as Zod-parsed
+  data with a small interpreter, a file checkpoint, and a parked `awaiting_approval` node; 0020 then
+  meets `StateGraph` the way 0003 met the client SDK, with a which-layer-moved table. Lab 13 holds
+  the framework so lab 12 stays framework-free, the way lab 02 sat beside lab 01.
+- **Five lessons, not three.** Each original bullet carried two or three wins ("port the loop;
+  checkpointing, interruption, resume"), and Article II.4 is one win per lesson. The split is where
+  the measurable wins fall: replay-proves-legal-path (0017), kill-and-resume from a checkpoint
+  (0018), verdict from a second process (0019), same tests behind the port (0020), per-job graph
+  from the spec (0021). 0018/0019 are the likeliest to merge and 0020 the likeliest to split; the
+  table says so.
+- **The approval queue lands in 0019.** Lesson 0010 shipped the H-approval as a blocking prompt and
+  its status table deferred the browsable queue to Phase 3 (update 2026-08-20). A parked checkpoint
+  at `awaiting_approval` is that queue, so the debt gets a row rather than staying in a note.
+- **Checkpoint is not trace.** 0011 already resumes from the trace file by rebuilding the ledger.
+  0018 adds a second resume path and must say what each recovers, or the learner will read the
+  checkpoint as a trace copy and the three-graphs rule loses its edge. Recorded as a Phase guardrail
+  in the header alongside "the graph holds no claims and no events", which 0017 turns into a test.
+- **The Hermes lifecycle is graded, not assumed.** `hermes-job-control-plane.md` §4 offers a state
+  set as a *proposed clarification* with no accepted enumeration. Phase 3's graph is built against
+  it and labeled so under Article III.9; it does not ratify it.
+- **Prerequisite added:** exact LangGraph.js version pinned and its checkpoint/interrupt surfaces
+  verified against current docs in-session before 0020 is authored (Article IV.1–2). RESOURCES
+  already lists the two LangGraph.js pages and the Mastra exclusion; nothing added there.
+- Module graph not touched: no status flipped and the phase has not opened. Its Phase 3 detail is
+  drawn when 0017 ships, per the sync duty in the note itself.
+
+## Update 2026-10-06 — lesson 0017 shipped: thinking in state graphs; Phase 3 opens
+
+Lesson 0017 (*Thinking in State Graphs*) opens lab `12-workflow-graph` and Phase 3.
+**1,984 words, 0 errors, 2 warnings** from `tools/lesson-lint.mjs`; the map note and the three new
+term notes pass 0/0. **Three new Technical Names** against a budget of six: `workflow-graph`,
+`guard`, `terminal-node`. One em-dash, in the `<title>`. Two diagrams, render-verified 3× in
+headless Edge (2 SVGs each run, no "Syntax error" text).
+
+- **The design decision of the session: a guard is a name in the file and a function in code.**
+  The graph file declares `guards: [...]` and an edge cites one by name; `src/guards.ts` holds a
+  `GuardTable` keyed by those names; `walk` refuses, before reading any event, a graph that names
+  a guard the table lacks. The alternative — expressions in the JSON (`"stop != wants_tool"`) —
+  would have made the file a language and the parse an interpreter. The split also gives the
+  lesson its Article III.3 line for free: the file is the signature, the table the implementation.
+- **The graph is strict, and that is the "no claims, no events" test.** `z.strictObject` on six
+  fields (name, nodes, start, terminal, guards, edges), every one a name or a list of names. A
+  `claims` key or an `events` key fails at the root with `unrecognized_keys` before any
+  refinement runs. One test reads `WorkflowGraphSchema.shape` and asserts the six keys. Four
+  cross-field refinements: start declared, edges join declared nodes, guards declared, no edge
+  out of a terminal.
+- **Every guard reads the event being left.** The branch in `supervisor.ts` is decided by the
+  reply's stop reason, the gate's decision, or the approval's verdict, and each of those is on
+  the event that put the run in the node it is leaving. So the walker holds only the current
+  node and no guard needs the spec, the ledger or the clock. A rule that needs those (the
+  BEFORE-call ceiling check, max calls) is an unguarded edge today and is where 0018's
+  interpreter state goes; the lesson says so in its status table.
+- **Node names come from the trace, not from Hermes's proposal.** `nodeFor` maps the eight event
+  kinds to `started`, `grounded`, `calling`, `replied`, `gating`, `awaiting_approval`,
+  `tool_ran`, and `job_ended` to its outcome (six terminals). §4 of
+  `hermes-job-control-plane.md` is a *proposed clarification* and is labeled so in the status
+  table; the one accepted fact the graph already holds (gate rejection = typed refusal, no
+  ledger row) is `no_evidence` at 0 model calls.
+- **Measured before taught** (zod 4.4.3, vitest 3.2.7, Node 22.14.0): 13 nodes, 26 edges, 6
+  guards from reading the supervisor. Six recordings (lab 07's four, lab 11's two) are legal and
+  complete, 0 model calls, and together take **10 of 26 edges**. The tests walk four more through
+  the real supervisor against `FakeModelGateway`: held tool approved, held tool with no channel,
+  spec with queries and no pack, throttled provider. Twelve edges remain drawn and unwalked, and
+  the README's break experiment 3 shows the price of a graph that only describes: an added edge
+  `calling > grounded` is not caught by replay.
+- **TDD at the agreed seam, red captured this time.** Three test files were written first and the
+  red run was recorded (three files fail to load, no source). Implementation went green on the
+  first run, so two rules were then proved load-bearing by mutation: guards ignored → 2 tests
+  fail; terminal rule removed → 1 fails; restored → 32 green.
+- **Not registered, on purpose:** "walker" (ordinary English for the function that walks a trace
+  along the graph, named by its code identifier `walk` where it matters), "node" and "edge"
+  (ordinary graph vocabulary; the collision table covers `node` against `KnowledgeGraph.node`),
+  "legal path" (ordinary English). The collision table is the lesson's one Article III.5 table:
+  knowledge graph / workflow graph / node-the-state / `node(id)`.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2, PARA-4,
+  PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. The two
+  remaining warnings: the title's "Thinking" (SENT-5 on a title) and one SENT-6 false positive.
+  Budget was hit by cutting: the first draft was 2,124 words, and the cuts were a
+  seven-sentence paragraph reduced to four, the `graph_health` row of the collision table, the
+  "one test reads six keys" sentence (kept in this note and the README), the 0018 pointer in the
+  guards paragraph, the compression's fifth sentence folded into its second, and (after review
+  added a signature table) the event table's third column and the list of the four in-process
+  runs. Nothing was compressed into denser prose.
+- **Lab 11's supervisor is unchanged.** Lab 12 imports lab 07's trace, supervisor and fake; it
+  adds no field and no event. Exercise 08's 29 and exercise 11's 21 re-run green, 82 with lab
+  12's 32; `pnpm -r typecheck` passes across all twelve packages.
+- **Recall debt:** lesson 0016's say-it answers are not in the repo as a learning record yet.
+  Collect them with lesson 0018's lab, per Article V.3. No promotions this session.
+- Bookkeeping: ROADMAP row 0017 ✅ with the measured win named, 0018 ▶, Phase 3 header *underway,
+  1 of 5*; module graph synced (phase node, new Phase 3 detail section, the artifact graph's
+  workflow-graph node now fed by the trace, the S3 row, lesson-map list).
+
+### What the two-axis review caught, and what I did about it
+
+- **Standards axis, the real defect: "holds nothing but the current node" was false.** `walk`
+  also accumulates `path` and `edgesTaken`. The claim appeared in §3, diagram 2, the
+  compression, the map note and the walker's header comment. All five now say "holds no event",
+  which is the claim that matters (the walker reads two records and keeps neither).
+- **Standards: "the three records" was `the three graphs` renamed.** Coined in the mission
+  callout and the `workflow-graph` term note; both now name the knowledge graph, the workflow
+  graph and the trace outright.
+- **Standards: "Lesson 0011 gave the trace eight event kinds."** 0011 gave seven, 0016 added
+  `evidence_used`. Now "The trace has eight event kinds". The spec axis found the mirror error in
+  the ROADMAP header I had written the day before ("a seven-kind trace"); fixed to eight.
+- **Standards, Article III.3:** `walk(graph, guards, events)` had a type-and-value pairing but no
+  signature table. Added a four-row part / meaning / at-run-time table, paid for by cutting the
+  event table's third column and the list of the four in-process runs (now "listed in the
+  README"). Lesson ends at 1,984 words.
+- **Standards, lab:** the `Guard` type took an `entering` event no guard read (speculative
+  generality) — removed. `RECORDINGS` and `readRecording` were duplicated between `main.ts` and
+  the recorded-runs test — extracted to `src/recordings.ts`, with `GROUNDED_RECORDING` replacing
+  the `RECORDINGS[4]` index. The three edge-rule `error` callbacks shared one shape — one
+  `edgeRule` helper. `tests/helpers.ts` copied lab 11's `spec` while the tsconfig comment said
+  nothing is copied — now a re-export. `workflow-graph.ts`'s header named `walker.ts` as where
+  guard functions live; it is `guards.ts`. 32 tests still green after each change.
+- **Standards, footer disclosure (Article IV.3):** the lesson's refusal cells drop the
+  `[custom]` / `(root): [unrecognized_keys]` prefixes the README quotes verbatim; the footer now
+  says so. Four passives with a known actor rewritten.
+- **Spec axis: nothing missing against the row.** It verified 32 tests, the 13/26/6 counts, the
+  six recordings, 10 of 26, line-3 refusal and an untouched supervisor by running them. It noted
+  the walker also replays lab 07's four recordings where the row said "lab 11's"; the row text
+  was widened to say so, since the 10-of-26 figure depends on all six. Its word-count nit
+  (1,987 vs the note's 1,988) is moot after the review edits; the number above is the final run.
+- **Not done, recorded:** the Article II.2 "spine thread" name in the mission callout. The thread
+  names in `course-spine.md` ("the six responsibilities", "the boundary rule", "the three
+  graphs") are themselves unregistered phrases, and one is a banned coinage. 0016 omitted them
+  for the same reason. Flagged for the spine note, not fixed in the lesson. "walker" is kept as
+  ordinary English for the function; the reviewer called it borderline.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

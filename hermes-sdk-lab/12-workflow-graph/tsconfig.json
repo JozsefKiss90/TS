@@ -1,0 +1,9 @@
+{
+  // Same shared config as every exercise. This package imports the loop
+  // from ../07-tool-loop/src (the trace vocabulary, the supervisor, the
+  // fake gateway) so the walker reads the same TraceEvent the supervisor
+  // writes. Nothing is copied: a copied event schema would be a second
+  // vocabulary, free to drift from the one the trace files hold.
+  "extends": "../tsconfig.base.json",
+  "include": ["src", "tests"]
+}

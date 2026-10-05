@@ -1,0 +1,62 @@
+{
+  "name": "job-lifecycle",
+  "nodes": [
+    "started",
+    "grounded",
+    "calling",
+    "replied",
+    "gating",
+    "awaiting_approval",
+    "tool_ran",
+    "landed",
+    "retry_later",
+    "gave_up",
+    "over_budget",
+    "out_of_time",
+    "no_evidence"
+  ],
+  "start": "started",
+  "terminal": ["landed", "retry_later", "gave_up", "over_budget", "out_of_time", "no_evidence"],
+  "guards": [
+    "reply_wants_tool",
+    "reply_finished",
+    "gate_held",
+    "gate_decided",
+    "verdict_answered",
+    "verdict_job_ended"
+  ],
+  "edges": [
+    { "from": "started", "to": "grounded" },
+    { "from": "started", "to": "calling" },
+    { "from": "started", "to": "no_evidence" },
+    { "from": "started", "to": "over_budget" },
+    { "from": "started", "to": "gave_up" },
+
+    { "from": "grounded", "to": "calling" },
+    { "from": "grounded", "to": "over_budget" },
+    { "from": "grounded", "to": "gave_up" },
+
+    { "from": "calling", "to": "replied" },
+    { "from": "calling", "to": "retry_later" },
+    { "from": "calling", "to": "gave_up" },
+    { "from": "calling", "to": "over_budget" },
+    { "from": "calling", "to": "out_of_time" },
+
+    { "from": "replied", "to": "landed", "guard": "reply_finished" },
+    { "from": "replied", "to": "gating", "guard": "reply_wants_tool" },
+    { "from": "replied", "to": "gave_up", "guard": "reply_wants_tool" },
+
+    { "from": "gating", "to": "tool_ran", "guard": "gate_decided" },
+    { "from": "gating", "to": "awaiting_approval", "guard": "gate_held" },
+
+    { "from": "awaiting_approval", "to": "tool_ran", "guard": "verdict_answered" },
+    { "from": "awaiting_approval", "to": "gave_up", "guard": "verdict_job_ended" },
+    { "from": "awaiting_approval", "to": "over_budget", "guard": "verdict_job_ended" },
+    { "from": "awaiting_approval", "to": "out_of_time", "guard": "verdict_job_ended" },
+
+    { "from": "tool_ran", "to": "gating" },
+    { "from": "tool_ran", "to": "calling" },
+    { "from": "tool_ran", "to": "over_budget" },
+    { "from": "tool_ran", "to": "gave_up" }
+  ]
+}

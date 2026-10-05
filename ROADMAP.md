@@ -77,16 +77,28 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 ---
 
-## Phase 3 — The workflow graph — *next up; Phase 2 exit met 2026-09-30*
+## Phase 3 — The workflow graph — *underway, 1 of 5 shipped (opened 2026-10-06); Phase 2 exit met 2026-09-30; lessons defined 2026-10-05*
 
 **Goal:** the loop's control flow becomes an explicit state graph — what Hermes *may* do, encoded as data.
 **Framework decision:** LangGraph.js is the candidate (persistence, interruption); evaluated, not assumed — and never learned alongside an alternative in the same phase.
+**Sequence rule, applied:** the hand-written graph comes before the framework, the way raw HTTP came before the SDK in Phase 0. Lessons 0017–0019 use no framework. Lesson 0020 meets LangGraph.js the way lesson 0003 met the client SDK: as a layer whose absorbed responsibilities you can already name because you wrote each one.
+**Starting point:** lab 11's supervisor already has six outcomes (`landed`, `retry_later`, `gave_up`, `over_budget`, `out_of_time`, `no_evidence`) and an eight-kind trace, but its control flow is `if` statements in `supervisor.ts`. The Hermes record has no accepted state set — its job lifecycle is a *proposed clarification* ([hermes-job-control-plane.md](docs/hermes_os/architecture/hermes-job-control-plane.md) §4). The lab's graph is built against that proposal and labeled so (Article III.9).
+**Guardrail:** a checkpoint is workflow-side state kept so a job can continue; the trace is what happened. Neither becomes the other, and the graph holds no claims and no events.
+**Prerequisite (before 0020):** pin an exact LangGraph.js version and verify its checkpoint and interrupt surfaces against current docs in-session (Article IV.1–2).
 
-- **Thinking in State Graphs** — when a framework earns its keep; map the manual loop's states and edges on paper first.
-- **The Loop Becomes a Graph** — port the Phase 1 loop; checkpointing, interruption, resume.
-- **The Workflow Graph Is Policy** — permissions and approval gates live on the graph's edges; the second of the three graphs, kept apart from the other two.
+| # (prov.) | Lesson | Lab (prov.) | The win | Status |
+|---|---|---|---|---|
+| 0017 | [Thinking in State Graphs](lessons/0017-thinking-in-state-graphs.html) | `12-workflow-graph` | the loop's states and edges read from `supervisor.ts` and written as data: a strict Zod `WorkflowGraph` (13 nodes, 26 edges, 6 named guards) admitted by a parse with four cross-field rules; guards are names in the file and functions in `guards.ts`; a walker replays the six recorded traces of labs 07 and 11 and proves every one a legal, complete path at 0 model calls — measured: the six take 10 of 26 edges, the tests walk four more through the real supervisor against a fake, a moved `evidence_used` line is refused at line 3, and a `claims` or `events` key is refused at the root; 32 tests green, 82 across labs 08/11/12 | ✅ |
+| 0018 | The Loop Walks the Graph | `12-workflow-graph` continues | the supervisor's `if` statements leave; a small interpreter advances one node per step, and an edge the graph does not hold is a typed refusal; a checkpoint (state + current node) is written after every step, and a job killed mid-run resumes from it — measured against lesson 0011's trace-based resume: what each can recover, and what neither can | ▶ |
+| 0019 | Interruption Is a State | `12-workflow-graph` continues | the approval gate becomes an edge into `awaiting_approval`; the job parks there as a checkpoint instead of blocking on a prompt; the queue lesson 0010 promised is the set of parked checkpoints, browsable and answerable from a second process; `--no-writeback` jobs never visit the node — measured: verdict given out of process, resume continues the same trace | ○ |
+| 0020 | LangGraph.js, Evaluated | `13-graph-orchestration` | the same graph on `StateGraph` with conditional edges, a checkpointer, and interrupt/resume; lab 12's tests run unchanged behind the port; a which-layer-moved table: what the framework absorbed (traversal, checkpoint storage, the resume protocol) and what stayed Hermes's (the spec, the guards, the trace, the ports); exact version pinned | ○ |
+| 0021 | The Workflow Graph Is Policy | `13-graph-orchestration` continues | the per-job graph is derived from the TaskSpec — permission levels and `--no-writeback` decide which edges exist, so a run can only do what its graph holds and the trace proves which path it took; the written adopt / wrap / skip decision on LangGraph.js, argued from lessons 0018–0020's measurements; the second of the three graphs, kept apart from the other two; Phase 3's capstone | ○ |
 
-**Exit criteria:** the manual loop runs under graph orchestration with persistence and interruption — with a written justification of what the framework bought.
+*Provisional shape: lab `12` carries lab 11's codebase forward, and exercise 08's and lab 11's tests stay the regression proof that an older spec file notices nothing. Lab `13` holds the framework so lab 12 stays framework-free. Id 0017 is firm; 0018–0021 may compress or split as sessions reveal pace — 0018 and 0019 are the likeliest to merge, 0020 the likeliest to split.*
+
+*Lesson maps in the wiki: [[lesson-0017-thinking-in-state-graphs]].*
+
+**Exit criteria:** the manual loop runs under graph orchestration with persistence and interruption — with a written justification of what the framework bought. Lesson 0020 meets the first half, lesson 0021 the second.
 
 ---
 
