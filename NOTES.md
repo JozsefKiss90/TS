@@ -1522,6 +1522,122 @@ headless Edge (2 SVGs each run, no "Syntax error" text).
   for the same reason. Flagged for the spine note, not fixed in the lesson. "walker" is kept as
   ordinary English for the function; the reviewer called it borderline.
 
+## Update 2026-10-07 — lesson 0018 shipped: the loop walks the graph; Phase 3 is 2 of 5
+
+Lesson 0018 (*The Loop Walks the Graph*) continues lab `12-workflow-graph` with parts d to f.
+**1,997 words, 0 errors, 1 warning** from `tools/lesson-lint.mjs` (a SENT-6 false positive inside
+a quiz option); the map note and the three new term notes pass 0 errors. **Three new Technical
+Names** against a budget of six: `node-handler`, `graph-interpreter`, `checkpoint`. One em-dash,
+in the `<title>`. Two diagrams, render-verified 3× in headless Edge (2 SVGs each run, no "Syntax
+error" text).
+
+- **The design decision of the session: handlers name a node, the interpreter makes the move.**
+  `runGraph<S, C>(graph, guards, handlers, from, ctx)` is generic and knows nothing about jobs. A
+  `NodeHandler` returns `{ to, state, event }`; the interpreter calls `findOpenEdge` (extracted
+  from the walker so both ask the same question of the same graph), refuses with a typed
+  `Refusal` if none opens, else writes a checkpoint `{ job, step, node, state }` and moves.
+  Terminal nodes have no handler: `startJob`/`resumeJob` in `handlers.ts` write `job_ended` with
+  `outcome = node name` (the walker's `nodeFor` read backwards) and build the `JobReport`.
+- **The checkpoint names the node entered NEXT, written after the step.** So a resume runs that
+  node's handler and nothing is replayed twice. Consequence worth recording: a handler that
+  records its event and then crashes (`calling`, by design — `call_started` before the I/O so a
+  crash leaves evidence, lesson 0011's rule) leaves an event the checkpoint never saw. Resumed
+  into the same trace file, the record holds `call_started` twice and the walker refuses it at
+  line 7, `no edge calling > calling`. I kept that as a measured finding rather than "fixing" it:
+  the refusal is the diagnosis (a call went out and never came back), and papering over it would
+  need either a resume event in the trace vocabulary (lab 07 unchanged — regression rule) or a
+  checkpoint written mid-handler (then a checkpoint holds an event). Disclosed in the footer, the
+  map note, and the README.
+- **The BEFORE-call checks (cap, then ceiling) live in one helper, `nextCall`, called from three
+  handlers** (`started`, `grounded`, `tool_ran`), because the graph draws them as three nodes'
+  out-edges. This is where 0017's note said the interpreter's state would go, and it did: the
+  checks read `state.modelCalls` and `state.tokensSpent`, not the clock.
+- **`JobState` is a Zod schema, not an interface**, because a checkpoint is read back from disk.
+  Fields: transcript (a `Turn` schema, three arms), ledger, toolRuns, alerts, evidenceIds, plus
+  the in-between values the supervisor kept on the stack: `reply` (received, not booked),
+  `pending` (asked, not answered), `results` (answered, not sent), `gate`, `verdict`, `exit`.
+  Not in it: the timer, the controller, the in-flight call — `armBounds` in `handlers.ts` arms a
+  fresh one per process, as 0011's resume restarted the clock.
+- **Measured before taught** (zod 4.4.3, vitest 3.2.7, Node 22.14.0): nine scenarios through
+  `runTask` and `startJob` give `toEqual` reports and `at`-stripped-equal events (one tool call,
+  held/approved, held/no channel, grounded, no evidence, throttled, call cap, ceiling mid-call,
+  deadline mid-call — the last two via a test-local `SlowFakeGateway` that reports progress and
+  waits for the abort, so the in-flight bounds are measured without the mock). Edge
+  `tool_ran > calling` removed → `{ no_edge, step 5 }`, 1 of 2 scripted calls, last checkpoint
+  step 4. Two kills: during the approval wait (approver throws) the checkpoint resume lands at 2
+  calls / 80 tokens vs the trace resume's 3 / 110, continuing the same trace file which walks
+  legal and complete; inside call 2 (script exhausted) both land, 2 vs 3 calls, 80 tokens each,
+  and neither knows the dead call's cost. grep counts for the lesson's claim: `supervisor.ts` 2
+  `for`, 3 `continue`, 15 `return report(`; `handlers.ts` 0, 0, 27 node-naming returns (the `if`s
+  that classify a failure remain and can only name a node — the lesson says so).
+- **TDD at the agreed seams, red captured.** Three test files written first (checkpoint parse,
+  interpreter with toy handlers on the small graph, graph-run against the supervisor); red run
+  recorded (three files fail to load). Implementation went 54/57 green first run; the three
+  failures were test-side (a spec override that broke `maxTokens <= costCeilingTokens`, and two
+  toy handler tables missing a node the up-front wiring check requires — I kept the check and
+  fixed the tests). Mutation: edge check skipped → 4 fail; checkpoint save removed → 7 fail;
+  restored → 57 green. 107 across labs 08/11/12; `pnpm -r typecheck` passes on twelve packages.
+- **Not registered, on purpose:** "step" (ordinary; the collision table separates the scenario
+  step from the interpreter's), "refusal" (the course's ordinary word since 0005), "handler"
+  alone (the Technical Name is `node handler`; "handler" is its registered alias). The collision
+  table is one Article III.5 table: state-the-node / `JobState`, scenario step / interpreter
+  step.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2, PARA-4,
+  PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Budget was
+  hit by cutting, in three passes from 2,216 words: the nine-scenario table became one paragraph
+  (the table lives in the README), the collision table lost its two "resume" rows, the footer was
+  split and shortened, and several `data-why` feedbacks were tightened. One PARA-4 catch on my
+  own draft: "This lesson moves…" → "Here each moment's work becomes…".
+- **Lab 07's supervisor is unchanged** and is the oracle the handlers are measured against. The
+  lesson's status table says so, and the README's regression line too.
+- **Recall debt:** lessons 0016 and 0017's say-it answers are still not in the repo as learning
+  records. Collect them with lesson 0019's lab, per Article V.3. No promotions this session.
+- Bookkeeping: ROADMAP row 0018 ✅ with the measured win, 0019 ▶, Phase 3 header *2 of 5*;
+  module graph synced (phase node, Q18 ✅ / Q19 ▶, the artifact graph's workflow-graph node, the
+  S3 row, lesson-map list); README restructured as two lessons' sections.
+
+### What the two-axis review caught, and what I did about it
+
+- **Standards, the real defect: "the supervisor's bodies, moved" hid one behaviour change.**
+  `raceBounds` in the handlers has a rejection arm; the supervisor's `void decision.then(...)`
+  has none, so an approver that throws would hang the supervisor's wait and nothing in part f
+  would work against it. Fixed by disclosure, not by reverting: the function's comment names it,
+  the lesson's footer and status table say "one change in the footer", the map note and README
+  say which line. Article IV.3.
+- **Standards: `checkpoints/audit-atlas.json` was a run artifact about to be committed.** Lab 12
+  now has a `.gitignore` for `checkpoints/`; the README says it is written and read back in the
+  same run. The recordings in lab 07's `traces/` stay committed because the walker replays them.
+- **Standards: "27 places name a node" counted the helpers' own calls.** 23 handler returns
+  through three helpers; term note, map note and README now say so (the lesson never quoted 27).
+- **Standards, Duplicated Code:** `wantsTool`/`done` were declared three times (main.ts and two
+  test files). Extracted to `src/scripted-replies.ts`. `memoryTrace` in main.ts still duplicates
+  `tests/helpers.collector` because `src` does not import from `tests`; left as is.
+- **Standards, Primitive Obsession:** `outcome.node as JobReport["outcome"]` became `asOutcome`,
+  which checks the terminal name against the six outcomes and throws a wiring error otherwise.
+- **Standards, PARA-4:** "Two words now carry two meanings each across the course." deleted; the
+  collision table stands on its own.
+- **Standards, TERM-3, needs the user's decision:** "step" (scenario step / interpreter step)
+  and "state" (a node / `JobState`) are overloads the course created itself, which TERM-3 says a
+  collision table does not excuse. "state" was already 0017's word for a node, and `JobState` is
+  a `<code>` identifier; "step" is the ordinary word for one handler run and the scenario's own
+  word. I kept both with the collision table and did not rename. Flagged here for the user.
+- **Spec: "killed" is a thrown error inside one process**, with the checkpoint read back from disk
+  and the trace continued in memory. Disclosed in the footer and README; a resume from a separate
+  process is 0019's measured claim.
+- **Spec: "what neither can recover" named only the dead call's cost.** Added the row "a tool that
+  already ran: runs again / runs again" to the comparison table, paid for by cuts elsewhere.
+- **Spec: the module graph's S7 row had put the checkpoint "beside the trace".** Reworded: the
+  checkpoint is a separate record under S3, not part of the trace. The Phase 3 guardrail stands.
+- **Spec: Article V.1 equal-length options.** Q3's first two options were 19 and 14 words;
+  rebalanced to 16 and 16.
+- **Spec, noted and kept:** the checkpoint holds the node entered *next*, not the ROADMAP's
+  "current node"; the lesson defines it that way and the reason (nothing replays twice) is in
+  this note. The `guards` override on `startJob` and the generic `runGraph<S, C>` are beyond "a
+  small interpreter"; the override is what the guard-refusal test uses, and the generic is what
+  keeps `interpreter.ts` free of job vocabulary.
+- After the review edits the lesson is back under budget (see the final lint line in the
+  commit); 57 tests still green.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

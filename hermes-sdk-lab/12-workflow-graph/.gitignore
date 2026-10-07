@@ -1,0 +1,4 @@
+# Written by `pnpm job f` on every run and read back in the same run. Not a
+# fixture: the recordings in ../07-tool-loop/traces are committed because
+# the walker replays them; this file is replaced on every step.
+checkpoints/

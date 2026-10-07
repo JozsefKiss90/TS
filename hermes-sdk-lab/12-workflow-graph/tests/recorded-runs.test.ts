@@ -15,6 +15,7 @@ import { runTask } from "../../07-tool-loop/src/supervisor.js";
 import { jobLifecycleGuards } from "../src/guards.js";
 import { loadGraph } from "../src/load-graph.js";
 import { GROUNDED_RECORDING, RECORDINGS, readRecording, recordingName } from "../src/recordings.js";
+import { done, wantsTool } from "../src/scripted-replies.js";
 import { walk } from "../src/walker.js";
 import { collector, spec } from "./helpers.js";
 
@@ -60,26 +61,6 @@ describe("the six recorded runs", () => {
   });
 });
 
-const wantsTool: GatewayResult = {
-  ok: true,
-  reply: {
-    text: "I need the graph health report first.",
-    calls: [{ id: "toolu_1", name: "graph_health", input: { graph: "atlas" } }],
-    stop: "wants_tool",
-    usage: { inputTokens: 20, outputTokens: 10 },
-    requestId: "req_fake_1",
-  },
-};
-const done: GatewayResult = {
-  ok: true,
-  reply: {
-    text: "Audit complete.",
-    calls: [],
-    stop: "completed",
-    usage: { inputTokens: 40, outputTokens: 10 },
-    requestId: "req_fake_2",
-  },
-};
 
 describe("runs the recordings never took, through the real supervisor", () => {
   it("a held tool, approved: gating, awaiting_approval, tool_ran", async () => {

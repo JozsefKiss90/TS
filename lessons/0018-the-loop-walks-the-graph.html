@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0018 — The Loop Walks the Graph</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 3 · Lesson 0018 · lab exercise 12-workflow-graph · ~45–60 min</p>
+  <h1>The Loop Walks the Graph</h1>
+  <p class="lede">Lesson 0017 drew the graph from the supervisor's code. What changes when the graph
+  decides the next move, and the code only does the work?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  This lesson builds scenario step S3 (dispatch under the graph). A job makes only the moves the
+  graph holds, and a move it lacks is refused before it happens. S7 (the run is recorded) gains a
+  second record, a checkpoint, so a job killed mid-run continues where it stopped. The trace holds
+  what happened, the checkpoint holds where the run is, and the graph holds neither.
+</div>
+
+<h2>1 · One step at a time</h2>
+
+<p>The supervisor of lab 07 is one function. A loop, three <code>continue</code> statements and
+fifteen early returns decide what the job does next. The graph file describes those decisions and
+nothing else. Here each moment's work becomes its own function, and the graph decides.</p>
+
+<p>A <dfn>node handler</dfn> is the function that does one node's work and names the node it wants
+next. It records that node's trace event, the one the walker reads for it, and returns three
+things.</p>
+
+<pre><code>// src/interpreter.ts                    // the gating handler, measured
+export interface Step&lt;S&gt; {                { to: "awaiting_approval",
+  to: string;                               state: { …, pending: [{ id: "toolu_1",
+  state: S;                                            name: "graph_health", … }],
+  event: TraceEvent;                               gate: "hold" },
+}                                            event: { kind: "gate", decision: "hold", … } }</code></pre>
+
+<p>A handler never decides whether its move is allowed. The <dfn>graph interpreter</dfn> is the
+loop that runs one handler, checks the move against the graph, writes a checkpoint, and moves.</p>
+
+<table>
+  <tr><th>Part of <code>runGraph(graph, guards, handlers, from, ctx)</code></th><th>Meaning</th><th>At run time</th></tr>
+  <tr><td><code>graph</code></td><td>the admitted workflow graph of lesson 0017</td><td>13 nodes, 26 edges, read once</td></tr>
+  <tr><td><code>guards</code></td><td>six functions keyed by guard name</td><td><code>guards.ts</code>, unchanged</td></tr>
+  <tr><td><code>handlers</code></td><td>one function per node a run passes through</td><td>seven, in <code>handlers.ts</code></td></tr>
+  <tr><td><code>from</code></td><td>the node to enter next, the step count, the state</td><td>the start node at step 0, or a checkpoint</td></tr>
+  <tr><td><code>ctx</code></td><td>everything a handler touches that is not state</td><td>spec, gateway, bounds, ports</td></tr>
+</table>
+
+<p>Terminal nodes have no handler. A run that reaches one ends, and the node's name is the
+outcome.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    H["run the handler<br/>of the current node"] --> W["wanted move<br/>to, state, event"]
+    W --> Q{"open edge<br/>from here to there?"}
+    Q -->|"none, or guard says no"| R["typed refusal<br/>no checkpoint, no move"]
+    Q -->|"yes"| C["write checkpoint<br/>step, node, state"]
+    C --> T{"terminal?"}
+    T -->|"no"| H
+    T -->|"yes"| E["job_ended<br/>outcome = node name"]
+</pre>
+<figcaption>Diagram 1. One step of the interpreter. The graph is asked before the move, not after
+the run.</figcaption>
+</figure>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>Each node's work is a handler that names the next node and cannot make the move.</li>
+    <li>The interpreter asks the graph before every move, and a missing edge is a typed refusal.</li>
+    <li>A checkpoint is the state plus the node entered next, replaced after every step.</li>
+    <li>A run killed mid-way resumes from its checkpoint, and that differs from resuming from the trace.</li>
+  </ul>
+  <p>Reprise: the walker and guards (0017), the trace and its resume (0011).</p>
+</div>
+
+<h2>2 · The same job, and a move the graph refuses</h2>
+
+<p>The handlers are the supervisor's bodies, moved. Nine scenarios run through both against the
+fake gateway, from one tool call answered to the deadline passing mid-call. Each returns the same
+report and the same events, and each trace walks legal and complete. Both ask the graph through
+one shared function.</p>
+
+<pre><code>// src/walker.ts, shared by walk and runGraph       // measured, edge removed from the file
+export function findOpenEdge(                        { ok: false,
+  graph, guards, from, to, leaving                     kind: "no_edge",
+): EdgeAnswer                                           step: 5,
+                                                        from: "tool_ran",
+// src/interpreter.ts                                   to: "calling" }
+export type Refusal =
+  | { ok: false; kind: "no_edge"; step; from; to }
+  | { ok: false; kind: "guard_refused"; step; from; to; guards: string[] };</code></pre>
+
+<p>Part E removes the edge <code>tool_ran &gt; calling</code> from the file and runs the audit.
+The tool runs, its result is recorded, and the move to call 2 is refused. The fake saw one of its
+two calls. The last checkpoint stands at step 4, node <code>tool_ran</code>. The trace
+ends with no <code>job_ended</code>, which lesson 0011 reads as a record cut short.</p>
+
+<p>The walker of lesson 0017 found a missing edge only after a recording took it. The
+interpreter finds it before the move.</p>
+
+<h2>3 · The checkpoint, and what it cannot hold</h2>
+
+<p>A <dfn>checkpoint</dfn> is the job state plus the node the run enters next, written after
+every step. The state is the supervisor's local variables, now carried as one value.</p>
+
+<pre><code>// src/job-state.ts, abridged                 // checkpoints/audit-atlas.json, measured
+export const JobStateSchema = z.strictObject({   { "job": "Audit the atlas graph",
+  transcript: z.array(TurnSchema),                 "step": 4,
+  modelCalls, tokensSpent,                         "node": "awaiting_approval",
+  toolRuns, alerts, evidenceIds,                   "state": {
+  reply: ReplySchema.nullable(),                     "transcript": [ {operator}, {model} ],
+  pending: z.array(ToolCallSchema),                  "modelCalls": 1, "tokensSpent": 30,
+  results: z.array(ToolOutcomeSchema),               "pending": [ { "name": "graph_health", … } ],
+  gate: …nullable(), verdict: …nullable(),           "gate": "hold", "verdict": null,
+  exit: …nullable(),                                 "reply": null, "exit": null, … } }
+});</code></pre>
+
+<p>The file is replaced on every step. The trace file is appended on every event and never
+rewritten. One record says where the run is, and the other says what it did. The shape is strict,
+so an <code>events</code> key is refused at the root, as the graph refuses a <code>claims</code>
+key.</p>
+
+<p>Three things are not in the file: the deadline timer, the abort controller, and a model call in
+flight. A resumed run arms a fresh timer. The in-flight call separates the two ways to resume.</p>
+
+<p>Part F kills a run while a held call waits for the operator. The trace has four events and the
+checkpoint is the one above. The trace rebuild drops the unanswered ask, so the supervisor asks
+the model again. The checkpoint keeps the ask, so the interpreter asks the operator again.</p>
+
+<table>
+  <tr><th>Killed while a held call waited</th><th>Resume from the trace (0011)</th><th>Resume from the checkpoint (0018)</th></tr>
+  <tr><td>Transcript recovered</td><td>the operator's turn only</td><td>operator and model turns, plus the pending call</td></tr>
+  <tr><td>Where the run continues</td><td>at a new model call, always</td><td>at <code>awaiting_approval</code></td></tr>
+  <tr><td>Model calls in the whole job</td><td>3</td><td>2</td></tr>
+  <tr><td>Tokens in the whole job</td><td>110</td><td>80</td></tr>
+  <tr><td>The whole trace, walked</td><td>two runs, two files</td><td>one file, legal and complete</td></tr>
+  <tr><td>A tool that already ran</td><td>runs again</td><td>runs again</td></tr>
+</table>
+
+<p>The tests kill a second run inside call 2, after <code>call_started</code> was written. The
+trace counts that call, because the provider may have billed it, and resumes at call 3. The
+checkpoint never heard of it and makes call 2 again. Neither knows what the dead call cost. The
+one trace now holds two <code>call_started</code> lines in a row, and the walker refuses it at
+line 7. That refusal is the diagnosis: a call went out and never came back.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    K["run killed at step 4<br/>awaiting_approval"] --> TR[("trace<br/>4 events, appended")]
+    K --> CP[("checkpoint<br/>step 4, replaced")]
+    TR -->|"rebuild, ask dropped"| A["supervisor<br/>call 2 asks again<br/>3 calls, 110 tokens"]
+    CP -->|"read back, parsed"| B["interpreter<br/>operator asked again<br/>2 calls, 80 tokens"]
+    B -->|"same file, continued"| TR
+</pre>
+<figcaption>Diagram 2. One kill, two records, two resumes. The checkpoint resume continues the same
+trace.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Term</th><th>What it is</th><th>Where</th></tr>
+  <tr><td>state, a node</td><td>one moment a run can be in</td><td>the graph file</td></tr>
+  <tr><td><code>JobState</code></td><td>the values a run carries between nodes</td><td><code>job-state.ts</code>, the checkpoint</td></tr>
+  <tr><td>scenario step</td><td>one stage of the Hermes audit job</td><td><code>hermes-integration.md</code></td></tr>
+  <tr><td>step, of the interpreter</td><td>one handler run, one checkpoint</td><td><code>interpreter.ts</code></td></tr>
+</table>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td>The graph decides every move, and a missing edge is refused before it</td><td>implemented</td><td><code>src/interpreter.ts</code>, <code>src/handlers.ts</code>, 57 tests</td></tr>
+  <tr><td>A checkpoint per step, read back through a strict parse, resume from it</td><td>implemented</td><td><code>src/checkpoint.ts</code>, part F</td></tr>
+  <tr><td>Lab 07's supervisor</td><td>implemented, unchanged</td><td>still runs labs 08 and 11, and the handlers are its bodies moved, one change in the footer</td></tr>
+  <tr><td><code>awaiting_approval</code> as a parked state answered from a second process</td><td>planned</td><td>lesson 0019, per <code>ROADMAP.md</code>. Today a resumed run asks the operator again in-process</td></tr>
+  <tr><td>A canonical job state set for Hermes</td><td>proposed clarification</td><td><code>hermes-job-control-plane.md</code> §4, as in lesson 0017</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>12-workflow-graph/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm job d</code>. Match each checkpoint to the handler that ran before it.</li>
+  <li>Run <code>pnpm job e</code>. Predict the step number before you read it.</li>
+  <li>Run <code>pnpm job f</code>. Open the checkpoint file and find the pending call.</li>
+  <li>Run the four break experiments for this lesson in the README.</li>
+</ol>
+
+<h2>5 · Exercise: which record holds it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each fact where it lives</h3>
+  <p class="rules">Answer from memory before you click.</p>
+
+  <div class="cl" data-cats="the graph file|a node handler|the checkpoint|the trace">
+    <div class="cl-item" data-cat="2" data-why="An ask not yet answered is state the run carries, in pending. The trace holds the reply that asked, not the fact that it waits.">
+      <p>The model asked for <code>graph_health</code> and nobody has answered yet.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The handler reads the stop reason and names landed or gating. The graph file only says which names may follow replied.">
+      <p>A reply that did not want a tool is followed by <code>landed</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="3" data-why="A call that went out is an event that happened. The checkpoint was written before the handler ran and does not know.">
+      <p>Call 2 started at 02:00:28 and no reply followed.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="Which moves exist is structure, read from the file through findOpenEdge. A handler cannot add an edge.">
+      <p>No move joins <code>tool_ran</code> to <code>grounded</code>.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="1" data-why="The handler recorded its event and named calling. The interpreter found no edge and returned a typed result, with no checkpoint, no second call and no job_ended.">
+    <p class="qz-prompt">Q1. The edge <code>tool_ran &gt; calling</code> is removed from the file. What does part E
+    measure?</p>
+    <button class="qz-opt" type="button">The parse refuses the graph, because a node with no way to calling cannot reach a terminal</button>
+    <button class="qz-opt" type="button">The run stops after the tool result with a typed refusal at step 5, and one model call was made</button>
+    <button class="qz-opt" type="button">The run falls back to the supervisor's if statements and lands with two model calls as before</button>
+    <button class="qz-opt" type="button">The run ends gave_up, and the trace's job_ended names the missing edge in its notes</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The checkpoint holds the pending call and the node. The trace rebuild drops an unanswered ask, so the model is asked again.">
+    <p class="qz-prompt">Q2. A run is killed while a held call waits. Why does the checkpoint resume make one model
+    call fewer than the trace resume?</p>
+    <button class="qz-opt" type="button">Because the checkpoint carries the deadline, so the resumed wait has less time and skips the call</button>
+    <button class="qz-opt" type="button">Because the checkpoint stores the operator's verdict, so the tool runs without asking anyone</button>
+    <button class="qz-opt" type="button">Because resuming from the trace replays every event, including the first call, through the gateway</button>
+    <button class="qz-opt" type="button">Because the checkpoint keeps the unanswered ask and the node, and the trace rebuild drops the ask</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="call_started was written before the call, so the trace counts a call that may have been billed. The checkpoint was written before the handler, so it has no record of the call at all.">
+    <p class="qz-prompt">Q3. A run is killed inside call 2. The trace resume continues at call 3 and the checkpoint
+    resume makes call 2 again. Why do they differ?</p>
+    <button class="qz-opt" type="button">The trace saw call_started and counts a possibly billed call, and the checkpoint never saw it</button>
+    <button class="qz-opt" type="button">The checkpoint's ledger is only an estimate, while the trace's ledger holds the provider's true count</button>
+    <button class="qz-opt" type="button">The trace resume starts a new job, so its numbering restarts from the carried count plus one</button>
+    <button class="qz-opt" type="button">The checkpoint drops the model turn with calls, the way the trace rebuild does, and re-asks</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="The checkpoint file is replaced on every step and holds the latest state. The trace file is appended on every event and holds the history.">
+    <p class="qz-prompt">Q4. How do the checkpoint file and the trace file differ on disk?</p>
+    <button class="qz-opt" type="button">Both are appended per step, the checkpoint with the state and the trace with the event</button>
+    <button class="qz-opt" type="button">The checkpoint holds every state the run passed through, and the trace holds the last event</button>
+    <button class="qz-opt" type="button">The checkpoint is replaced per step with the latest state, and the trace is appended per event</button>
+    <button class="qz-opt" type="button">The checkpoint is the trace plus the current node, written once when the job ends</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say what a handler returns and what it may not decide, with one handler as the example.</li>
+  <li>Explain what a refusal costs and what it leaves in the trace and in the checkpoint file.</li>
+  <li>Name one thing only the checkpoint resume recovers, and one thing neither resume recovers.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A handler does one node's work
+and names the next node, and the graph decides whether the move is allowed. A move the graph does
+not hold is refused before it happens, at no cost. A checkpoint is the state plus the node
+entered next, replaced after every step. A run resumes from its checkpoint at the node it was
+in, and the trace stays the record of what happened.</p>
+
+<h2>Primary source</h2>
+
+<p>Read §4 of
+<a href="../docs/hermes_os/architecture/hermes-job-control-plane.md">hermes-job-control-plane.md</a>
+again and find every sentence about resuming a job. Say which the checkpoint satisfies and which
+need lesson 0019's parked state.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>zod</code> 4.4.3 and <code>vitest</code> 3.2.7 on Node 22.14.0. The evidence is exercise
+  12's parts D to F and its 57 tests, run on 2026-10-07, with exercise 08's 29 and exercise 11's
+  21 re-run green. Every gateway is lab 07's fake, or a variant that reports progress and waits
+  for the abort. The mid-call bounds are measured without the mock.</p>
+  <p><strong>Disclosed.</strong> Lab 07's supervisor and trace vocabulary are unchanged. One
+  moved line changed: the wait for the operator rejects when the approver throws, which is the
+  lab's kill. The kill is a thrown error in one process, with the trace in memory and the checkpoint
+  read from disk. A resumed run has no event of its own. The code blocks are abridged.</p>
+  <p><strong>Next.</strong> Lesson 0019 makes <code>awaiting_approval</code> a parked checkpoint
+  that a second process can answer, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

@@ -13,6 +13,10 @@
  *
  * Zero model calls. A recording is enough, and so is a run through the
  * real supervisor against a fake gateway.
+ *
+ * Lesson 0018 moved the edge question into `findOpenEdge`, so the
+ * interpreter can ask it before a move and the walker after one. Both
+ * read the same graph the same way.
  */
 import type { TraceEvent } from "../../07-tool-loop/src/trace.js";
 import type { WorkflowGraph } from "./workflow-graph.js";
@@ -47,6 +51,33 @@ export function nodeFor(event: TraceEvent): string {
     case "job_ended":
       return event.outcome;
   }
+}
+
+/** Why no edge opens from one node to another: none is drawn, or every drawn one has a guard that said no. */
+export type EdgeAnswer =
+  | { ok: true; guard: string | undefined }
+  | { ok: false; kind: "no_edge" }
+  | { ok: false; kind: "guard_refused"; guards: string[] };
+
+/**
+ * Is there an open edge from `from` to `to`, given the event being left?
+ * An unguarded edge is always open. A guarded one asks its guard.
+ */
+export function findOpenEdge(
+  graph: WorkflowGraph,
+  guards: GuardTable,
+  from: string,
+  to: string,
+  leaving: TraceEvent,
+): EdgeAnswer {
+  const candidates = graph.edges.filter((e) => e.from === from && e.to === to);
+  if (candidates.length === 0) return { ok: false, kind: "no_edge" };
+
+  const open = candidates.find((e) => e.guard === undefined || guards[e.guard]?.(leaving));
+  if (open !== undefined) return { ok: true, guard: open.guard };
+
+  const named = candidates.map((e) => e.guard).filter((g): g is string => g !== undefined);
+  return { ok: false, kind: "guard_refused", guards: named };
 }
 
 export type Walk =
@@ -103,22 +134,13 @@ export function walk(graph: WorkflowGraph, guards: GuardTable, events: TraceEven
     const next = nodeFor(entering);
     const line = i + 1;
 
-    const candidates = graph.edges.filter((e) => e.from === current && e.to === next);
-    if (candidates.length === 0) {
-      return { ok: false, line, from: current, to: next, reason: `no edge ${current} > ${next}` };
-    }
-
-    // An unguarded edge is always open. A guarded one asks its guard.
-    const open = candidates.find((e) => e.guard === undefined || guards[e.guard]?.(leaving));
-    if (open === undefined) {
-      const named = candidates.map((e) => e.guard).filter((g): g is string => g !== undefined);
-      return {
-        ok: false,
-        line,
-        from: current,
-        to: next,
-        reason: `guard refused the move: ${named.join(", ")}`,
-      };
+    const edge = findOpenEdge(graph, guards, current, next, leaving);
+    if (!edge.ok) {
+      const reason =
+        edge.kind === "no_edge"
+          ? `no edge ${current} > ${next}`
+          : `guard refused the move: ${edge.guards.join(", ")}`;
+      return { ok: false, line, from: current, to: next, reason };
     }
 
     edgesTaken.push(`${current}>${next}`);
