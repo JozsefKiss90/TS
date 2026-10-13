@@ -9,6 +9,11 @@
  * next. Now each handler ends by naming the node it wants, and the graph
  * decides whether the move is allowed.
  *
+ * Lesson 0019 lets `awaiting_approval` park: with nobody
+ * wired to decide in-process and `park` set, it parks the run instead of
+ * waiting on a promise. The verdict comes back inside the checkpoint's
+ * state (queue.ts), and the handler reads it when the run resumes.
+ *
  * Seven handlers, for the seven nodes a run passes through. The six
  * terminal nodes have none: reaching one ends the run, and `startJob`
  * writes the job_ended event there, with the outcome being the node's
@@ -29,6 +34,7 @@ import {
   type Checkpoint,
   type CheckpointPort,
   type HandlerTable,
+  type Parked,
   type Position,
   type Refusal,
   type Step,
@@ -78,6 +84,12 @@ export interface JobContext {
   bounds: Bounds;
   record: (event: TraceEvent) => void;
   approver?: ApprovalPort;
+  /**
+   * Lesson 0019. With no in-process approver, a held call parks the run
+   * instead of being denied by default. The verdict arrives later, in the
+   * checkpoint's state, from whoever answers the queue.
+   */
+  park: boolean;
   pack?: AdmittedPack;
 }
 
@@ -332,13 +344,28 @@ export const jobLifecycleHandlers: HandlerTable<JobState, JobContext> = {
     return Promise.resolve(move(gate === "hold" ? "awaiting_approval" : "tool_ran", decided, event));
   },
 
-  /** A held call waits for the operator, and the wait races the bounds. */
+  /**
+   * A held call waits for the operator. Four wirings, read in this order:
+   * a verdict already in the state (given out of process, lesson 0019),
+   * an in-process approver whose wait races the bounds (lesson 0010), a
+   * park with nobody wired (lesson 0019), or nobody at all, which is the
+   * default deny of lesson 0010.
+   */
   awaiting_approval: async (state, ctx) => {
     const call = state.pending[0];
     if (call === undefined) throw new Error("awaiting_approval entered with nothing pending");
     const { spec, bounds } = ctx;
 
+    if (state.verdict !== null) {
+      // Someone answered the queue. The event is recorded now, by the
+      // process that resumed, so the trace reads as it did in-process.
+      const event: TraceEvent = { kind: "approval", at: Date.now(), tool: call.name, verdict: state.verdict };
+      ctx.record(event);
+      return move("tool_ran", state, event);
+    }
+
     if (ctx.approver === undefined) {
+      if (ctx.park) return { park: true };
       // Default deny: no approval channel means no approval.
       const event: TraceEvent = { kind: "approval", at: Date.now(), tool: call.name, verdict: "no_channel" };
       ctx.record(event);
@@ -437,6 +464,8 @@ function asOutcome(node: string): JobReport["outcome"] {
 export interface JobOptions {
   signal?: AbortSignal;
   approver?: ApprovalPort;
+  /** Park a held call when no approver is wired, instead of denying it (lesson 0019). */
+  park?: boolean;
   trace?: TracePort;
   pack?: AdmittedPack;
   checkpoints?: CheckpointPort<JobState>;
@@ -444,7 +473,7 @@ export interface JobOptions {
   guards?: GuardTable;
 }
 
-export type JobResult = { ok: true; report: JobReport } | Refusal;
+export type JobResult = { ok: true; report: JobReport } | Refusal | Parked<JobState>;
 
 /** A fresh run: the start node, a fresh state, step zero. */
 export function startJob(
@@ -481,6 +510,7 @@ async function drive(
     tools: offerTools(spec.allowedTools),
     bounds,
     record: (event) => options?.trace?.append(event),
+    park: options?.park ?? false,
     ...(options?.approver ? { approver: options.approver } : {}),
     ...(options?.pack ? { pack: options.pack } : {}),
   };

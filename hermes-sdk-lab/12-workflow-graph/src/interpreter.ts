@@ -13,6 +13,10 @@
  *   4. write a checkpoint holding the state and the node entered next;
  *   5. move. A terminal node ends the run.
  *
+ * Lesson 0019 adds a second result a handler may return: a park. The run
+ * stops at the handler's node with a typed result and the last checkpoint
+ * standing. Nothing is recorded for a park. It is not a move.
+ *
  * Nothing here knows what a job is. The state type and the context type
  * are parameters, and the node names are whatever the graph declares. The
  * job lifecycle's handlers live in handlers.ts.
@@ -27,12 +31,25 @@ import type { TraceEvent } from "../../07-tool-loop/src/trace.js";
 import { findOpenEdge, type GuardTable } from "./walker.js";
 import type { WorkflowGraph } from "./workflow-graph.js";
 
-/** What one handler returns: the node it wants next, the state after its work, the event it recorded. */
-export interface Step<S> {
+/** A move: the node the handler wants next, the state after its work, the event it recorded. */
+export interface Move<S> {
   to: string;
   state: S;
   event: TraceEvent;
 }
+
+/**
+ * A park (lesson 0019): the run stops at this node and the process may
+ * exit. No edge is asked for, no event is recorded, no checkpoint is
+ * written, because the last one already names this node. The run resumes
+ * from that checkpoint, and this node's handler runs again.
+ */
+export interface Park {
+  park: true;
+}
+
+/** What one handler returns: a move, or a park. */
+export type Step<S> = Move<S> | Park;
 
 /** The work of one node. It never decides whether the move is allowed; the graph does. */
 export type NodeHandler<S, C> = (state: S, ctx: C) => Promise<Step<S>>;
@@ -60,7 +77,10 @@ export type Refusal =
   | { ok: false; kind: "no_edge"; step: number; from: string; to: string }
   | { ok: false; kind: "guard_refused"; step: number; from: string; to: string; guards: string[] };
 
-export type RunOutcome<S> = { ok: true; node: string; step: number; state: S } | Refusal;
+/** The run stopped at a node without ending: a handler parked it. */
+export type Parked<S> = { ok: false; kind: "parked" } & Position<S>;
+
+export type RunOutcome<S> = { ok: true; node: string; step: number; state: S } | Refusal | Parked<S>;
 
 export async function runGraph<S, C>(
   graph: WorkflowGraph,
@@ -90,6 +110,7 @@ export async function runGraph<S, C>(
     const handler = handlers[node];
     if (handler === undefined) throw new Error(`node "${node}" has no handler`);
     const wanted = await handler(state, ctx);
+    if ("park" in wanted) return { ok: false, kind: "parked", node, step, state };
     const next = step + 1;
 
     // The same question the walker asks of a recorded pair, asked of a

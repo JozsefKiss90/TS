@@ -2,3 +2,6 @@
 # fixture: the recordings in ../07-tool-loop/traces are committed because
 # the walker replays them; this file is replaced on every step.
 checkpoints/
+# Lesson 0019's parked run writes its trace here and a later process reads it
+# back. Not a fixture either.
+traces/

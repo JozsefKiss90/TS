@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0019 — Interruption Is a State</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 3 · Lesson 0019 · lab exercise 12-workflow-graph · ~45–60 min</p>
+  <h1>Interruption Is a State</h1>
+  <p class="lede">A held tool call waits for a human. What is that wait, once the loop is a graph, and
+  who has to stay alive while it lasts?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  This lesson builds scenario step S5 (the loop iterates), where a held tool call queues for
+  the operator. The queue lesson 0010 promised is the set of checkpoints standing at
+  <code>awaiting_approval</code>. Under S3 (dispatch under the graph), the gate is still an edge
+  into that node. The graph file gains nothing, and no process has to wait.
+</div>
+
+<h2>1 · A wait that holds no process</h2>
+
+<p>In lessons 0010 and 0018 the operator's answer is a promise. The handler for
+<code>awaiting_approval</code> races it against the job's bounds, and the process stays alive
+until one wins. Lesson 0018 killed that process and measured what the checkpoint recovered. The
+kill was a thrown error, because nothing else could leave the wait.</p>
+
+<p>Here a handler may return a park instead of a move. A <dfn>parked run</dfn> is a run stopped at a node by its
+handler, with no process holding it. The interpreter returns a typed result, and the process may
+exit.</p>
+
+<pre><code>// src/interpreter.ts                       // part G, measured
+export interface Move&lt;S&gt; {                   { ok: false,
+  to: string; state: S; event: TraceEvent;     kind: "parked",
+}                                              step: 4,
+export interface Park { park: true }           node: "awaiting_approval",
+export type Step&lt;S&gt; = Move&lt;S&gt; | Park;          state: { pending: [ { name: "graph_health", … } ],
+export type Parked&lt;S&gt; =                                  gate: "hold", verdict: null, … } }
+  { ok: false; kind: "parked" } &amp; Position&lt;S&gt;;</code></pre>
+
+<table>
+  <tr><th>A park, compared with a move</th><th>A move</th><th>A park</th></tr>
+  <tr><td>The interpreter asks for an edge</td><td>yes, before the move</td><td>no, because there is no move</td></tr>
+  <tr><td>The handler records an event</td><td>yes, the node's own</td><td>no, so the trace ends at <code>gate</code></td></tr>
+  <tr><td>The interpreter writes a checkpoint</td><td>yes, naming the next node</td><td>no, because the last one already names this node</td></tr>
+  <tr><td>The step count</td><td>advances by one</td><td>stays at 4</td></tr>
+  <tr><td>What the process does next</td><td>runs the next handler</td><td>exits, and the files remain</td></tr>
+</table>
+
+<p>Part G runs the audit with <code>graph_health</code> held for approval and nobody wired to
+answer. The model is called once, the gate says hold, and the run parks. The trace file has four
+lines and the checkpoint file names step 4. Then the process ends.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Three ideas are new.</p>
+  <ul>
+    <li>A handler may return a park instead of a move, and a park records nothing.</li>
+    <li>The queue is a filter over the checkpoints, not a record of its own.</li>
+    <li>A verdict is state first and an event later, written by the process that resumes.</li>
+  </ul>
+  <p>Reprise: the checkpoint and the interpreter (0018), the gate and its port (0010).</p>
+</div>
+
+<h2>2 · The queue is a filter</h2>
+
+<p>The <dfn>approval queue</dfn> is the set of checkpoints standing at
+<code>awaiting_approval</code> with no verdict yet. Nothing writes it. Part H lists the checkpoint
+directory through the strict parse of lesson 0018 and keeps the files that match.</p>
+
+<pre><code>// src/queue.ts                                      // part H, measured
+export function parkedJobs(                            bare-audit.json    step 7, landed
+  checkpoints: readonly JobCheckpoint[],               parked-audit.json  step 4, awaiting_approval
+): JobCheckpoint[] {
+  return checkpoints.filter((c) =>                     1 waiting for an operator:
+    c.node === "awaiting_approval" &amp;&amp;                   "Audit the atlas graph"  step 4
+    c.state.verdict === null);                           asks graph_health({"graph":"atlas"})
+}</code></pre>
+
+<p>The second file comes from the same audit with nothing held, run under the same wiring. Its gate
+never said hold, so the guard <code>gate_held</code> never opened, and the run never stood at the
+node. A job that requires no approval cannot enter the queue, whatever the wiring says.</p>
+
+<p>The answer to a parked job is a verdict written into the checkpoint's state. The function is pure,
+and it refuses three things: a job standing at another node, a job already answered, and a job
+with nothing pending. The result is a checkpoint again, and the resume reads it back through
+the same boundary.</p>
+
+<table>
+  <tr><th>Part of <code>answerParked(checkpoint, verdict)</code></th><th>Meaning</th><th>At run time</th></tr>
+  <tr><td><code>checkpoint</code></td><td>one parked job, parsed from its file</td><td>step 4, verdict <code>null</code></td></tr>
+  <tr><td><code>verdict</code></td><td><code>"approved"</code> or <code>"denied"</code></td><td>the operator's word, typed at a shell</td></tr>
+  <tr><td>returns <code>{ ok: true, checkpoint }</code></td><td>the same checkpoint with the verdict in its state</td><td>written back over the file</td></tr>
+  <tr><td>returns <code>{ ok: false, reason }</code></td><td>the job cannot take a verdict</td><td>"the job stands at landed, not at awaiting_approval"</td></tr>
+</table>
+
+<p>Part I is that function at a shell. The trace file is untouched, because no event happened. A
+verdict in a file is a fact about the job, and the trace holds what the run did.</p>
+
+<h2>3 · The resume records the answer</h2>
+
+<p>Part J reads the checkpoint back and resumes the run. The handler for
+<code>awaiting_approval</code> runs again, finds a verdict in the state, and records the
+<code>approval</code> event. The guard <code>verdict_answered</code> opens, the tool runs, and the
+job lands after call 2. Resumed before anyone answered, the same handler parks the run again,
+writes nothing, and the step stays at 4.</p>
+
+<pre><code>// src/handlers.ts, the handler's four wirings, read in this order
+if (state.verdict !== null) { record approval; return move("tool_ran", state, event); }
+if (ctx.approver === undefined) {
+  if (ctx.park) return { park: true };
+  record no_channel; return move("tool_ran", { ...state, verdict: "no_channel" }, event);
+}
+const verdict = await raceBounds(ctx.approver.decide(call), bounds.signal);   // lesson 0010</code></pre>
+
+<table>
+  <tr><th>Process</th><th>Reads</th><th>Writes</th><th>Measured</th></tr>
+  <tr><td>G, the first run</td><td>the spec</td><td>trace lines 1 to 4, the checkpoint at step 4</td><td>1 model call, then exit</td></tr>
+  <tr><td>H, the queue</td><td>every checkpoint file</td><td>nothing</td><td>1 of 2 files waits</td></tr>
+  <tr><td>I, the answer</td><td>one checkpoint</td><td>the same file, verdict added</td><td>trace untouched</td></tr>
+  <tr><td>J, the resume</td><td>the checkpoint, the trace</td><td>trace lines 5 to 9, checkpoints 5 to 8</td><td>landed, 2 calls, 80 tokens</td></tr>
+</table>
+
+<p>The whole trace is one file of nine lines, and the walker reads it as legal and complete. The
+numbers match lesson 0018's in-process resume, so the trace cannot tell that three processes
+wrote it. The gap between the <code>gate</code> line and the <code>approval</code> line is the
+time the job stood parked. In the recorded run it was 19 seconds, and no process ran during
+it.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    G["G · the run<br/>gate says hold<br/>handler parks"] --> TR[("trace<br/>4 lines")]
+    G --> CP[("checkpoint<br/>step 4, verdict null")]
+    CP --> H["H · the queue<br/>a filter over the files"]
+    CP --> I["I · the answer<br/>verdict into the state"]
+    I --> CP2[("checkpoint<br/>step 4, verdict approved")]
+    CP2 --> J["J · the resume<br/>handler records approval<br/>tool runs, call 2, landed"]
+    J --> TR2[("trace<br/>9 lines, one file")]
+    TR -. same file .-> TR2
+</pre>
+<figcaption>Diagram 1. Four processes, two files. Only the first and the last write the
+trace.</figcaption>
+</figure>
+
+<p>The graph file is unchanged. Lesson 0017 drew the node, its four edges and its two guards
+from the supervisor. The interruption needed no new node. A run now stands at an existing node
+with no process behind it.</p>
+
+<table>
+  <tr><th>Term</th><th>What it is</th><th>Where</th></tr>
+  <tr><td>hold</td><td>the gate's decision on a permitted call</td><td>the <code>gate</code> event, <code>state.gate</code></td></tr>
+  <tr><td>park</td><td>the handler's result: stop here, no move</td><td><code>Step&lt;S&gt;</code>, the run's result</td></tr>
+  <tr><td>verdict</td><td>the operator's answer to a held call</td><td><code>state.verdict</code> first, the <code>approval</code> event later</td></tr>
+</table>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td>A held call parks the run, and the process exits</td><td>implemented</td><td><code>src/interpreter.ts</code>, <code>src/handlers.ts</code>, part G</td></tr>
+  <tr><td>The queue, listed and answered from other processes</td><td>implemented</td><td><code>src/queue.ts</code>, parts H and I, 74 tests</td></tr>
+  <tr><td>The graph file and the six guards</td><td>implemented, unchanged</td><td><code>graphs/job-lifecycle.json</code>, <code>src/guards.ts</code></td></tr>
+  <tr><td>Who answered, and when</td><td>prepared</td><td>the verdict is a word in the state. An operator identity is a field this lab does not have</td></tr>
+  <tr><td>A per-job graph with no <code>awaiting_approval</code> edge for a job that holds nothing</td><td>planned</td><td>lesson 0021, per <code>ROADMAP.md</code>. Today the edge exists and the guard never opens</td></tr>
+  <tr><td>Operator approval as a Hermes gate (H4)</td><td>proposed clarification</td><td><code>hermes-job-control-plane.md</code> §4, as in lessons 0017 and 0018</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>12-workflow-graph/README.md</code>. Run each part
+in its own shell, and read the two files between parts.</p>
+
+<ol>
+  <li>Run <code>pnpm job g</code>. Open the checkpoint file and find the verdict field.</li>
+  <li>Run <code>pnpm job h</code>. Say why the second file is not in the queue.</li>
+  <li>Run <code>pnpm job j</code> before any answer. Predict what it writes.</li>
+  <li>Run <code>pnpm job i approved</code>, then <code>pnpm job j</code>. Walk the trace file.</li>
+  <li>Run the four break experiments for this lesson in the README.</li>
+</ol>
+
+<h2>5 · Exercise: which process does it?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each action with the process that performs it</h3>
+  <p class="rules">Answer from memory before you click.</p>
+
+  <div class="cl" data-cats="G, the first run|H, the queue|I, the answer|J, the resume">
+    <div class="cl-item" data-cat="3" data-why="The event is written when the handler runs again and finds a verdict. The answer wrote state, not an event.">
+      <p>The <code>approval</code> line lands in the trace file.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="The gate decides hold inside the gating handler, and the checkpoint written after that step names awaiting_approval.">
+      <p>A checkpoint first names <code>awaiting_approval</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="answerParked writes the verdict into the state and the file is replaced. Nothing else changes.">
+      <p>The checkpoint's verdict field changes from <code>null</code> to a word.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The queue reads every checkpoint through the parse and keeps those at the node with no verdict. It writes nothing.">
+      <p>Every checkpoint file is parsed and most are set aside.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="A park is not a move. No edge is asked for, no event is recorded, and no checkpoint is written, because the last one already names the node.">
+    <p class="qz-prompt">Q1. The handler for <code>awaiting_approval</code> parks the run. What does the interpreter
+    write?</p>
+    <button class="qz-opt" type="button">A checkpoint at step 5 naming the node, so that the resume knows where the run stopped</button>
+    <button class="qz-opt" type="button">An <code>approval</code> event with the verdict <code>parked</code>, so that the walker can read the park</button>
+    <button class="qz-opt" type="button">Nothing, because the checkpoint written after the gating step already names the node</button>
+    <button class="qz-opt" type="button">A <code>job_ended</code> event with the outcome <code>parked</code>, so that the report can count it</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The queue is derived: every checkpoint file, parsed, filtered by node and by a null verdict. No file lists the queue.">
+    <p class="qz-prompt">Q2. Where does the queue live?</p>
+    <button class="qz-opt" type="button">Nowhere on its own. It is the checkpoints at the node with no verdict, found by reading them</button>
+    <button class="qz-opt" type="button">In a queue file the handler appends to when it parks, and the answer removes that line again</button>
+    <button class="qz-opt" type="button">In the trace, as every <code>gate</code> event whose decision is hold and has no approval after it</button>
+    <button class="qz-opt" type="button">In the graph file, as the list of every run that is currently standing at <code>awaiting_approval</code></button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="The answer writes state. The handler that runs on resume reads the verdict and records the event, so the trace reads as it would in-process.">
+    <p class="qz-prompt">Q3. Part I writes <code>approved</code> and the trace file does not change. Why?</p>
+    <button class="qz-opt" type="button">Because the first process holds a lock on the trace file until the job lands or is refused</button>
+    <button class="qz-opt" type="button">Because the verdict is state, and the resumed handler records the event when it reads it</button>
+    <button class="qz-opt" type="button">Because the answer writes to the trace only when the verdict is <code>denied</code>, not approved</button>
+    <button class="qz-opt" type="button">Because the walker would refuse an <code>approval</code> line that no process was waiting for</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The gate reads the spec. With nothing in approvalRequired it never says hold, the guard gate_held never opens, and the node is never entered.">
+    <p class="qz-prompt">Q4. The audit with nothing held runs under the same park wiring. Why is it not in the
+    queue?</p>
+    <button class="qz-opt" type="button">Because the park wiring is ignored for a job whose spec lists only one tool</button>
+    <button class="qz-opt" type="button">Because the queue only lists jobs whose checkpoint file name begins with parked</button>
+    <button class="qz-opt" type="button">Because the run landed before the queue was read, so its checkpoint was deleted</button>
+    <button class="qz-opt" type="button">Because the gate never said hold, so the guard into the node never opened</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say what a park costs, and what the three files on disk look like after one.</li>
+  <li>Explain why the answer writes state and not an event, and who writes the event.</li>
+  <li>Name one thing the graph file gained for this lesson, or say why it gained nothing.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A handler may park the run, and a
+park makes no move, records no event and writes no checkpoint. The queue is every checkpoint
+standing at the approval node with no verdict. A verdict is written into the state by one
+process and recorded as an event by the next. The graph did not change, because a node is a
+place a run can stand, with or without a process.</p>
+
+<h2>Primary source</h2>
+
+<p>Read step S5 in
+<a href="../wiki/course/hermes-integration.md">hermes-integration.md</a> again. It says a
+writeback call "would otherwise queue for the operator". Say which of the four parts is that
+queue, and which part the sentence does not cover.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>zod</code> 4.4.3 and <code>vitest</code> 3.2.7 on Node 22.14.0. The evidence is exercise
+  12's parts G to J, run as separate shells on 2026-10-13, and its 74 tests, with exercise 08's 29
+  and exercise 11's 21 re-run green. Every gateway is lab 07's fake.</p>
+  <p><strong>Disclosed.</strong> The four processes are four <code>pnpm job</code> commands on one
+  machine, sharing a directory. The tests stand in for a file with a JSON round trip through the
+  parse. The verdict carries no operator identity and no time. A tool with side effects would run
+  again on a resume from the checkpoint before it, which the lab's read-only tool does not show.</p>
+  <p>The 19-second gap is one run's reading, and a second run gave 9. The roadmap's job that holds
+  nothing is a spec with an empty approval list, because lab 07's spec has no writeback flag.
+  The code blocks are abridged.</p>
+  <p><strong>Next.</strong> Lesson 0020 runs the same graph on LangGraph.js, per
+  <a href="../ROADMAP.md">ROADMAP</a>, and names what the framework absorbed of parts G to J.</p>
+</footer>
+
+</body>
+</html>

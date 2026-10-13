@@ -1638,6 +1638,108 @@ error" text).
 - After the review edits the lesson is back under budget (see the final lint line in the
   commit); 57 tests still green.
 
+## Update 2026-10-13 — lesson 0019 shipped: interruption is a state; Phase 3 is 3 of 5
+
+Lesson 0019 (*Interruption Is a State*) continues lab `12-workflow-graph` with parts g to j.
+**1,991 words, 0 errors, 0 warnings** from `tools/lesson-lint.mjs` after the review edits below; the map note and the two term notes pass 0 errors. **Two new Technical Names** against
+a budget of six: `parked-run`, `approval-queue`. Zero em-dashes in the body, one in the `<title>`.
+One diagram, render-verified in headless Edge (1 SVG, no "Syntax error" text).
+
+- **The design decision of the session: a park is a second handler answer, not a new node.**
+  `Step<S>` is now `Move<S> | Park`, with `Park = { park: true }`. The interpreter returns
+  `{ ok: false, kind: "parked", step, node, state }` and writes nothing: no edge asked, no event,
+  no checkpoint, because the one written after the previous step already names this node. The
+  graph file and the six guards are untouched, which is the lesson's title: the interruption is
+  the run standing at an existing node with no process behind it. I considered `ok: true` with a
+  `parked` flag and rejected it, because every 0018 test reads `result.report` after `!result.ok`
+  and would stop compiling. `ok` now means "a report exists"; the lesson says so in one line.
+- **The verdict is state first, event later.** `answerParked` writes `"approved"`/`"denied"` into
+  the checkpoint's `state.verdict` and nothing else; the handler that runs on resume reads it and
+  records the `approval` event. So the trace reads as it did in-process, and the walker's path is
+  0018's. The alternative, a separate verdict file passed as a one-shot approver, would have made
+  the checkpoint a second-class record. The handler's branch order is: verdict in state →
+  in-process approver → park → default deny. The default deny of 0010 stands when `park` is not
+  set, so 0018's "held tool with nobody to ask" scenario is unchanged (that was the regression
+  risk, and the test for it never moved).
+- **The queue is a filter, not a file.** `parkedJobs` keeps checkpoints at `awaiting_approval`
+  with `verdict === null`. Part h reads the whole directory through `admitCheckpoint` and lists
+  refused files rather than hiding them. The "`--no-writeback` jobs never visit the node" claim
+  from the roadmap row is measured as: the same audit with nothing in `approvalRequired`, run
+  under the same `park: true` wiring, lands at step 7 and leaves no checkpoint at the node. The
+  reason is the guard: `gate_held` never opens because the gate never says hold. The edge still
+  exists in the file; removing it per job is 0021's claim, labelled planned.
+- **Measured across four real processes** (zod 4.4.3, vitest 3.2.7, Node 22.14.0): g parks at
+  step 4 after 1 of 2 scripted calls; h lists 1 of 2 files; j before any answer parks again and
+  writes nothing; i writes the verdict and the trace file is untouched; j lands at 2 calls / 80
+  tokens, 0018's in-process numbers, with one nine-line trace file that walks legal and complete.
+  The `at` gap between the `gate` and `approval` lines was 18,819 ms. A second `pnpm job i` after
+  landing refuses: "the job stands at landed, not at awaiting_approval". The lab's trace sink for
+  this is new in `main.ts`: it appends and does not truncate on open, unlike lab 07's, because the
+  resume continues the first process's file. `traces/` joined `checkpoints/` in the lab's
+  `.gitignore`.
+- **TDD at three seams, red captured:** `park.test.ts` (toy handlers on the small graph),
+  `queue.test.ts` (both pure functions), `parked-run.test.ts` (the audit through a JSON round trip
+  standing in for the file). Red run: three files fail to load. Green on first implementation
+  run, 74/74. Mutation: park check replaced by a throw → 8 fail; verdict-in-state branch disabled
+  → 2 fail; restored → 74. 124 across labs 08/11/12; `pnpm -r typecheck` passes on twelve
+  packages.
+- **Not registered, on purpose:** "park" as a verb (ordinary English; the Technical Name is
+  `parked run`, with `park` and `parked` as aliases), "verdict" (the state field and the event
+  field since 0010; the three-row term table separates hold / park / verdict without calling it
+  a collision, because they are three words). "process" is ordinary.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye (two passives with a
+  known actor rewritten: "is written back" → "written back over the file" is in a table cell and
+  kept; "is refused" kept where the refuser is the function just named). SENT-2, PARA-2, PARA-4,
+  PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. The 20-word
+  lab-instruction limit judged: the longest exercise step is 12 words. Budget was met without a
+  cutting pass; the first draft came in at 1,956 and the review edits took it to 1,991.
+- **Recall debt, unchanged and growing:** lessons 0016, 0017 and 0018's say-it answers are not in
+  the repo as learning records. This session ran autonomously with no user in the chat, so none
+  were collected. Collect with lesson 0020's lab, per Article V.3. No promotions this session.
+- **Flagged, not fixed:** the Article II.2 "spine thread" name is still omitted from the mission
+  callout, as in 0016 to 0018, for the reason recorded on 2026-10-06. The 0018 note's TERM-3 flag
+  on "step" and "state" still awaits the user.
+- Bookkeeping: ROADMAP row 0019 ✅ with the measured win, 0020 ▶, Phase 3 header *3 of 5*;
+  module graph synced (phase node, Q19 ✅ / Q20 ▶, the workflow-graph artifact node, the S3 and
+  S5 rows, lesson-map list); README gains a lesson 0019 section with parts g to j, the measured
+  outputs, four break experiments and the not-done list.
+
+### What the two-axis review caught, and what I did about it
+
+- **Standards, SENT-3:** the park/move table was all passive with a known actor ("An edge is
+  asked for"). Rewritten with the interpreter and the handler as subjects; two more passives in
+  prose rewritten the same way.
+- **Standards, Article III.4:** the runtime value beside `Step<S>` was a `Parked<S>`, whose
+  declaration never appeared. Added to the code block.
+- **Standards, TERM-3 "answer":** the handler's "second answer" (park) and the operator's answer
+  (verdict) shared a word, and `queue.ts` exports `type Answer`. Prose now says a handler returns
+  a park instead of a move, and "answer" is the operator's alone. The code name stays.
+- **Standards, BAN-7:** the closing of §3 ("What changed is that…") cut to a plain statement.
+- **Standards, TERM-1 "walker":** flagged as unregistered. Kept, as 0018's note recorded: the
+  course's ordinary word for the function in `walker.ts` since 0017. Still borderline; the user's
+  call.
+- **Standards, lab smells:** `Verdict` re-declared a subset of the state's enum → now derived with
+  `Exclude<NonNullable<JobState["verdict"]>, "no_channel">`; a redundant `as Verdict` after a
+  narrowing guard removed; the two result-printing cascades in parts G and J became one
+  `describe(result)`; the test helper `at` renamed `checkpointAt`.
+- **Spec, the real catch: the "`--no-writeback` job" was substituted without saying so.** Lab 07's
+  spec has no writeback flag, so the measured job that never visits the node is a spec with an
+  empty `approvalRequired`. Now stated in the footer, the map note and the README, not only
+  reworded in the roadmap row. The mission callout no longer calls the held call a "writeback"
+  call; the held tool is the read-only `graph_health`.
+- **Spec, Article V.1:** the correct option was the longest in Q1 to Q3. Rebalanced; measured
+  after: Q1 84 of max 86 chars, Q2 92 tied with 92, Q3 88 of max 90, Q4 79 tied.
+- **Spec, an overclaim:** "crosses the same strict parse on its way back to disk" was true on the
+  read-back only; part i writes the typed value unparsed. Prose now says the resume reads it back
+  through the same boundary.
+- **Spec, the gap figure:** the reviewer's run gave 8,757 ms against my 18,819. Both are the
+  operator's time, not the code's; lesson, map note and README now say so and quote both.
+- **Spec, stale text:** "six runnable parts" in the README table and "Six parts" in `main.ts`'s
+  header → ten.
+- Two PARA-1 breaks from the added disclosure sentences fixed by splitting paragraphs. After the
+  review edits: 5 course files at 0 errors / 0 warnings, 74 tests green, parts g to j re-run with
+  the same outputs, 1 SVG rendered.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

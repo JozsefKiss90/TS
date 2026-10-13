@@ -4,8 +4,9 @@
  *
  * Lessons: ../../../lessons/0017-thinking-in-state-graphs.html
  *          ../../../lessons/0018-the-loop-walks-the-graph.html
+ *          ../../../lessons/0019-interruption-is-a-state.html
  *
- * Six parts. Run them separately:
+ * Ten parts. Run them separately:
  *   pnpm job a   — the graph, parsed from disk: nodes, edges, guards
  *   pnpm job b   — six recorded runs replayed against it, zero model calls
  *   pnpm job c   — the graph's rules, each broken on purpose
@@ -13,25 +14,31 @@
  *   pnpm job d   — the same job run by the graph and by the supervisor
  *   pnpm job e   — an edge removed from the file: a typed refusal
  *   pnpm job f   — a job killed mid-run, resumed from its checkpoint file
+ * Lesson 0019 adds four, each a separate process on purpose:
+ *   pnpm job g   — a held call parks the run; the process exits
+ *   pnpm job h   — the queue: every checkpoint that waits for a verdict
+ *   pnpm job i approved|denied — the verdict, written into the checkpoint
+ *   pnpm job j   — the parked run resumed, continuing the same trace file
  * `pnpm job` with no argument runs a.
  *
  * Nothing here needs the mock, a key, or a network. The recordings are
  * exercise 07's and exercise 11's trace files, read back through the
  * parse lesson 0011 built. Parts d to f use the fake gateway of lab 07.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ApprovalPort } from "../../07-tool-loop/src/approval.js";
 import { FakeModelGateway } from "../../07-tool-loop/src/fake-gateway.js";
 import { runTask } from "../../07-tool-loop/src/supervisor.js";
 import { admitTaskSpec, type TaskSpec } from "../../07-tool-loop/src/task-spec.js";
-import { rebuildResumePoint, type TraceEvent, type TracePort } from "../../07-tool-loop/src/trace.js";
-import { admitCheckpoint, type JobCheckpoint } from "./checkpoint.js";
+import { parseTrace, rebuildResumePoint, type TraceEvent, type TracePort } from "../../07-tool-loop/src/trace.js";
+import { admitCheckpoint, type CheckpointAdmission, type JobCheckpoint } from "./checkpoint.js";
 import { jobLifecycleGuards } from "./guards.js";
-import { resumeJob, startJob } from "./handlers.js";
+import { resumeJob, startJob, type JobResult } from "./handlers.js";
 import type { CheckpointPort } from "./interpreter.js";
 import type { JobState } from "./job-state.js";
 import { loadGraph } from "./load-graph.js";
+import { answerParked, parkedJobs } from "./queue.js";
 import { GROUNDED_RECORDING, RECORDINGS, readRecording, recordingName } from "./recordings.js";
 import { done, wantsTool } from "./scripted-replies.js";
 import { walk } from "./walker.js";
@@ -39,6 +46,7 @@ import { admitWorkflowGraph } from "./workflow-graph.js";
 
 const GRAPH_PATH = new URL("../graphs/job-lifecycle.json", import.meta.url);
 const CHECKPOINT_DIR = new URL("../checkpoints/", import.meta.url);
+const TRACE_DIR = new URL("../traces/", import.meta.url);
 
 function partA_theGraph(): void {
   console.log("\n=== A. The graph, parsed from disk ===");
@@ -312,6 +320,166 @@ async function partF_killedAndResumed(): Promise<void> {
   );
 }
 
+// ---------------------------------------------------------------- lesson 0019
+
+/** The parked job's two files. Three processes read and write them in turn. */
+const PARKED_CHECKPOINT = "parked-audit.json";
+const PARKED_TRACE = "parked-audit.jsonl";
+
+/**
+ * The trace sink for a run that spans processes: one line appended per
+ * event, synchronously, and the file is NOT truncated on open. Lab 07's
+ * sink starts a fresh file per run, because a run was one process. Here
+ * the resume continues the record the first process started.
+ */
+function appendingTrace(name: string, fresh: boolean): { port: TracePort; path: string } {
+  mkdirSync(TRACE_DIR, { recursive: true });
+  const path = fileURLToPath(new URL(name, TRACE_DIR));
+  if (fresh) writeFileSync(path, "");
+  return { path, port: { append: (event) => appendFileSync(path, `${JSON.stringify(event)}\n`) } };
+}
+
+/** One line for any job result: a report, a park, or a refusal. */
+function describe(result: JobResult): string {
+  if (result.ok) return `${result.report.outcome}, ${result.report.modelCalls} model calls, ${result.report.tokensSpent} tokens`;
+  if (result.kind === "parked") return `{ ok: false, kind: 'parked', step: ${result.step}, node: '${result.node}' }`;
+  return JSON.stringify(result);
+}
+
+/** The events of a trace file, through lesson 0011's reader. A refused line stops the part. */
+function readTrace(path: string): TraceEvent[] {
+  return parseTrace(readFileSync(path, "utf8")).map((line) => {
+    if (!line.ok) throw new Error(`trace line ${line.line} refused: ${line.reason}`);
+    return line.event;
+  });
+}
+
+/** Every file in the checkpoint directory, through the boundary. Refused files are listed, not hidden. */
+function readCheckpointDir(): Array<{ file: string; admission: CheckpointAdmission }> {
+  if (!existsSync(CHECKPOINT_DIR)) return [];
+  return readdirSync(CHECKPOINT_DIR)
+    .filter((file) => file.endsWith(".json"))
+    .sort()
+    .map((file) => {
+      const raw = JSON.parse(readFileSync(new URL(file, CHECKPOINT_DIR), "utf8")) as unknown;
+      return { file, admission: admitCheckpoint(raw) };
+    });
+}
+
+async function partG_aHeldCallParksTheRun(): Promise<void> {
+  console.log("\n=== G. A held call parks the run, and the process exits ===");
+  const graph = loadGraph(GRAPH_PATH);
+  const { port, path: tracePath } = appendingTrace(PARKED_TRACE, true);
+  const { port: checkpoints, path } = fileCheckpoint(PARKED_CHECKPOINT);
+
+  console.log("the audit, with graph_health held for approval and nobody wired to answer:");
+  const gateway = new FakeModelGateway([wantsTool, done]);
+  const result = await startJob(graph, auditSpec({ approvalRequired: ["graph_health"] }), gateway, {
+    trace: port,
+    checkpoints,
+    park: true,
+  });
+  console.log(`  result          : ${describe(result)}`);
+  console.log(`  model calls made: ${gateway.calls.length} of the 2 the script held`);
+  console.log(`  trace file      : ${tracePath}`);
+  console.log(`  trace so far    : ${kinds(readTrace(tracePath))}`);
+  console.log(`  checkpoint file : ${path}`);
+
+  console.log("\nthe same audit with nothing held, same wiring:");
+  const bare = fileCheckpoint("bare-audit.json");
+  const plain = await startJob(graph, auditSpec(), new FakeModelGateway([wantsTool, done]), {
+    checkpoints: bare.port,
+    park: true,
+  });
+  console.log(`  result          : ${describe(plain)}`);
+  console.log(`  checkpoint file : ${bare.path}, node ${readCheckpoint(bare.path).node}`);
+  console.log(
+    "\nThe held job stands at awaiting_approval with no process holding it. " +
+      "The other never visited the node: its gate never said hold. " +
+      "Run part h from a new shell.",
+  );
+}
+
+function partH_theQueue(): void {
+  console.log("\n=== H. The queue: every checkpoint that waits for a verdict ===");
+  const entries = readCheckpointDir();
+  const admitted = entries.flatMap((e) => (e.admission.admitted ? [e.admission.checkpoint] : []));
+  for (const entry of entries) {
+    const where = entry.admission.admitted
+      ? `step ${entry.admission.checkpoint.step}, node ${entry.admission.checkpoint.node}, verdict ${entry.admission.checkpoint.state.verdict}`
+      : `REFUSED: ${entry.admission.rejections.join("; ")}`;
+    console.log(`  ${entry.file.padEnd(20)} ${where}`);
+  }
+
+  const queue = parkedJobs(admitted);
+  console.log(`\n${queue.length} waiting for an operator:`);
+  for (const job of queue) {
+    const call = job.state.pending[0];
+    console.log(`  "${job.job}"  step ${job.step}  asks ${call?.name}(${JSON.stringify(call?.input)})`);
+  }
+  console.log(
+    "\nThe queue is a filter over the checkpoint directory: node awaiting_approval, " +
+      "verdict null. Answer with: pnpm job i approved   (or denied)",
+  );
+}
+
+function partI_theVerdict(verdict: string | undefined): void {
+  console.log("\n=== I. The verdict, written into the checkpoint by this process ===");
+  if (verdict !== "approved" && verdict !== "denied") {
+    console.log("  usage: pnpm job i approved | denied");
+    return;
+  }
+  const path = fileURLToPath(new URL(PARKED_CHECKPOINT, CHECKPOINT_DIR));
+  const before = readCheckpoint(path);
+  console.log(`  before          : step ${before.step}, node ${before.node}, verdict ${before.state.verdict}`);
+  const answer = answerParked(before, verdict);
+  if (!answer.ok) {
+    console.log(`  refused         : ${answer.reason}`);
+    return;
+  }
+  writeFileSync(path, JSON.stringify(answer.checkpoint, null, 2));
+  const after = readCheckpoint(path);
+  console.log(`  after           : step ${after.step}, node ${after.node}, verdict ${after.state.verdict}`);
+  console.log(`  trace file      : untouched, still ${kinds(readTrace(fileURLToPath(new URL(PARKED_TRACE, TRACE_DIR))))}`);
+  console.log("\nNo event was recorded. The verdict is state until the run resumes. Run part j.");
+}
+
+async function partJ_theResume(): Promise<void> {
+  console.log("\n=== J. The parked run, resumed in this process ===");
+  const graph = loadGraph(GRAPH_PATH);
+  const { port: checkpoints, path } = fileCheckpoint(PARKED_CHECKPOINT);
+  const checkpoint = readCheckpoint(path);
+  const { port, path: tracePath } = appendingTrace(PARKED_TRACE, false);
+  console.log(`  read back       : step ${checkpoint.step}, node ${checkpoint.node}, verdict ${checkpoint.state.verdict}`);
+  console.log(`  trace before    : ${kinds(readTrace(tracePath))}`);
+
+  const result = await resumeJob(
+    graph,
+    checkpoint,
+    auditSpec({ approvalRequired: ["graph_health"] }),
+    new FakeModelGateway([done]),
+    { trace: port, checkpoints, park: true },
+  );
+  if (!result.ok) {
+    console.log(`  result          : ${describe(result)}`);
+    if (result.kind === "parked") {
+      console.log("\nNobody answered, so the handler parked the run again. Nothing was written. Run part i.");
+    }
+    return;
+  }
+  const r = result.report;
+  console.log(`  result          : ${r.outcome}, ${r.modelCalls} model calls, ${r.tokensSpent} tokens`);
+  console.log(`  tool runs       : ${r.toolRuns.join(", ")}`);
+  const events = readTrace(tracePath);
+  console.log(`  whole trace     : ${kinds(events)}`);
+  const verdict = walk(graph, jobLifecycleGuards, events);
+  console.log(`  walked          : ${verdict.ok ? `legal, ${verdict.complete ? "complete" : "cut short"}` : verdict.reason}`);
+  console.log(
+    "\nThree processes, one trace file, one checkpoint file. The approval event " +
+      "was written here, by the process that read the verdict out of the state.",
+  );
+}
+
 const part = (process.argv[2] ?? "a").toLowerCase();
 if (part === "a") partA_theGraph();
 else if (part === "b") partB_replayTheRecordings();
@@ -319,5 +487,9 @@ else if (part === "c") partC_theRulesBroken();
 else if (part === "d") await partD_theSameJobRunByTheGraph();
 else if (part === "e") await partE_anEdgeTheGraphDoesNotHold();
 else if (part === "f") await partF_killedAndResumed();
-else console.log(`unknown part "${part}" — try a to f`);
+else if (part === "g") await partG_aHeldCallParksTheRun();
+else if (part === "h") partH_theQueue();
+else if (part === "i") partI_theVerdict(process.argv[3]);
+else if (part === "j") await partJ_theResume();
+else console.log(`unknown part "${part}" — try a to j`);
 
