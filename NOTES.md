@@ -1740,6 +1740,126 @@ One diagram, render-verified in headless Edge (1 SVG, no "Syntax error" text).
   review edits: 5 course files at 0 errors / 0 warnings, 74 tests green, parts g to j re-run with
   the same outputs, 1 SVG rendered.
 
+## Update 2026-10-22 — lesson 0020 shipped: LangGraph.js, evaluated; Phase 3 is 4 of 5
+
+Lesson 0020 (*LangGraph.js, Evaluated*) opens lab `13-graph-orchestration`.
+**1,994 words, 0 errors, 0 warnings** from `tools/lesson-lint.mjs`; the map note and the three term
+notes pass 0 errors (one SENT-6 warning on the map note, judged a false positive). **Three new
+Technical Names** against a budget of six: `conditional-edge`, `checkpointer`, `thread`. Zero
+em-dashes in the body, one in the `<title>`. Two diagrams, render-verified 3× in headless Edge (2
+SVGs each run, no "Syntax error" text).
+
+- **Prerequisite met (ROADMAP Phase 3):** `@langchain/langgraph` pinned exact at 1.4.21 (published
+  2026-10-07, two weeks before authoring; 1.5.x is ten days old and was not taken) and its peer
+  `@langchain/core` at 1.2.17. Checkpoint and interrupt surfaces verified three ways: the Context7
+  docs for the interrupts and graph API pages, the installed `.d.ts` (`interrupt<I, R = any>`, the
+  two `addConditionalEdges` overloads), and `dist/interrupt.js` (no checkpointer → `GraphValueError
+  "No checkpointer set"`; a Zod `responseSchema` parses the resume value).
+- **The design decision of the session: the port is `typeof Lab12.runGraph`, and the swap is a
+  test-runner plugin.** The runner is declared with lab 12's own type, so the compiler holds it to
+  the signature. `vitest.config.ts` has a `resolveId` plugin that hands any importer of lab 12's
+  `interpreter.ts` the runner instead, and includes lab 12's test files. That reaches lab 12's
+  tests and lab 12's `handlers.ts` (which `startJob` drives through), so the 74 tests run byte for
+  byte. A green run proves nothing if the swap failed, so `tests/port.test.ts` checks the imported
+  module's identity and a run counter. The alternatives were parameterising lab 12's tests (they
+  would no longer be "unchanged") or copying them (two suites free to drift).
+- **How lab 12 maps onto the framework.** Framework state is two fields, `at` (Position) and
+  `wanted` (the move asked for). One framework node per lab 12 node, same name. One conditional edge
+  per non-terminal node: its router calls lab 12's `findOpenEdge`; its targets are the file's edges
+  plus `END`. The move is made by the node the router picks, on arrival (step + 1, save through lab
+  12's port), so a refused move saves nothing. A router cannot write state, so the runner names a
+  refusal by asking `findOpenEdge` again after the run; disclosed. A park calls
+  `interrupt(position)`, which forces a checkpointer even under the port: each `runGraph` call gets
+  a fresh `MemorySaver` and a random thread nobody continues. `recursionLimit` raised to 10,000
+  because lab 12 has no step limit; the framework's default 25 is measured as a new rule.
+- **The evaluation's finding, which 0021 inherits: under the port, only traversal moved.** The
+  roadmap row expected "traversal, checkpoint storage, the resume protocol" absorbed. Measured:
+  traversal moved; the guards did not (the router asks Hermes); checkpoint storage and resume
+  stayed Hermes's under the port. They move only under the framework's own resume
+  (`Command({ resume })` on the same thread), and then the verdict lives in the framework's thread
+  while lab 12's queue reads lab 12's files: two records say the job waits. The lesson states this
+  rather than claiming the roadmap's list.
+- **Measured before taught** (versions above, zod 4.4.3, vitest 3.2.7, Node 22.14.0): 83 tests in
+  lab 13 (lab 12's 74 + 9). 30 of lab 12's 74 reach `runGraph` (interpreter 7, park 3, graph-run 13,
+  parked-run 7). Part a: landed 2 calls / 80 tokens, 7 lab 12 checkpoints vs 10 framework ones.
+  Part b: parks at step 4 after 1 call; framework `next` = `["awaiting_approval"]` and lab 12's
+  queue lists the job; `Command` resume in a fresh context lands at 2 / 80 with a nine-line legal
+  and complete trace; lab 12 steps 1, 2, 3, 4, 4, 5, 6, 7, 8 (the paused node restarts from its
+  first line, as the docs say); 11 framework checkpoints. Part c: `"maybe"` refused with
+  `invalid_value`, trace unchanged, thread still waiting. A 40-step toy loop lands through the
+  runner and throws `GraphRecursionError` at 25. A router naming a target outside its list throws
+  "Branch condition returned unknown or null destination" (checked in a throwaway test).
+- **TDD at three seams, red captured:** `port.test.ts`, `native-resume.test.ts`, `bound.test.ts`
+  written first. Red run: 7 files failed to load (lab 12's four that reach the interpreter, lab
+  13's three), and the error already named the redirected path, so the plugin worked before the
+  runner existed. Green on the first implementation run, 82/82. One test added after: a resume sent
+  to the wrong thread failed deep in the framework with `TypeError ... reading 'node'` (found while
+  verifying a README break experiment); now `resume` refuses a thread with nothing paused. 83.
+- **Mutation, and a measurement error caught.** The first mutation pass stacked: the backup went to
+  `/tmp` and the restore read `../`, so three mutations accumulated and the "plugin off" run
+  reported 6 failures. Re-run cleanly with a verified restore: router question removed → 2 fail;
+  arrival save removed → 14; pause bypassed → 13; plugin off → 2 (the port tests; lab 12's 74 pass
+  on lab 12's interpreter). The lesson, map note and README carry the clean numbers.
+- **Lab 12 changed, by extraction only:** `handlers.ts` exports `jobContext` and `finishJob`,
+  split out of the private `drive`, so lab 13's thread wiring builds the same context and report
+  without copying them. `Bounds` exported for the type. Lab 12's 74 re-run green after the split;
+  exercise 08's 29 and exercise 11's 21 green; `pnpm -r typecheck` passes on thirteen packages.
+- **Not registered, on purpose:** "router" (ordinary English for the function a conditional edge
+  calls, and an alias in the `conditional-edge` note), "LangGraph.js" (a library's name),
+  "framework" (ordinary). The collision table is one Article III.5 table with two rows: node,
+  checkpoint. "state" was left out of it; the prose says the framework's state wraps `JobState`.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2, PARA-4,
+  PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. The 20-word
+  lab-instruction limit judged: the longest exercise step is 12 words. Budget was hit by cutting
+  from 2,125 words: the fifth classification item, the lifecycle status row, the sentence above the
+  collision table, the mission callout's pointer to 0021 (kept in the footer), and duplicated
+  explanations of the 44 untouched tests and of part c. The compression went from five sentences
+  to four, because the linter counts the lead sentence.
+- **Recall debt, unchanged and growing:** say-it answers for lessons 0016 to 0019 are still not in
+  the repo as learning records. This session had no learner answers in the chat. Collect with
+  lesson 0021's lab, per Article V.3. No promotions this session.
+- **Flagged, not fixed:** the Article II.2 thread name is still omitted from the mission callout, as
+  in 0016 to 0019. The 0018 TERM-3 flag on "step" and "state" still awaits the user; this lesson
+  adds a framework sense of "checkpoint" and handles it in the collision table.
+- Bookkeeping: ROADMAP row 0020 ✅ with the measured win, 0021 ▶, Phase 3 header *4 of 5*; module
+  graph synced (phase node, Q20 ✅ / Q21 ▶, the workflow-graph artifact node, the S3 row,
+  lesson-map list). Lab 13's README has the measured outputs, five break experiments and the
+  not-done list.
+
+### What the two-axis review caught, and what I did about it
+
+- **Standards, Article V.1, the real defect:** the correct quiz option was the shortest in three of
+  four questions on the reviewer's count, and Q2's was the only one carrying `<code>`. Rebalanced
+  (no correct option is now the longest or the only one with `<code>`; Q2's distractor names
+  `addConditionalEdges`). My earlier length check stripped tags and missed the format clue.
+- **Standards, Article I.4:** lab 13's `.gitignore` carried lab 12's comment about parts c and d
+  writing `checkpoints/`. Lab 13 writes nothing to disk, so the file is deleted rather than
+  reworded.
+- **Standards, PARA-4:** the mission callout opened "This lesson runs…". Now the scenario step is
+  the subject. (0019 has the same opening; not retro-edited.)
+- **Standards, lab:** `handlers.ts`'s new comment named the runner as `jobContext`'s consumer; it is
+  `job-thread.ts`. The `Bounds` export was unneeded and is reverted. `wire`'s inline return type
+  became `ThreadWiring`. `main.ts`'s `describe` (shadowing the vitest name) became `summarize`.
+- **Standards, kept and judged:** the refusal shape rebuilt in `outcome()` (a shared helper would
+  mean another lab 12 export for one caller); `waitingAt` passing `undefined as never` as a context
+  (commented: `next` reads the saver only); `ENGINE` and the run counter as test hooks (they are
+  the swap's proof); "router" as ordinary English with an alias in the term note; the status table
+  in §4, as in 0019; `Command`'s value shown only as a call. The spine-thread omission stands,
+  flagged as before.
+- **Spec, a wrong number:** the ROADMAP row's "207 across labs 08/11/12/13" counted lab 12's 74
+  twice. Now "133 distinct tests … lab 12's 74 run on both engines".
+- **Spec, a contradiction:** the README said nothing is copied from lab 12, and its mapping table
+  said the wiring checks are copied. The intro now names that one repetition and why.
+- **Spec, two undisclosed runtime facts:** under `Command` the paused handler runs three times
+  (park, park again as the node restarts, then with the answer), and a refusal re-runs the guards,
+  safe only because they are pure. Both now in the lesson footer, the map note, the README's
+  not-done list and the runner's comments. The lesson paid 13 words for this by dropping two footer
+  sentences already carried by the README (the `.d.ts` reading, the fake gateway). Final: 1,998
+  words, 0 errors, 0 warnings.
+- **Spec, confirmed and kept:** only traversal moved under the port, which the row's wording
+  overclaimed and the lesson, row and this note now state; `bound.test.ts` is small extra scope
+  that measures a which-layer row.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

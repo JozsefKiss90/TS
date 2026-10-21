@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0020 — LangGraph.js, Evaluated</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 3 · Lesson 0020 · lab exercise 13-graph-orchestration · ~45–60 min</p>
+  <h1>LangGraph.js, Evaluated</h1>
+  <p class="lede">LangGraph.js can run lab 12's graph. Which parts of lab 12's interpreter does it take
+  over, and which parts stay Hermes's code?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S3 (dispatch under the graph) runs here on a framework. S5 (the loop iterates)
+  is replayed where a held call waits. The win: lab 12's 74 tests pass unchanged with
+  its interpreter replaced by LangGraph.js.
+</div>
+
+<h2>1 · The port is a signature</h2>
+
+<p>Lesson 0003 met the client SDK as a layer over work you had already done by hand.
+LangGraph.js is the same kind of layer over lab 12's interpreter. It runs a graph of functions,
+and it can save and pause the run. Lab 13 puts it behind the function lab 12 already calls.</p>
+
+<pre><code>// 13-graph-orchestration/src/langgraph-runner.ts
+import type * as Lab12 from "../../12-workflow-graph/src/interpreter.js";
+
+export const runGraph: typeof Lab12.runGraph =
+  async (graph, guards, handlers, from, ctx, options) =&gt;
+    orchestrate(graph, guards, handlers, ctx, { job, checkpoints }).start(from, randomUUID());</code></pre>
+
+<p>The type <code>typeof Lab12.runGraph</code> makes the compiler check the runner against lab
+12's declaration. A signature tells TypeScript what may be called. The implementation does the
+runtime work. The framework takes work away from your application code, not away from
+TypeScript.</p>
+
+<p>The swap happens in <code>vitest.config.ts</code>. A small plugin replaces lab 12's
+<code>interpreter.ts</code> with the runner wherever any file imports it. That covers lab 12's
+test files and lab 12's <code>handlers.ts</code>, which <code>startJob</code> drives through.
+Lab 12's 74 tests then run in lab 13, byte for byte, and all 74 pass.</p>
+
+<p>Thirty of the 74 reach <code>runGraph</code>, and the other 44 never call it. A green run
+means something only if the swap happened. <code>tests/port.test.ts</code> checks that the
+module lab 12 imports is the runner. With the plugin removed, both of its tests fail.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>A framework can stand behind a signature you own, and your old tests measure it.</li>
+    <li>The framework picks the next node, and a router asks Hermes's guards first.</li>
+    <li>The framework's pause needs its own record of the run, beside lab 12's checkpoint.</li>
+    <li>Resumed by the framework, the paused node runs again from its first line.</li>
+  </ul>
+  <p>Reprise: the SDK as a layer (0003), the port (0006), the interpreter and checkpoint (0018),
+  the park (0019).</p>
+</div>
+
+<h2>2 · Reading StateGraph</h2>
+
+<p>The calls form one object path: import the class, construct a builder, add nodes and edges,
+compile, invoke.</p>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At run time in lab 13</th></tr>
+  <tr><td><code>new StateGraph(Channels)</code></td><td>a builder for a graph whose state has the fields in <code>Channels</code></td><td>two fields, <code>at</code> and <code>wanted</code></td></tr>
+  <tr><td><code>.addNode(name, fn)</code></td><td>a node is a function from state to an update</td><td>13 nodes, one per lab 12 node, with lab 12's names</td></tr>
+  <tr><td><code>.addConditionalEdges(source, router, targets)</code></td><td>after <code>source</code>, call <code>router</code> and go where it says</td><td>one per non-terminal node</td></tr>
+  <tr><td><code>.compile({ checkpointer })</code></td><td>freeze the builder into something you can run</td><td>a fresh <code>MemorySaver</code> per call</td></tr>
+  <tr><td><code>.invoke(input, config)</code></td><td>run until no node is left, then return the state</td><td>the final <code>at</code> and <code>wanted</code></td></tr>
+</table>
+
+<p>The framework's state wraps <code>JobState</code> in two fields: where the run stands, and the
+move the last handler asked for.</p>
+
+<pre><code>const Channels = Annotation.Root({        // after the gating node, measured:
+  at: Annotation&lt;Position&lt;S&gt;&gt;(),           { at: { node: "gating", step: 3, state: { … } },
+  wanted: Annotation&lt;Move&lt;S&gt; | null&gt;(),      wanted: { to: "tool_ran", state: { … },
+});                                                   event: { kind: "gate", decision: "auto" } } }</code></pre>
+
+<p>A <dfn>conditional edge</dfn> is an edge whose target a router function picks at run time from a
+fixed list. The declaration has two overloads. One takes the three values as arguments, the other
+takes one options object. Both return the builder, so the return type does not depend on the
+choice.</p>
+
+<pre><code>// @langchain/langgraph 1.4.21, dist/graph/graph.d.ts, abridged
+addConditionalEdges(source: BranchOptions&lt;…&gt;): this;
+addConditionalEdges(source: N, path: RunnableLike&lt;RunInput, BranchPathReturnValue&gt;,
+                    pathMap?: …): this;
+
+// lab 13, one call per node
+builder.addConditionalEdges(node, (s) =&gt; {
+  const edge = findOpenEdge(graph, guards, s.at.node, s.wanted.to, s.wanted.event);
+  return edge.ok ? s.wanted.to : END;
+}, [...targetsInTheGraphFile, END]);</code></pre>
+
+<p>The router is lab 12's question, asked by lab 12's <code>findOpenEdge</code>. The framework
+decides which function runs next, and the guards still decide whether the move is allowed. With
+that question removed, 2 tests fail. Both expect a guard to refuse.</p>
+
+<p>The node the router picks makes the move. Its first act adds one to the step and saves lab
+12's checkpoint through the port. A refused move goes to <code>END</code>, so no node arrives and
+nothing is saved. The router cannot write state, so the runner names the refusal by asking
+<code>findOpenEdge</code> again after the run. With the save removed, 14 tests fail.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    IN["invoke<br/>at, wanted = null"] --> N["framework node<br/>arrive: step + 1, save<br/>run lab 12 handler"]
+    N --> R{"router<br/>lab 12 findOpenEdge"}
+    R -->|"open"| N2["next framework node<br/>arrive: step + 1, save"]
+    R -->|"refused"| E["END<br/>runner names the refusal"]
+    N -->|"handler parks"| P["interrupt()<br/>run pauses"]
+</pre>
+<figcaption>Diagram 1. One step in lab 13. The framework owns the arrows. Lab 12's code runs
+inside the boxes and in the router.</figcaption>
+</figure>
+
+<h2>3 · Which layer moved</h2>
+
+<table>
+  <tr><th>Layer</th><th>Lab 12</th><th>Lab 13</th><th>Measured</th></tr>
+  <tr><td>Which function runs next</td><td>a <code>for</code> loop in <code>runGraph</code></td><td>the framework's loop over nodes</td><td>74 tests unchanged</td></tr>
+  <tr><td>Whether a move is allowed</td><td><code>findOpenEdge</code> before each move</td><td>the same call, inside the router</td><td>question removed: 2 fail</td></tr>
+  <tr><td>The move, and its save</td><td>the loop, after the check</td><td>the arriving node, through lab 12's port</td><td>save removed: 14 fail</td></tr>
+  <tr><td>A pause</td><td>the handler parks, the loop returns</td><td>the handler parks, the node calls <code>interrupt()</code></td><td>pause bypassed: 13 fail</td></tr>
+  <tr><td>A record of the framework's state</td><td>none</td><td>a checkpointer, which <code>interrupt()</code> requires</td><td>10 framework checkpoints beside 7 of lab 12's</td></tr>
+  <tr><td>A step limit</td><td>none, the spec's bounds end a job</td><td>25 by default, raised to 10,000 by the runner</td><td>a 40-step loop lands, and stops at 25</td></tr>
+  <tr><td>Graph file, guards, handlers, trace, spec</td><td>Hermes's code</td><td>Hermes's code, imported, not copied</td><td>lab 12's own run stays at 74</td></tr>
+</table>
+
+<table>
+  <tr><th>Word</th><th>In lab 12</th><th>In LangGraph.js</th></tr>
+  <tr><td>node</td><td>a state a run can be in, named in the graph file</td><td>a function the framework runs. Lab 13 gives each one a lab 12 node's name</td></tr>
+  <tr><td>checkpoint</td><td>one file per job: step, the node entered next, <code>JobState</code></td><td>the framework's whole state after one of its steps, kept by the checkpointer</td></tr>
+</table>
+
+<h2>4 · Two ways to resume</h2>
+
+<p>A <dfn>checkpointer</dfn> is the LangGraph.js object that saves the framework's state after
+each step of a run. A <dfn>thread</dfn> is the id under which the checkpointer groups one run's
+records. The function <code>interrupt()</code> refuses to run without a checkpointer.</p>
+
+<p>Under the port, each <code>runGraph</code> call gets a fresh <code>MemorySaver</code> and a new
+thread. Nobody continues that thread. Lab 12 resumes a parked job from its own checkpoint, on a
+new call. So the port moved traversal to the framework, and left the stored record and the resume
+with Hermes.</p>
+
+<p>The framework has its own resume. A node calls <code>interrupt(value)</code>, and the run
+pauses. A later <code>invoke(new Command({ resume: answer }))</code> on the same thread continues
+it, and <code>interrupt()</code> returns the answer. Read the declaration first.</p>
+
+<pre><code>// @langchain/langgraph 1.4.21, dist/interrupt.d.ts
+declare function interrupt&lt;I = unknown, R = any&gt;(value: I, options?: InterruptOptions): R;
+
+// lab 13, inside the node, when the handler parks
+const answer = interrupt(at, { responseSchema: z.enum(["approved", "denied"]) });
+step = await handler({ ...at.state, verdict: answer }, ctx);</code></pre>
+
+<p>The return type <code>R</code> defaults to <code>any</code>, because the signature cannot know
+what an operator will send. The <code>responseSchema</code> option makes the framework parse the
+answer with Zod first. Part c sends <code>"maybe"</code>, and the parse refuses it. The trace
+stays at four lines.</p>
+
+<p>Part b runs the audit with <code>graph_health</code> held. It pauses at step 4 after one model
+call, and two records say the job waits: the framework's thread, and lab 12's queue. Resumed with
+<code>"approved"</code>, it lands at 2 calls and 80 tokens, with a legal and complete trace.</p>
+
+<p>Lab 12's checkpoint steps read 1, 2, 3, 4, 4, 5, 6, 7, 8. The framework restarts the paused
+node from its first line, and that line saves the arrival at step 4. The save is the same both
+times. A side effect before the pause would repeat.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TB
+    subgraph PORT["Under lab 12's port"]
+      A1["runGraph<br/>new thread"] --> A2["handler parks<br/>interrupt()"]
+      A2 --> A3[("lab 12 checkpoint<br/>step 4")]
+      A3 --> A4["answerParked<br/>verdict into the file"]
+      A4 --> A5["runGraph again<br/>another new thread"]
+    end
+    subgraph NATIVE["The framework's resume"]
+      B1["invoke<br/>thread audit-b"] --> B2["handler parks<br/>interrupt()"]
+      B2 --> B3[("checkpointer<br/>thread audit-b")]
+      B3 --> B4["Command resume approved<br/>same thread"]
+      B4 --> B5["node runs again<br/>interrupt() returns approved"]
+    end
+</pre>
+<figcaption>Diagram 2. The same pause, resumed two ways. On the left the verdict lives in lab
+12's file. On the right it lives in the framework's thread.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td>Lab 12's graph run by LangGraph.js behind <code>runGraph</code></td><td>implemented</td><td><code>src/langgraph-runner.ts</code>, lab 12's 74 tests</td></tr>
+  <tr><td>Pause by <code>interrupt()</code>, resume by <code>Command</code></td><td>implemented, in one process</td><td><code>src/job-thread.ts</code>, part b</td></tr>
+  <tr><td>A checkpointer that outlives the process</td><td>prepared</td><td>the saver is a parameter. Only <code>MemorySaver</code> is tested</td></tr>
+  <tr><td>The adopt, wrap or skip decision on the framework</td><td>planned</td><td>lesson 0021, per <code>ROADMAP.md</code></td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>13-graph-orchestration/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm test</code> in lab 13. Count lab 12's files in the output.</li>
+  <li>Remove the plugin in <code>vitest.config.ts</code>. Predict which tests fail, then run.</li>
+  <li>Run <code>pnpm job a</code>. Compare the two checkpoint counts.</li>
+  <li>Run <code>pnpm job b</code>. Find the step saved twice and say why.</li>
+  <li>Run <code>pnpm job c</code>. Say which code refused the answer.</li>
+</ol>
+
+<h2>6 · Exercise: framework or Hermes?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each action with the code that performs it in lab 13</h3>
+  <p class="rules">Answer from memory before you click.</p>
+
+  <div class="cl" data-cats="LangGraph.js|Hermes's code">
+    <div class="cl-item" data-cat="0" data-why="The framework's loop calls the function of the node the router named. Lab 12 has no loop left in this path.">
+      <p>Calls the next node's function after a move is allowed.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The router calls lab 12's findOpenEdge, which reads the graph file and the guards. The framework only follows the answer.">
+      <p>Decides that a guard refuses the move from <code>replied</code> to <code>landed</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="The recursion limit belongs to the framework. Lab 12 had none, so the runner raises it.">
+      <p>Stops any run after 25 steps unless told otherwise.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The arriving node calls lab 12's checkpoint port. The queue reads those files, not the framework's records.">
+      <p>Writes the checkpoint that <code>parkedJobs</code> reads.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="1" data-why="A green run proves nothing if lab 12's interpreter answered. The port test checks the imported module, and it fails when the plugin is removed.">
+    <p class="qz-prompt">Q1. Lab 12's 74 tests pass in lab 13. What shows that the framework ran them?</p>
+    <button class="qz-opt" type="button">The run is slower, because the framework adds work to each step it makes</button>
+    <button class="qz-opt" type="button">A test checks the imported module, and that test fails without the plugin</button>
+    <button class="qz-opt" type="button">The test files import LangGraph.js, so their checks cannot pass without it</button>
+    <button class="qz-opt" type="button">The trace gains a line for each framework step, and the walker reads them</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The router is the only code between two framework nodes. It calls findOpenEdge, so the graph file and the guards still decide.">
+    <p class="qz-prompt">Q2. Where do the six guards run when LangGraph.js runs the graph?</p>
+    <button class="qz-opt" type="button">Nowhere, because the targets given to <code>addConditionalEdges</code> replace them</button>
+    <button class="qz-opt" type="button">Inside the framework, which reads the guard names from the graph file</button>
+    <button class="qz-opt" type="button">Inside each handler, which now checks its own move before it returns it</button>
+    <button class="qz-opt" type="button">Inside the router, which calls lab 12's <code>findOpenEdge</code> before every move</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="Each runGraph call gets a fresh MemorySaver and a new thread. Lab 12 resumes from its own checkpoint, so the framework's record is never read again.">
+    <p class="qz-prompt">Q3. Under lab 12's port, a held call parks the run. Which record does the resume read?</p>
+    <button class="qz-opt" type="button">Lab 12's checkpoint, because each call starts a thread nobody continues</button>
+    <button class="qz-opt" type="button">The framework's thread, because <code>interrupt()</code> saved the paused run in it</button>
+    <button class="qz-opt" type="button">The trace, because it is the only record that survives the process exit</button>
+    <button class="qz-opt" type="button">Both, because the runner merges the two records before it starts again</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="The framework restarts the paused node from its first line. That line makes the arrival and saves step 4 a second time.">
+    <p class="qz-prompt">Q4. Resumed by <code>Command</code>, why does lab 12's checkpoint for step 4 appear twice?</p>
+    <button class="qz-opt" type="button">Because <code>Command</code> replays every step of the thread from the very start</button>
+    <button class="qz-opt" type="button">Because the verdict is saved as its own step, with the same step number</button>
+    <button class="qz-opt" type="button">Because the paused node reruns from its first line, and that line saves</button>
+    <button class="qz-opt" type="button">Because the checkpointer copies each of its records into lab 12's port</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Name what LangGraph.js took over from lab 12's interpreter, and how you know.</li>
+  <li>Explain why the guards are still Hermes's code under the framework.</li>
+  <li>Say what the framework's resume costs Hermes's approval queue.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. LangGraph.js ran lab 12's graph
+behind lab 12's own signature, and all 74 tests passed unchanged. The framework picks the next
+node, and the router asks lab 12's guards first. Under the port, lab 12's checkpoint stays the
+record a resume reads. The framework's own resume keeps the verdict in its thread, and reruns the
+paused node.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the section on resuming in the LangGraph.js interrupts page,
+<a href="https://docs.langchain.com/oss/javascript/langgraph/interrupts">docs.langchain.com/oss/javascript/langgraph/interrupts</a>.
+Find the sentence that predicts the repeated step in part b.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>@langchain/langgraph</code> 1.4.21, <code>@langchain/core</code> 1.2.17, <code>zod</code>
+  4.4.3 and <code>vitest</code> 3.2.7 on Node 22.14.0, on 2026-10-22. Lab 13 holds 83 tests, and exercise 08's 29,
+  exercise 11's 21 and lab 12's own 74 were re-run green.</p>
+  <p><strong>Disclosed.</strong> The framework's resume ran in one process, with a fresh context
+  standing in for a second one, because <code>MemorySaver</code> ends with the process. The runner
+  asks <code>findOpenEdge</code> twice for a refused move, which is safe because every guard is
+  pure. Under <code>Command</code> the paused handler runs three times, and records nothing until the last. Lab 12's <code>handlers.ts</code> gained
+  two exports, <code>jobContext</code> and <code>finishJob</code>, split out of its run function
+  with no change in behaviour. The code blocks are abridged.</p>
+  <p><strong>Next.</strong> Lesson 0021 derives each job's graph from its TaskSpec and makes the
+  adopt, wrap or skip decision on LangGraph.js, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

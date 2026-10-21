@@ -37,6 +37,7 @@ import {
   type Parked,
   type Position,
   type Refusal,
+  type RunOutcome,
   type Step,
 } from "./interpreter.js";
 import { initialState, type JobState } from "./job-state.js";
@@ -496,6 +497,59 @@ export function resumeJob(
   return drive(graph, checkpoint, spec, gateway, options);
 }
 
+/**
+ * What a run needs that is not state: the ports, the spec, a fresh set of
+ * bounds. Built once per process. Exported so lab 13's thread wiring
+ * (job-thread.ts) can build the same context without copying this function.
+ */
+export function jobContext(spec: TaskSpec, gateway: ModelGateway, options?: JobOptions): JobContext {
+  return {
+    spec,
+    gateway,
+    tools: offerTools(spec.allowedTools),
+    bounds: armBounds(spec, options?.signal),
+    record: (event) => options?.trace?.append(event),
+    park: options?.park ?? false,
+    ...(options?.approver ? { approver: options.approver } : {}),
+    ...(options?.pack ? { pack: options.pack } : {}),
+  };
+}
+
+/**
+ * The terminal node's name is the outcome. Every classified exit writes
+ * exactly one job_ended, and a crash writes none. A graph whose terminal
+ * names are not outcomes is a wiring fault, found here.
+ */
+export function finishJob(ctx: JobContext, outcome: RunOutcome<JobState>): JobResult {
+  if (!outcome.ok) return outcome;
+  const { spec } = ctx;
+  const { state } = outcome;
+  const outcomeName = asOutcome(outcome.node);
+  const notes = [...state.alerts, ...(state.exit?.notes ?? [])];
+  const partialText = state.exit?.partialText;
+  ctx.record({
+    kind: "job_ended",
+    at: Date.now(),
+    outcome: outcomeName,
+    modelCalls: state.modelCalls,
+    tokensSpent: state.tokensSpent,
+    notes,
+    ...(partialText !== undefined && partialText.length > 0 ? { partialText } : {}),
+  });
+  return {
+    ok: true,
+    report: {
+      task: spec.title,
+      outcome: outcomeName,
+      modelCalls: state.modelCalls,
+      toolRuns: state.toolRuns,
+      tokensSpent: state.tokensSpent,
+      evidenceIds: state.evidenceIds,
+      notes,
+    },
+  };
+}
+
 async function drive(
   graph: WorkflowGraph,
   from: Position<JobState>,
@@ -503,54 +557,14 @@ async function drive(
   gateway: ModelGateway,
   options?: JobOptions,
 ): Promise<JobResult> {
-  const bounds = armBounds(spec, options?.signal);
-  const ctx: JobContext = {
-    spec,
-    gateway,
-    tools: offerTools(spec.allowedTools),
-    bounds,
-    record: (event) => options?.trace?.append(event),
-    park: options?.park ?? false,
-    ...(options?.approver ? { approver: options.approver } : {}),
-    ...(options?.pack ? { pack: options.pack } : {}),
-  };
-
+  const ctx = jobContext(spec, gateway, options);
   try {
     const outcome = await runGraph(graph, options?.guards ?? jobLifecycleGuards, jobLifecycleHandlers, from, ctx, {
       job: spec.title,
       ...(options?.checkpoints ? { checkpoints: options.checkpoints } : {}),
     });
-    if (!outcome.ok) return outcome;
-
-    // The terminal node's name is the outcome. Every classified exit writes
-    // exactly one job_ended, and a crash writes none. A graph whose
-    // terminal names are not outcomes is a wiring fault, found here.
-    const { state } = outcome;
-    const outcomeName = asOutcome(outcome.node);
-    const notes = [...state.alerts, ...(state.exit?.notes ?? [])];
-    const partialText = state.exit?.partialText;
-    ctx.record({
-      kind: "job_ended",
-      at: Date.now(),
-      outcome: outcomeName,
-      modelCalls: state.modelCalls,
-      tokensSpent: state.tokensSpent,
-      notes,
-      ...(partialText !== undefined && partialText.length > 0 ? { partialText } : {}),
-    });
-    return {
-      ok: true,
-      report: {
-        task: spec.title,
-        outcome: outcomeName,
-        modelCalls: state.modelCalls,
-        toolRuns: state.toolRuns,
-        tokensSpent: state.tokensSpent,
-        evidenceIds: state.evidenceIds,
-        notes,
-      },
-    };
+    return finishJob(ctx, outcome);
   } finally {
-    bounds.disarm();
+    ctx.bounds.disarm();
   }
 }

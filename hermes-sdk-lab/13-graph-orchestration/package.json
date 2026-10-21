@@ -1,0 +1,19 @@
+{
+  "name": "13-graph-orchestration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "job": "tsx src/main.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@langchain/core": "1.2.17",
+    "@langchain/langgraph": "1.4.21",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "3.2.7"
+  }
+}

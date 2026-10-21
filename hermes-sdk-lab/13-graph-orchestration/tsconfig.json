@@ -1,0 +1,8 @@
+{
+  // Same shared config as every exercise. This package imports lab 12's
+  // graph, guards, handlers and checkpoint parse, and lab 07's trace and
+  // fake gateway. Nothing is copied. What it adds is one file that runs
+  // the same handlers on LangGraph.js instead of on lab 12's interpreter.
+  "extends": "../tsconfig.base.json",
+  "include": ["src", "tests", "vitest.config.ts"]
+}
