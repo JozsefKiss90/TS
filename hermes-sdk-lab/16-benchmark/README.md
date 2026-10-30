@@ -1,6 +1,7 @@
-# Exercise 16 — golden tasks
+# Exercise 16 — golden tasks, then many trials
 
-Lesson: [0025 — Golden Tasks](../../lessons/0025-golden-tasks.html)
+Lessons: [0025 — Golden Tasks](../../lessons/0025-golden-tasks.html) ·
+[0026 — Many Runs, One Verdict](../../lessons/0026-many-runs-one-verdict.html)
 
 Scenario step **S9 (score the run)**. Four golden tasks run offline through a loop. Each run lands
 through lab 14's `runAndLand`, five named graders read the artifact and the trace, and one scorecard
@@ -24,8 +25,13 @@ real loop from a defect. Lab 12 is unchanged.
 | `src/graders.ts` | the five graders, `(seen) => { pass, why }`, type imports only |
 | `src/loop.ts` | `Loop`, `NamedLoop`, and `REAL_LOOP` (lab 12's `startJob` on lab 12's graph) |
 | `src/defects.ts` | three planted defects, each the real loop given one wrong input. The defect inside the loop's code is the hand edit below |
-| `src/runner.ts` | `runGolden`: run, land, read back, grade, write `scorecard.json`; strict `ScorecardSchema` |
+| `src/runner.ts` | `runGolden`: run, land, read back, grade, write `scorecard.json`; strict `ScorecardSchema`. 0026: `variantsFor` and `runOnce`, shared with the trials |
 | `src/main.ts` | `pnpm bench`, `--defect <name>`, `--all` |
+| `tasks/trials.json` | 0026: `audit` with two weighted recordings (9 : 1), `grounded-audit` with one |
+| `src/seeded-gateway.ts` | 0026: `pickVariant` (seed → weighted index, mulberry32) and `SeededFakeGateway`, a `ModelGateway` that replays the recording its seed chose |
+| `src/trials.ts` | 0026: `passHatK` (τ-bench), `settlePoint`, `trueRate`, `rerunTrial`, `runSeries`, `runTrials` → strict, clock-free `trials.json` |
+| `src/trials-main.ts` | 0026: `pnpm trials`, `--n`, `--k`, `--rerun <task> --seed <s>`, `--settle` |
+| `tests/trials.test.ts` | 0026: 21 tests. 18 written before the code; 1 added after a mutation check; 2 for `trueRate`, added after review and seen red |
 | `tests/golden.test.ts` | 27 tests. 23 written before the code; 4 added after mutation checks, the per-task verdict and review |
 
 ## Commands
@@ -69,6 +75,42 @@ FAIL grounded-audit  failed
 - **Hand edit of real code:** lab 07 `approval.ts`, `gateToolCall` returning `"auto"` for a held tool.
   `pnpm bench`: held-audit fails `asks_before_held_tool` alone, 12 of 13. Restored: 13 of 13.
 
+## Many trials, measured 2026-10-31 (lesson 0026)
+
+A task's `fixture` may be a list of `{ recording, weight }`. Trial *i* uses seed *i*, and the seed
+picks one recording. `audit` replays `audit-atlas.jsonl` at weight 9 and lab 12's
+`parked-audit.jsonl` at weight 1. The parked recording answers "Audit complete." and drops the
+tool's numbers, so it fails `reports_tool_output` and nothing else. The failure rate is 10%
+because the file says so, not because a model chose it.
+
+```bash
+pnpm --filter 16-benchmark trials                      # n = 20, k = 4
+pnpm --filter 16-benchmark trials --rerun audit --seed 4
+pnpm --filter 16-benchmark trials --settle             # 4,000 trials, about 50 s
+```
+
+```
+=== audit: 19 of 20 trials pass; pass rate 95.0%; pass^4 0.800 ===
+FAIL audit seed 4  parked-audit.jsonl  failed: reports_tool_output
+=== grounded-audit: 20 of 20 trials pass; pass rate 100.0%; pass^4 1.000 ===
+```
+
+- `--n 4 --k 4`: audit 3 of 4, pass^4 0.000. One failure in four trials zeroes pass^k at n = k.
+- `--rerun audit --seed 4` fails the same grade on the same recording. The test compares the two
+  traces with the clock removed, line for line.
+- `runs/trials/trials.json` at n = 20 is 7,065 bytes, with no clock. A second run writes the same bytes.
+- `--settle`, ten series of 400 seeds each. The target is the rate the weights imply (`trueRate`), so a weight change moves it:
+
+| | Lowest | Highest |
+|---|---|---|
+| pass rate after 10 trials | 70.0% | 100.0% |
+| pass rate after 100 trials | 87.0% | 95.0% |
+| trials until the rate stays within 10 points of 90% | 1 | 35 |
+| trials until the rate stays within 5 points of 90% | 7 | 106 |
+
+All 4,000 trials: 3,614 passed (90.3%). pass^1 0.903, pass^2 0.816, pass^4 0.666, pass^8 0.444,
+against 0.9^k = 0.900, 0.810, 0.656, 0.430. "Stays within" means up to trial 400 of that series.
+
 ## Mutation checks
 
 Each made in a copy, run, and restored.
@@ -85,6 +127,13 @@ Each made in a copy, run, and restored.
 | a task passes on any grade | 4 |
 | a crash aborts the benchmark | 1 |
 | the operator rule in the task file is off | 1 |
+| 0026: `passHatK` returns the pass rate | 2 |
+| 0026: the seed is ignored (always the first recording) | 2 |
+| 0026: every trial of a task shares one run name | 1 |
+| 0026: a trial reports no failed graders | 1 |
+| 0026: the runner keeps the old trace file | 1 |
+| 0026: `settlePoint` never starts again | 0 at first → 1 after a test was added |
+| 0026: `point < w` becomes `point <= w` | 0, expected: a draw lands exactly on a boundary almost never |
 
 **Found by the "no operator" survivor:** held-audit first replayed the parked audit, whose answer is
 "Audit complete." With no operator, the hold is denied by default, the tool result is `failed`
@@ -99,6 +148,7 @@ now replays `audit-atlas.jsonl`, whose answer quotes the tool, and grades `repor
 
 ## Not done here
 
-- One trial per task. Repeated trials with a seeded fake and pass^k: lesson 0026.
+- `pnpm bench` runs one trial per task (seed 1). `pnpm trials` runs many, on the real loop only.
+- The variation comes from two recordings chosen by weight. It is not what a live model does.
 - No committed baseline and no gate: lesson 0027.
 - Four tasks are a check of the setup, not a benchmark of anything.

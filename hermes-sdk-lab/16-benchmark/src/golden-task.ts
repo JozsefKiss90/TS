@@ -43,13 +43,23 @@ const PackSchema: z.ZodType<AdmittedPack> = z.strictObject({
   ids: z.array(z.string().min(1)).min(1),
 });
 
+/** One recording a seeded trial may replay. The weight is its share of the trials. */
+const VariantSchema = z.strictObject({
+  recording: z.string().min(1),
+  weight: z.number().int().min(1),
+});
+
 const GoldenTaskSchema = z
   .strictObject({
     /** Names the run's trace file and artifact folder, so it is one path segment. */
     id: RunNameSchema,
     spec: TaskSpecSchema,
-    /** A recorded trace, relative to the task file. Its reply lines are the fake model's script. */
-    fixture: z.string().min(1),
+    /**
+     * A recorded trace, relative to the task file. Its reply lines are the
+     * fake model's script. Lesson 0026: or a list of weighted recordings,
+     * of which a seed picks one per trial.
+     */
+    fixture: z.union([z.string().min(1), z.array(VariantSchema).min(2)]),
     /** How the operator answers a held tool. Required exactly when the spec holds one. */
     operator: z.enum(["approves", "denies"]).optional(),
     pack: PackSchema.optional(),
@@ -93,6 +103,12 @@ export const GoldenFileSchema = z
   });
 
 export type GoldenTask = z.infer<typeof GoldenTaskSchema>;
+
+/** Every recording a task may replay, as a list. One path is a list of one, at weight 1. */
+export type WeightedRecording = z.infer<typeof VariantSchema>;
+
+export const variantsOf = (task: GoldenTask): WeightedRecording[] =>
+  typeof task.fixture === "string" ? [{ recording: task.fixture, weight: 1 }] : task.fixture;
 
 export type GoldenAdmission = { ok: true; tasks: GoldenTask[] } | { ok: false; reason: string };
 

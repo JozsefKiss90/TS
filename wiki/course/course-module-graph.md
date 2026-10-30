@@ -20,7 +20,7 @@ flowchart TD
     P1["Phase 1 · Own the loop<br/>manual bounded loop · complete ✅ (0006 to 0012)"]
     P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP · complete ✅ (0013 to 0016)"]
     P3["Phase 3 · Encode the policy<br/>the workflow graph · complete ✅ (0017 to 0021)"]
-    P4["Phase 4 · Prove it<br/>reliability & evaluation · open ▶ (0022–0025 shipped)"]
+    P4["Phase 4 · Prove it<br/>reliability & evaluation · open ▶ (0022–0026 shipped)"]
     P5["Phase 5 · Meet the harness<br/>Claude Agent SDK"]
     P6["Phase 6 · Scale the agents<br/>multi-agent"]
     P0 -->|"0005 ships: every boundary runtime-validated"| P1
@@ -118,8 +118,8 @@ flowchart TD
     R23["0023 OpenTelemetry, Evaluated ✅<br/>lab 15 · the same spans through a library, read back equal<br/>ADR 0002 · OTLP adopted as the export format"]
     R24["0024 Landing the Outputs ✅<br/>lab 14 · one artifact per run, linked to its trace and cost<br/>computed from the trace file · a crashed run lands failed"]
     R25["0025 Golden Tasks ✅<br/>lab 16-benchmark · four stored tasks, five named graders<br/>real loop 13 of 13 · each planted defect fails one task"]
-    R26["0026 Many Runs, One Verdict ▶<br/>seeded fake · pass rate and pass^k"]
-    R27["0027 The Regression Gate<br/>a committed baseline refuses a drop"]
+    R26["0026 Many Runs, One Verdict ✅<br/>seeded fake · pass rate and pass^k<br/>4,000 trials at a set 10% · reruns by seed"]
+    R27["0027 The Regression Gate ▶<br/>a committed baseline refuses a drop"]
     R22 -->|"hand-computed spans to compare against"| R23
     R22 -->|"the cost report each artifact links to"| R24
     R24 -->|"an addressable artifact to grade"| R25
@@ -127,7 +127,7 @@ flowchart TD
     R26 --> R27
 ```
 
-Lesson maps: [[lesson-0022-what-the-run-cost]] · [[lesson-0023-opentelemetry-evaluated]] · [[lesson-0024-landing-the-outputs]] · [[lesson-0025-golden-tasks]].
+Lesson maps: [[lesson-0022-what-the-run-cost]] · [[lesson-0023-opentelemetry-evaluated]] · [[lesson-0024-landing-the-outputs]] · [[lesson-0025-golden-tasks]] · [[lesson-0026-many-runs-one-verdict]].
 
 ## What accumulates (artifacts → the loop)
 
@@ -164,8 +164,9 @@ flowchart LR
     LAND -->|"read by graders"| SCORE["scorecard ✅ 0025<br/>golden tasks · named graders<br/>graders never import the loop"]
     COST -->|"written beside it"| LAND
     TR --> SCORE
-    TESTS --> GATE["repeated trials + regression gate — 0026–0027"]
-    SCORE --> GATE
+    SCORE -->|"n trials per task"| TRIALS["trials ✅ 0026<br/>seeded fake · pass rate · pass^k<br/>a failed trial reruns from its seed"]
+    TESTS --> GATE["regression gate — 0027"]
+    TRIALS --> GATE
     GATE -->|"gates"| P5P6["Phases 5–6 decisions"]
 ```
 
@@ -181,4 +182,4 @@ Scenario steps these feed (see [[hermes-integration]]):
 | S6 (budget enforcement) | Phase 0's cancellation, enforced by lesson 0009's bounds. Since lesson 0022 the 80% alert is placed at the call that crossed it, read back from the trace |
 | S7 (the durable record) | Phase 1 since lesson 0011, deepened in Phase 4. Lesson 0018's checkpoint is a separate record under S3, not part of the trace. Since lesson 0022 a cost report is computed from the trace and checked against it, a view and never a second record. Since lesson 0023 the same spans export as OTLP, read back equal, with new ids on every export (ADR 0002) |
 | S8 (landing the outputs) | Phase 4. Since lesson 0024 every run lands one folder under `artifacts/<run>/`, computed from its trace file. It holds the output, a status of done or failed, and links to the trace and the cost report. A crashed run lands failed, and a parked run lands when it ends |
-| S9 (scoring the run) | Phase 4. Since lesson 0025 four golden tasks run offline through any loop with `startJob`'s shape. Five graders read only the landed artifact, the trace and the task, and a scorecard records every grade. Repeated trials and a regression gate are planned |
+| S9 (scoring the run) | Phase 4. Since lesson 0025 four golden tasks run offline through any loop with `startJob`'s shape. Five graders read only the landed artifact, the trace and the task, and a scorecard records every grade. Since lesson 0026 each task runs n times on a seeded fake, and `trials.json` reports pass rate and pass^k; a failed trial reruns from its seed. A regression gate is planned |

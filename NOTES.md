@@ -2401,6 +2401,75 @@ SVGs each run, no "Syntax error" text).
   removes); status table stays at the end of §4, as in 0022 to 0024; no import → construct → method
   decomposition for `runGolden`, which is one plain function with no object path.
 
+## Update 2026-10-31 — lesson 0026 shipped: many runs, one verdict
+
+- **Prerequisite met first:** the τ-bench pass^k formula, flagged in the 0025 update for a check
+  before printing. Checked against the paper's HTML version (arXiv 2406.12045, §3): pass^k =
+  E_task[C(c,k)/C(n,k)], pass@k = 1 − E_task[C(n−c,k)/C(n,k)]. WebFetch summarises through a small
+  model; the LaTeX came back verbatim.
+- **Lab `16-benchmark`, part two:** a golden task's `fixture` may be a list of `{ recording, weight }`
+  (min 2, whole weights ≥ 1); lesson 0025's file still admits. `SeededFakeGateway` implements
+  `ModelGateway`; `pickVariant` draws once from mulberry32 by seed and picks by weight, then lab 07's
+  fake replays the chosen script. `runner.ts` refactored into `gatewayFor` + `runOnce`, which
+  `runGolden` (seed 1) and the trials share. `trials.ts`: `passHatK`, `settlePoint`, `rerunTrial`,
+  `runTrials` → strict, clock-free `trials.json`. `tasks/trials.json`: `audit` (atlas 9, lab 12's
+  parked audit 1) and `grounded-audit` (one recording). `pnpm trials`, `--rerun`, `--settle`.
+- **Design decision, departing from the row's wording:** the seed picks a whole recording per trial,
+  not a reply per call. Mixing replies from two recordings breaks tool-call ids and token sums.
+  Recorded in the ROADMAP row.
+- **Measured** (zod 4.4.3, vitest 3.2.7, tsx 4.23.1, Node 22.14.0, Windows 11): n = 20 → audit 19 of 20,
+  pass^4 0.800, seed 4 fails `reports_tool_output` alone; grounded-audit 20 of 20. n = k = 4 →
+  pass^4 0. Rerun seed 4 fails the same way. `--settle`, ten series of 400 seeds: rate after 10 trials
+  70–100%, after 100 87–95%; stays within 10 points from trial 1–35, within 5 from 7–106; 4,000 trials
+  90.3%, pass^8 0.444 vs 0.9^8 0.430. About 50 s, roughly 12 ms per landed trial.
+- **TDD, red captured:** 18 tests written first; red run: the file failed to load (no
+  `seeded-gateway.ts`). Green on the first implementation run. Mutation checks, each restored: seven,
+  one unexpected survivor (`settlePoint` never starting again) → test added; one expected survivor
+  (`<` → `<=` at a weight boundary, which a draw almost never hits).
+- **Totals:** lab 16 48 tests (27 + 21); lab 15 26, lab 14 56, lab 13 107, lab 12 74, exercise 11 21,
+  exercise 10 32, exercise 08 29, all green; `pnpm -r typecheck` passes. Labs 07, 12, 14 unchanged.
+- **Hermes tie-in found while checking a claim:** "≥10 consecutive clean runs plus a signed ADR" lives
+  in the Hermes OS README's Guarantees, not in component 10 of the control-plane note as the ROADMAP
+  0027 row implies. The lesson cites the README. It is a pass^10 question.
+- **Judged rather than measured, per Article VIII.6:** linter 0 errors, 0 warnings on the lesson; term
+  notes and map 0 errors. SENT-3 read by eye; SENT-2, PARA-2, PARA-4 to PARA-6, TERM-2, TERM-3,
+  TERM-5, TERM-6, BAN-6 to BAN-14, BAN-18 judged. Lab steps judged against 20 words. Five new
+  Technical Names: trial, seeded fake, pass rate, pass^k, pass@k. III.5: one collision table for
+  pass rate / pass^k / pass@k. III.6: the seeded fake taught from lab 07's fake (0006) and the parked
+  audit (0019). III.1: no network; bytes on disk shown (the `trials.json` excerpt).
+- **Recall debt, unchanged and growing:** say-it answers for lessons 0016 to 0025 are not in the repo.
+  No learner answers this session. No promotions.
+- Bookkeeping: ROADMAP row 0026 ✅ with the measured win, 0027 ▶, Phase 4 *5 of 6 shipped*,
+  lesson-maps line; module graph synced (R26 ✅, R27 ▶, a trials node, S9 row).
+
+### What the two-axis review caught, and what I did about it
+
+- **Spec, a measurement misread:** "one series read 70% and four read 100%". Five series read 100%
+  after ten trials. Corrected. Q1 said "eight trials" (the test's n); the shown output is n = 20.
+- **Spec and standards, Hermes claim:** the "≥10 consecutive clean runs + signed ADR" rule is in the
+  Hermes OS README, not a PDR or ADR, and it concerns promotion of autonomy levels. The lesson now
+  says "the Hermes OS README says a promotion needs…", keeps "consecutive", and grades the row
+  *illustrative only*.
+- **Spec, Article II.3:** five concept sections before the lab. The seeded-fake section merged into
+  §1; four remain.
+- **Both, Article II.2:** the mission callout named no spine thread (0025 had the same gap). It now
+  names the rule that every JSON boundary gets a runtime check.
+- **Both, ROADMAP:** my 0027 status edit left `|| ▶ |`, an extra column. Fixed.
+- **Standards, Article V.1:** Q3's correct option was uniquely longest and the only one not opening
+  "It"; one distractor (0.95⁴ ≈ 0.815) was arguable. Options rewritten, lengths 55/55/53/55.
+- **Standards, settle target hard-coded:** `--settle` compared against 0.9 even after lab step 5
+  changes the weights. New `trueRate` (tests first, seen red) derives it from the weights and each
+  recording's result. Re-measured: identical numbers.
+- **Standards, smaller:** recordings now read once per task (`variantsFor`, `runSeries`), not once
+  per trial; `Variant.name` renamed `recording`; `variantsOf` typed from the schema
+  (`WeightedRecording`); the `passHatK` excerpt marked abridged; the stale runner comment rewritten.
+- **Judged and kept:** the k ≤ n check in `trials-main` duplicates `runTrials`'s, kept because the
+  CLI exits 2 with usage rather than throwing; `(task, taskFile, root, loop, price)` still travel
+  together (possible Data Clump), kept as in 0025; `SeededFakeGateway` forwards to lab 07's fake
+  (possible Middle Man), kept because the lesson teaches it as a port adapter; "mulberry32" and
+  "τ-bench" kept as proper names with a gloss; the "New today" callout kept, as in every shipped lesson.
+- After the fixes: lab 16 48 tests, `tsc` clean, lesson 0 errors.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

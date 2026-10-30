@@ -6,7 +6,8 @@
     "bench": "tsx src/main.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "trials": "tsx src/trials-main.ts"
   },
   "dependencies": {
     "zod": "4.4.3"

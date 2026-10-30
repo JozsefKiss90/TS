@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { ApprovalPort } from "../../07-tool-loop/src/approval.js";
-import { FakeModelGateway } from "../../07-tool-loop/src/fake-gateway.js";
+import type { ModelGateway } from "../../07-tool-loop/src/gateway.js";
 import { formatIssues } from "../../07-tool-loop/src/issues.js";
 import { parseTrace, type TraceEvent } from "../../07-tool-loop/src/trace.js";
 import { RunNameSchema } from "../../14-reliability/src/artifact.js";
@@ -21,9 +21,10 @@ import { readArtifact, writeAtomic } from "../../14-reliability/src/landing.js";
 import type { ModelPrice } from "../../14-reliability/src/prices.js";
 import { runAndLand } from "../../14-reliability/src/run-and-land.js";
 import { fixtureFromTrace } from "./fixture.js";
-import { GraderNameSchema, type GoldenTask } from "./golden-task.js";
+import { GraderNameSchema, variantsOf, type GoldenTask } from "./golden-task.js";
 import { GRADERS } from "./graders.js";
 import type { NamedLoop } from "./loop.js";
+import { SeededFakeGateway, type Variant } from "./seeded-gateway.js";
 
 export const SCORECARD_FILE = "scorecard.json";
 
@@ -53,7 +54,7 @@ export const ScorecardSchema = z.strictObject({
 });
 
 export type Scorecard = z.infer<typeof ScorecardSchema>;
-type TaskScore = Scorecard["tasks"][number];
+export type TaskScore = Scorecard["tasks"][number];
 
 export function admitScorecard(raw: unknown): { ok: true; scorecard: Scorecard } | { ok: false; reason: string } {
   const parsed = ScorecardSchema.safeParse(raw);
@@ -61,7 +62,7 @@ export function admitScorecard(raw: unknown): { ok: true; scorecard: Scorecard }
 }
 
 /** Reads a trace file through lab 07's parse. A refused line is an error, never skipped. */
-function readEvents(path: string): TraceEvent[] {
+export function readEvents(path: string): TraceEvent[] {
   const lines = parseTrace(readFileSync(path, "utf8"));
   return lines.map((l) => {
     if (!l.ok) throw new Error(`${path} line ${l.line}: ${l.reason}`);
@@ -74,9 +75,32 @@ const operatorFor = (task: GoldenTask): ApprovalPort | undefined =>
     ? undefined
     : { decide: () => Promise.resolve(task.operator === "approves" ? "approved" : "denied") };
 
-async function runTask(task: GoldenTask, taskDir: string, root: string, loop: NamedLoop, price: ModelPrice): Promise<TaskScore> {
-  const gateway = new FakeModelGateway(fixtureFromTrace(readEvents(resolve(taskDir, task.fixture))));
-  const tracePath = join(root, "traces", `${task.id}.jsonl`);
+/**
+ * A task's recordings, read and turned into scripts once (lesson 0026).
+ * A seed then picks one per trial. A task with one recording has one variant.
+ */
+export function variantsFor(task: GoldenTask, taskDir: string): Variant[] {
+  return variantsOf(task).map((v) => ({
+    recording: v.recording,
+    weight: v.weight,
+    script: fixtureFromTrace(readEvents(resolve(taskDir, v.recording))),
+  }));
+}
+
+/**
+ * One run of one task: run it, land it, read it back, grade it.
+ * `run` names the trace file and the artifact folder, so trials of one
+ * task (lesson 0026) do not overwrite each other.
+ */
+export async function runOnce(
+  task: GoldenTask,
+  gateway: ModelGateway,
+  run: string,
+  root: string,
+  loop: NamedLoop,
+  price: ModelPrice,
+): Promise<TaskScore> {
+  const tracePath = join(root, "traces", `${run}.jsonl`);
   // The trace sink appends, so an old file would join two runs into one record.
   rmSync(tracePath, { force: true });
   const approver = operatorFor(task);
@@ -93,7 +117,7 @@ async function runTask(task: GoldenTask, taskDir: string, root: string, loop: Na
     crashed = error instanceof Error ? error.message : String(error);
   }
 
-  const read = readArtifact(join(root, "artifacts"), task.id);
+  const read = readArtifact(join(root, "artifacts"), run);
   if (!read.ok || !existsSync(tracePath)) {
     const why = read.ok ? "no trace file" : read.reason;
     return { id: task.id, status: null, crashed, pass: false, grades: task.graders.map((grader) => ({ grader, pass: false, why })) };
@@ -116,9 +140,13 @@ export async function runGolden(
 ): Promise<Scorecard> {
   mkdirSync(join(root, "traces"), { recursive: true });
   const scores: TaskScore[] = [];
-  // One at a time: the fake gateway is per task, but the order of the
-  // scorecard should be the order of the file.
-  for (const task of tasks) scores.push(await runTask(task, dirname(taskFile), root, loop, price));
+  // One at a time, so the scorecard keeps the order of the file. Seed 1
+  // for every task: lesson 0025's tasks have one recording each, so the
+  // seed changes nothing. Lesson 0026's runTrials varies it.
+  for (const task of tasks) {
+    const gateway = new SeededFakeGateway(variantsFor(task, dirname(taskFile)), 1);
+    scores.push(await runOnce(task, gateway, task.id, root, loop, price));
+  }
   const grades = scores.flatMap((s) => s.grades);
   const scorecard = ScorecardSchema.parse({
     loop: loop.name,

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0026 — Many Runs, One Verdict</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 4 · Lesson 0026 · lab exercise 16-benchmark · ~45–60 min</p>
+  <h1>Many Runs, One Verdict</h1>
+  <p class="lede">One passing run shows that the loop can work. How many runs show that it does
+  work, and how do you replay the one that failed?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  S9 (score the run) learns to repeat a task. It continues the course rule that every JSON
+  boundary gets a runtime check: the new task file field is parsed before any run. The win: 4,000 trials at a failure rate the task file sets. The pass
+  rate settles, and a failed trial runs again from its seed.
+</div>
+
+<h2>1 · One run is one sample</h2>
+
+<p>A <dfn>trial</dfn> is one graded run of one task. Lesson 0025 ran one trial per task. Lab 07's
+fake replays one script, so a second trial would repeat the first, reply for reply.</p>
+
+<p>A live model varies. It may quote the tool's numbers nine times and drop them the tenth. One
+trial cannot see that. Many trials of a fake that never varies cannot see it either.</p>
+
+<p>A <dfn>seeded fake</dfn> is a fake gateway that replays one of several recordings. A seed
+number picks the recording, the same one for the same seed.</p>
+
+<p>The task file now accepts a list of recordings with weights. A weight is the recording's share
+of the trials. So the failure rate is written down before anything runs.</p>
+
+<pre><code>// fixture: string | Variant[]             // tasks/trials.json, task "audit":
+type Variant = {                          "fixture": [
+  recording: string;                        { "recording": "…/audit-atlas.jsonl",  "weight": 9 },
+  weight: number;   // whole, 1 or more     { "recording": "…/parked-audit.jsonl", "weight": 1 }
+};                                        ]</code></pre>
+
+<p>The parked recording is lab 12's audit from lesson 0019. Its answer is "Audit complete.", and it
+leaves out the tool's numbers. So a trial that replays it fails <code>reports_tool_output</code>
+and nothing else. The true pass rate is 90%.</p>
+
+<p>The parse refuses a weight of zero and a list of one recording. Lesson 0025's file, where every
+fixture is one path, still passes the same parse.</p>
+
+
+<p><code>SeededFakeGateway</code> implements lab 07's <code>ModelGateway</code> port. The loop
+cannot tell it from lab 07's fake, or from the real adapter.</p>
+
+<pre><code>// 16-benchmark/src/seeded-gateway.ts
+import { SeededFakeGateway } from "./seeded-gateway.js";
+const gateway = new SeededFakeGateway(variants, 4);   // construct: the seed picks now
+gateway.variant;                                      // "…/parked-audit.jsonl"
+await gateway.complete(call);                         // replays that recording's next reply</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At run time</th></tr>
+  <tr><td><code>new SeededFakeGateway(variants, seed)</code></td><td>pick one recording by weight, from the seed</td><td>one draw of a small seeded generator, then lab 07's fake on the chosen script</td></tr>
+  <tr><td><code>variants: Variant[]</code></td><td>each recording's reply lines and weight</td><td>two scripts for <code>audit</code>, one for <code>grounded-audit</code></td></tr>
+  <tr><td><code>seed: number</code></td><td>a whole number that fixes the choice</td><td>trial <em>i</em> uses seed <em>i</em></td></tr>
+  <tr><td><code>.variant</code></td><td>which recording the seed chose</td><td>printed on every trial row</td></tr>
+  <tr><td><code>.complete(call)</code></td><td>the port's one method</td><td>the next recorded reply, from lab 07's fake</td></tr>
+</table>
+
+<p>There is one constructor and no overload. A signature tells TypeScript what may be called. The
+implementation does the runtime work. <code>Math.random</code> takes no seed, so the lab uses a
+seeded generator called mulberry32.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>A trial result is a sample, and a seeded fake makes the variation chosen.</li>
+    <li>A weight in the task file sets the failure rate before the run.</li>
+    <li>The pass rate says how often a task passes.</li>
+    <li>pass^k says how likely k trials in a row all pass.</li>
+    <li>A seed reruns a failed trial, so the failure can be read.</li>
+  </ul>
+  <p>Reprise: the fake gateway and the port (0006), the parked audit (0019), golden tasks,
+  graders and the scorecard (0025).</p>
+</div>
+
+<h2>2 · Two numbers from n trials</h2>
+
+<p>The <dfn>pass rate</dfn> is the number of passed trials divided by the number of trials run.
+It says how often the task passes.</p>
+
+<p><dfn>pass^k</dfn> is the chance that k trials of one task all pass. It says whether the task
+can be trusted k times in a row.</p>
+
+<p>The τ-bench paper estimates pass^k from n trials, of which c passed, as C(c, k) / C(n, k). C is
+"n choose k". At k = 1 the estimate equals the pass rate. At n = k it is 1 when every trial passed
+and 0 otherwise.</p>
+
+<pre><code>// 16-benchmark/src/trials.ts, abridged: the checks on c are left out
+export function passHatK(n: number, c: number, k: number): number {
+  if (k &lt; 1 || k &gt; n) throw new Error(`k must be between 1 and n (${n}), got ${k}`);
+  return c &lt; k ? 0 : choose(c, k) / choose(n, k);
+}</code></pre>
+
+<table>
+  <tr><th>Term</th><th>The question it answers</th><th>audit, 19 of 20 passed, k = 4</th></tr>
+  <tr><td>pass rate</td><td>how often does one trial pass?</td><td>0.950</td></tr>
+  <tr><td>pass^k</td><td>do all k trials pass?</td><td>0.800</td></tr>
+  <tr><td><dfn>pass@k</dfn></td><td>does at least one of k trials pass?</td><td>1.000, because one failure cannot fill four draws</td></tr>
+</table>
+
+<p>pass@k suits a task where a person keeps the best of several tries. Hermes runs jobs
+unattended, so a job that fails one time in ten fails often. pass^k shows that cost.</p>
+
+<pre><code>type TrialScorecard = {               // runs/trials/trials.json, abridged:
+  loop: string; n: number; k: number; { "loop": "real", "n": 20, "k": 4,
+  tasks: {                              "tasks": [ { "id": "audit", "passed": 19,
+    id; passed; passRate; passHatK;       "passRate": 0.95, "passHatK": 0.8,
+    runs: { seed; variant;                "runs": [ …, { "seed": 4, "variant": "…/parked-audit.jsonl",
+            pass; failed }[];                            "pass": false, "failed": ["reports_tool_output"] } ] } ] }
+  }[];
+};</code></pre>
+
+<p>The file has no clock, like lesson 0025's scorecard. The same seeds write the same 7,065 bytes.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    T["trials.json task"] -->|"admitGoldenTasks"| V["two recordings<br/>weights 9 and 1"]
+    S["seed i"] --> P["pickVariant"]
+    V --> P
+    P --> G["SeededFakeGateway"]
+    G --> L["the real loop"]
+    L -->|"runAndLand"| D[("audit-s<i>i</i> trace<br/>and artifact")]
+    D --> J["graders"]
+    J --> R["trial row<br/>seed, recording, failed graders"]
+    R --> C["pass rate and pass^k"]
+</pre>
+<figcaption>Diagram 1. Trial i uses seed i. Each trial lands under its own name, so no trial
+overwrites another.</figcaption>
+</figure>
+
+<h2>3 · When does the verdict stop moving?</h2>
+
+<p>The lab ran <code>audit</code> in ten series of 400 trials, each series on its own seeds. The
+true pass rate is 90%, because the weights say so.</p>
+
+<table>
+  <tr><th>Measured, ten series</th><th>Lowest</th><th>Highest</th></tr>
+  <tr><td>pass rate after 10 trials</td><td>70.0%</td><td>100.0%</td></tr>
+  <tr><td>pass rate after 100 trials</td><td>87.0%</td><td>95.0%</td></tr>
+  <tr><td>trials until the rate stays within 10 points of 90%</td><td>1</td><td>35</td></tr>
+  <tr><td>trials until the rate stays within 5 points of 90%</td><td>7</td><td>106</td></tr>
+</table>
+
+<p>After ten trials, one series read 70% and five read 100%. The same loop and the same recordings
+produced every one of those rates. A ten-trial verdict on a 90% task can say "perfect".</p>
+
+<p>Across all 4,000 trials, 3,614 passed, which is 90.3%. pass^k fell as k grew.</p>
+
+<table>
+  <tr><th>k</th><th>Measured pass^k</th><th>0.9 to the power k</th></tr>
+  <tr><td>1</td><td>0.903</td><td>0.900</td></tr>
+  <tr><td>2</td><td>0.816</td><td>0.810</td></tr>
+  <tr><td>4</td><td>0.666</td><td>0.656</td></tr>
+  <tr><td>8</td><td>0.444</td><td>0.430</td></tr>
+</table>
+
+<p>A task that passes nine times in ten passes eight in a row less than half the time. The pass rate
+hides that. pass^k shows it.</p>
+
+<p>The Hermes OS README says a promotion needs at least ten consecutive clean runs and a signed
+ADR. That rule asks a pass^10 question, not a pass rate question.</p>
+
+<h2>4 · A failed trial runs again</h2>
+
+<p>At n = 20, seed 4 fails. The scorecard row names the seed, the recording and the failed grader.
+<code>pnpm trials --rerun audit --seed 4</code> runs that one trial again.</p>
+
+<pre><code>FAIL audit seed 4  parked-audit.jsonl  failed: reports_tool_output</code></pre>
+
+<p>A test runs a failed trial twice into two folders. It removes the <code>at</code> clock from
+every trace line and compares the rest. The traces match line for line.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TB
+    A["runTrials, n = 20"] --> F["seed 4: FAIL<br/>reports_tool_output"]
+    F -->|"the seed is in the row"| B["rerunTrial seed 4"]
+    B --> S["same recording"]
+    S --> G["same failed grader"]
+    G --> T["same trace<br/>clock removed"]
+</pre>
+<figcaption>Diagram 2. The seed decides the recording. Nothing else in the trial varies, except
+the clock.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Layer</th><th>Does the seed change it?</th><th>Why</th></tr>
+  <tr><td>which recording replays</td><td>yes</td><td>the seed and the weights pick it</td></tr>
+  <tr><td>the loop, the graph, the graders</td><td>no</td><td>trials call the same <code>runOnce</code> as <code>runGolden</code></td></tr>
+  <tr><td>tool output</td><td>no</td><td>the lab's tool returns the same text every time</td></tr>
+  <tr><td>token counts</td><td>only by recording</td><td>each recording's counts replay as recorded</td></tr>
+  <tr><td>the <code>at</code> times in the trace</td><td>no, but they differ</td><td>the loop reads the clock, so the test removes it</td></tr>
+</table>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td>Weighted recordings, <code>SeededFakeGateway</code>, <code>runTrials</code>, <code>rerunTrial</code>, <code>pnpm trials</code></td><td>implemented</td><td><code>16-benchmark/</code></td></tr>
+  <tr><td>Trials of a planted defect</td><td>prepared</td><td><code>runTrials</code> takes any <code>NamedLoop</code>. The command runs the real loop only</td></tr>
+  <tr><td>A committed baseline and a regression gate</td><td>planned</td><td>lesson 0027, <a href="../ROADMAP.md">ROADMAP</a> Phase 4</td></tr>
+  <tr><td>Promotion after at least 10 consecutive clean runs and a signed ADR</td><td>illustrative only</td><td>Hermes OS <code>README.md</code>, Guarantees. No PDR or ADR text states the number</td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>16-benchmark/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm trials</code>. Write down the audit pass rate and pass^4.</li>
+  <li>Compute C(19, 4) / C(20, 4) by hand. Compare it with pass^4.</li>
+  <li>Run <code>pnpm trials --n 4 --k 4</code>. Explain why pass^4 is 0.</li>
+  <li>Run <code>pnpm trials --rerun audit --seed 4</code>. Open its trace and find the answer line.</li>
+  <li>Change the audit weights to 3 and 1. Predict pass^4 at n = 20, then run it.</li>
+  <li>Run <code>pnpm trials --settle</code>. Find the series that settles last.</li>
+</ol>
+
+<h2>6 · Exercise: which number answers?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each question</h3>
+  <p class="rules">Each question needs one number. Pick the one that answers it.</p>
+
+  <div class="cl" data-cats="pass rate|pass^k|pass@k">
+    <div class="cl-item" data-cat="1" data-why="An unattended job runs again and again. The question is whether every run passes, which is pass^k.">
+      <p>Can Hermes run this audit every night for a week with no failure?</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="The question asks for a share of trials. The pass rate is passed trials over all trials.">
+      <p>What share of audit trials pass?</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="A person keeps the best of three drafts, so one passing draft is enough.">
+      <p>If a person keeps the best of three drafts, how often is one good?</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="Four trials in a row must all pass. One failure among four makes the estimate 0 at n = k.">
+      <p>Will four trials in a row all pass?</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="Lab 07's fake replays one script. Every trial replays the same replies, so every trial has the same result.">
+    <p class="qz-prompt">Q1. Why do twenty trials of <code>grounded-audit</code> all pass?</p>
+    <button class="qz-opt" type="button">The pack makes the model answer correctly on every call</button>
+    <button class="qz-opt" type="button">The graders skip a task whose spec carries a pack</button>
+    <button class="qz-opt" type="button">The task has one recording, so every trial is identical</button>
+    <button class="qz-opt" type="button">The seeded generator returns zero for every small seed</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The weights are 9 and 1, so one trial in ten replays the parked audit, whose answer drops the numbers.">
+    <p class="qz-prompt">Q2. Where does the audit's 10% failure rate come from?</p>
+    <button class="qz-opt" type="button">The weights of its two recordings in the task file</button>
+    <button class="qz-opt" type="button">The model's sampling temperature in the recorded run</button>
+    <button class="qz-opt" type="button">A grader that fails one trial in ten on purpose</button>
+    <button class="qz-opt" type="button">A planted defect that wraps the loop one time in ten</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="C(19, 4) / C(20, 4) is 3876 / 4845, which is 0.8. Four draws from twenty miss the one failure 80% of the time.">
+    <p class="qz-prompt">Q3. Audit passed 19 of 20 trials. Why is pass^4 0.8?</p>
+    <button class="qz-opt" type="button">The pass rate minus the share of the trials that failed</button>
+    <button class="qz-opt" type="button">The share of trials that passed after seed 4 had failed</button>
+    <button class="qz-opt" type="button">The pass rate divided by k, then rounded to one place</button>
+    <button class="qz-opt" type="button">Four draws from twenty miss the failure 80% of the time</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="The seed picks the recording, and nothing else in the trial varies. The loop's clock differs, so the test removes it.">
+    <p class="qz-prompt">Q4. Why does seed 4 fail again on a rerun?</p>
+    <button class="qz-opt" type="button">The rerun reads the old trace file instead of running</button>
+    <button class="qz-opt" type="button">The seed picks the same recording, and nothing else varies</button>
+    <button class="qz-opt" type="button">The scorecard stores the failed replies for each seed</button>
+    <button class="qz-opt" type="button">The graders cache the verdict of every seed they have seen</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say why one trial cannot show that a task is reliable.</li>
+  <li>Say what pass^k answers that the pass rate does not.</li>
+  <li>Say how you replay a failed trial, and what must stay fixed.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A trial is one graded run, and
+one trial is one sample. A seeded fake picks a recording by seed, so the failure rate is chosen and
+written down. The pass rate says how often a task passes, and pass^k says whether k runs all pass.
+A failed trial's seed reruns it exactly.</p>
+
+<h2>Primary source</h2>
+
+<p>Read §3 of the τ-bench paper, <a href="https://arxiv.org/abs/2406.12045">Yao et al., arXiv
+2406.12045</a>. Find its pass^k formula and compare it with <code>passHatK</code>. Then find why
+the authors built pass^k for customer service tasks.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>zod</code> 4.4.3, <code>vitest</code> 3.2.7, <code>tsx</code> 4.23.1 and
+  <code>@types/node</code> 22.20.1 on Node 22.14.0, Windows 11, on 2026-10-31.</p>
+  <p><strong>Disclosed.</strong> Every number measures the benchmark code at a failure rate the
+  task file sets. No model ran. A live model's failures are not drawn from two recordings, and its
+  trials may not be independent. The settle counts hold up to trial 400 of each series. The
+  formula was checked against the paper's HTML version on 2026-10-31.</p>
+  <p><strong>Sources.</strong> Anthropic's <a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Demystifying
+  evals for AI agents</a> (2026-01-09) defines trial, pass@k and pass^k in the same sense.</p>
+  <p><strong>Next.</strong> Lesson 0027 is planned to commit a baseline scorecard and refuse any
+  change that scores below it, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>
