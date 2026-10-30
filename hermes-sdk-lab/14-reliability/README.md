@@ -1,6 +1,7 @@
-# Exercise 14 — what the run cost
+# Exercise 14 — what the run cost, and what it left behind
 
-Lesson: [0022 — What the Run Cost](../../lessons/0022-what-the-run-cost.html)
+Lessons: [0022 — What the Run Cost](../../lessons/0022-what-the-run-cost.html) ·
+[0024 — Landing the Outputs](../../lessons/0024-landing-the-outputs.html) (below, after the cost report)
 
 Scenario step **S7 (the durable record)**, opening Phase 4. Every trace line records a time and
 every reply records its tokens. This exercise reads one trace file and returns a span per model
@@ -23,6 +24,10 @@ line with lab 07's `parseTrace`.
 | `src/recordings.ts` | lab 12's six recordings plus lab 12's parked audit: the seven recorded runs |
 | `src/main.ts` | `pnpm job` (all seven) and `pnpm job --cost-report <file> [--model <id>]` |
 | `tests/cost-report.test.ts` | 27 tests: 26 written before the code, and one added after review for two holds on one tool |
+| `src/artifact.ts` | lesson 0024. `buildArtifact(run, events, price, trace)`: the artifact, computed from the trace. Pure. `ArtifactSchema`, the strict shape a reader admits |
+| `src/landing.ts` | lesson 0024. `landTrace(tracePath, root, price)`: reads one trace file, writes `artifacts/<run>/`. `writeAtomic`, `readArtifact` |
+| `src/run-and-land.ts` | lesson 0024. `runAndLand(tracePath, root, price, run)`: one run of lab 12's loop, landed however it ends |
+| `tests/landing.test.ts` | lesson 0024. 29 tests: 27 written before the code, two added after review (a trace file with no `job_ended`, a bad run name refused before the run) |
 
 ## Commands
 
@@ -117,9 +122,99 @@ so.
 ## Not done here, on purpose
 
 - **No telemetry library.** Lesson 0023, lab 15.
-- **No landed artifact linked to its cost.** Lesson 0024 (S8).
+- **No landed artifact linked to its cost.** Lesson 0024 (S8), below this list.
+
 - **The trace is not changed.** It still records no model id and no pack tokens. Adding either
   would change lab 07's schema, which every earlier lab reads. The report names both gaps instead.
 - **The recorded traces are not committed.** `hermes-sdk-lab/.gitignore` excludes `traces/`. Lab 12's
   and lab 13's tests already read these local files, and so do lab 14's. A fresh clone has to
   re-record them before the tests can pass.
+
+---
+
+# Lesson 0024 — landing the outputs
+
+Scenario step **S8 (outputs land, linked to cost)**. Every run leaves one folder,
+`artifacts/<run>/`, holding two files:
+
+| File | What it holds | Written |
+|---|---|---|
+| `cost-report.json` | lesson 0022's `CostReport`, whole | first |
+| `artifact.json` | status (`done` / `failed`), outcome, the output text, a link to the trace, a link to the cost report, the totals | last, so its presence means the folder is whole |
+
+Both are written to `<name>.tmp` and renamed over the real name. A reader opens only
+`artifact.json`, through `ArtifactSchema`.
+
+The artifact is computed from the trace FILE, not from the events a run held in memory. So
+a process that died still lands later: its trace is on disk. `runAndLand` lands a run when
+it returns or throws, and lands nothing when it parks, because a parked run has not ended.
+
+## Commands
+
+```bash
+pnpm --filter 14-reliability job --land                      # all seven runs
+pnpm --filter 14-reliability job --land ../07-tool-loop/traces/tight-budget.jsonl
+pnpm --filter 14-reliability exec vitest run tests/landing.test.ts
+```
+
+`artifacts/` is ignored by git, like `traces/`. Landing writes files and never commits.
+
+## Measured, 2026-10-30
+
+Versions as above, plus `@types/node` 22.20.1 for the `node:fs` declarations.
+
+```
+=== Landing into C:\Code\TS\hermes-sdk-lab\14-reliability\artifacts\ ===
+  done   landed       81 chars           217 tokens, agrees  ->  audit-atlas/
+  failed over_budget  46 chars, partial  191 tokens, agrees  ->  tight-budget/
+  failed out_of_time  24 chars, partial  183 tokens, agrees  ->  tight-deadline/
+  done   landed       81 chars           335 tokens, agrees  ->  tight-deadline-resume/
+  done   landed       81 chars           494 tokens, agrees  ->  audit-atlas-grounded/
+  done   landed       81 chars           236 tokens, agrees  ->  audit-atlas-bare/
+  done   landed       15 chars           80 tokens, agrees  ->  parked-audit/
+```
+
+Live runs through lab 12's `startJob` and the fake, in `tests/landing.test.ts`:
+
+| Run | Ends | Artifact |
+|---|---|---|
+| wants a tool, then done | `landed` | done, "Audit complete.", 80 tokens |
+| `maxModelCalls: 1` | `gave_up` | failed, no output |
+| asks for evidence, no pack | `no_evidence` | failed, no output |
+| the approver throws | no `job_ended`, and the error reaches the caller | failed, outcome null, no output |
+| held call, `park: true` | parked | none; after `answerParked` and `resumeJob`, done |
+
+Found by reading the traces before writing:
+
+- **No trace line names the job.** `job_started` has a title and an owner, and no id. The
+  folder is named after the trace file. `tight-deadline` and `tight-deadline-resume` are
+  one job and land as two runs.
+- **A dead process keeps no partial text.** `partialText` is written only into
+  `job_ended`. A process that dies writes no `job_ended`, so its artifact has no output.
+- **The trace alone cannot tell a dead run from a parked one.** Both end at a held gate
+  with no `job_ended`. `runAndLand` knows, because it holds lab 12's typed park.
+- **The spec's `outputPath` is still unread.** It names one path per spec, so seven runs
+  of the audit spec would overwrite one file. The folder is per run instead.
+
+**Mutations, each restored:**
+
+| Mutation | Tests failing |
+|---|---|
+| `artifact.json` written before the cost report | 1 (the crash between the two writes) |
+| `writeAtomic` writes in place, with no temp file | 1 (the write that dies halfway) |
+| `runAndLand` does not land when the run throws | 1 (the crashed run) |
+| `runAndLand` lands a parked run | 1 (the parked run) |
+| a failed run drops its partial text | 4 (the budget-stopped unit test, the two stopped recordings, the check against the trace line) |
+| a refused trace line is skipped, not refused | 1 |
+| `runAndLand` skips the run-name check before the run | 1 (the run that must not start) |
+
+One mutation fails nothing: a done run taking the first completed reply instead of the last. Every
+recording has one completed reply, so the two are the same text. The rule is untested.
+
+## Break it
+
+1. Land the seven runs. Delete `artifacts/audit-atlas/artifact.json`. Land again. Expected: the
+   folder is whole again, byte for byte.
+2. Copy `tight-budget.jsonl` and delete its `job_ended` line. Land the copy. Expected: `failed`,
+   `no job_ended`, no output.
+3. In `landing.ts`, swap the two `write` lines. Run the landing tests. Expected: one fails.

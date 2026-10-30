@@ -2222,6 +2222,111 @@ Edge (2 SVGs each run, no "Syntax error" text).
 - After the fixes: lab 15 26/26, `tsc` clean, `pnpm job` all seven equal; the lesson 1,821 words,
   0 errors, 0 warnings; the term notes, the map note and the module graph 0 errors.
 
+## Update 2026-10-30 — lesson 0024 shipped: landing the outputs; S8 gets code
+
+Lesson 0024 (*Landing the Outputs*) continues lab `14-reliability`. **1,976 words, 0 errors, 1
+warning** from `tools/lesson-lint.mjs` (SENT-5 on the `<h1>` "Landing the Outputs", the ROADMAP's
+title, where "Landing" is a noun: judged and kept). The two term notes, the map note and the module
+graph pass 0 errors and 0 warnings. **Two new Technical Names** against a budget of six: `artifact`,
+`atomic-write`. One em-dash, in the `<title>`. Two diagrams, render-verified 3× in headless Edge (2
+SVGs each run, no "Syntax error" text).
+
+- **Scope: one lesson, no split.** The row's three parts (one folder per run, a killed run still
+  lands, a run with no artifact fails a test) share one function, `landTrace`, and fit the budget.
+- **The design decision of the session: landing reads the trace FILE, not the run's events.** A
+  process killed by the OS runs no `finally`, so in-process landing alone cannot meet "a killed run
+  lands … rather than nothing". Reading the file gives one function for both callers: `runAndLand`
+  (lands when lab 12's run returns or throws) and `pnpm job --land <trace>` (lands a dead run later).
+  The artifact is therefore a view of the trace, like the cost report: it copies the output text and
+  links to the trace and to `cost-report.json`, and a test checks the copied text against the trace
+  line on all seven recordings.
+- **Found by reading the traces before writing, and stated in the lesson, README, ROADMAP and map:**
+  - *A dead process keeps no partial text.* `partialText` is written only into `job_ended`. So the
+    row's "a killed run lands its partial output" holds for runs the budget or deadline stopped
+    (tight-budget 46 chars, tight-deadline 24, both failed), and a process-killed run lands failed
+    with no output. Hermes's own rule, "kill at ceiling, partial kept, marked failed" (ADR-0007,
+    control-plane §5), is the budget kill, which is the one that keeps text.
+  - *No trace line names the job.* `job_started` has title and owner, no id. The folder is
+    `artifacts/<run>/`, named after the trace file, not the row's `artifacts/<job>/`; tight-deadline
+    and its resume land as two folders. Not changed: lab 07's trace schema, for the reason 0022 gave.
+  - *The trace alone cannot tell a parked run from a dead one* (both end at a held gate with no
+    `job_ended`). `runAndLand` holds lab 12's typed park and lands nothing for it; after
+    `answerParked` + `resumeJob` it lands done.
+  - *The spec's `outputPath` (lesson 0007, "where the artifact lands (S8)") is still read by no code.*
+    One path per spec would make seven audit runs overwrite one file. Graded *prepared*.
+- **Kill-safety, two rules:** every file goes through `<name>.tmp` + `renameSync`; `cost-report.json`
+  first, `artifact.json` last, and readers open only `artifact.json` (strict `ArtifactSchema`).
+  Verified through Context7 (Node 22 `fs.rename`: overwrites an existing target, no atomicity
+  claim) and the installed `@types/node` 22.20.1 `renameSync(oldPath: PathLike, newPath: PathLike):
+  void`. Atomic swap is promised by Linux's `rename(2)`, not by Windows; the lesson says the order of
+  the two steps is the guarantee on this machine. Status words `done` / `failed`: Hermes OS's accepted
+  terminal words (control-plane §2).
+- **Measured** (zod 4.4.3, vitest 3.2.7, tsx 4.23.1, @types/node 22.20.1, Node 22.14.0, Windows 11):
+  seven recordings land, 5 done and 2 failed, all `agrees`; a second landing writes the same bytes
+  (`cmp`); audit-atlas's `artifact.json` 500 bytes, `cost-report.json` 1,277. Live runs through
+  `startJob` and the fake: landed → done ("Audit complete.", 80 tokens), `gave_up` and `no_evidence` →
+  failed, an approver that throws → failed, outcome null, no output, and the error still reaches the
+  caller; a park → no artifact until resumed.
+- **TDD at three seams, red captured:** `tests/landing.test.ts` (27) written first; red run: the file
+  failed to load (`Failed to load url ../src/artifact.js`). Green on the first implementation run,
+  27/27. Two tests added after review (below), 29. Mutations, each restored from a copy: artifact.json
+  written first → 1 fail; no temp file → 1; no landing on a throw → 1; a parked run lands → 1; a failed
+  run drops its partial text → 4; a refused trace line skipped → 1; run name checked only after the run
+  → 1. **One mutation fails nothing:** a done run taking the first completed reply instead of the last,
+  because every recording has one completed reply. Recorded in the README as untested, not hidden.
+  A mutation script bug truncated `run-and-land.ts` once mid-run; restored from its backup and the
+  suite re-run green before continuing.
+- **Totals:** lab 14 56 tests (29 new); lab 15 26, lab 13 107, lab 12 74, exercise 11 21, exercise 08
+  29, all green; `pnpm -r typecheck` passes. Labs 07, 11, 12, 13 and 15 unchanged. `artifacts/` added
+  to `hermes-sdk-lab/.gitignore`: landing writes files and never commits (Wave 1 zero writeback).
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2, PARA-4,
+  PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Lab instructions
+  judged against 20 words: the longest step is 15. Quiz option lengths checked by script; Q1's correct
+  option was the uniquely longest and was shortened. Article III.1: no network; the bytes on disk are
+  shown instead (`tight-budget/artifact.json`). III.5: one collision table for `landed` / partial
+  artifact / artifact / Artifact Vault. III.6: atomic write taught from lab 12's in-place checkpoint
+  write (0018); a dead process taught from 0018's part f.
+- **Recall debt, unchanged and growing:** say-it answers for lessons 0016 to 0023 are not in the repo.
+  No learner answers in this session. No promotions.
+- Bookkeeping: ROADMAP row 0024 ✅ with the measured win, 0025 ▶, Phase 4 header *3 of 6 shipped*,
+  lesson-maps line; module graph synced (P4 text, R24 ✅, R25 ▶, an artifacts node fed by the trace
+  and the cost report, the S8 row, lesson-map list).
+
+### What the two-axis review caught, and what I did about it
+
+- **Spec, a real gap in "every run files one artifact":** `runAndLand` checked the run name only when
+  landing, so a trace path like `Live Run.jsonl` ran the whole job and then landed nothing, silently.
+  Now the name is checked before the run starts; new test: the gateway sees 0 calls and no trace file
+  is created. A landing error inside the throw branch could also replace the run's own error; it is
+  now caught there, and the run's error reaches the caller.
+- **Spec, untested paths:** no test ran `landTrace` on a trace FILE with no `job_ended` (the kill
+  path existed only at `buildArtifact` level); added. A done run's copied output was checked against
+  a literal, never against the trace; the seven-recording loop now compares every artifact's output
+  with its trace's last completed reply or `partialText`.
+- **Spec and Standards, a wrong instruction:** Diagram 1, the map note and the footer said a killed
+  process lands through `pnpm job --land`, which with no path lands only the seven recordings. Now
+  `--land <trace.jsonl>` everywhere.
+- **Standards, III.9, a wrong grade:** "Artifact Vault, outputs linked to jobs and costs: accepted".
+  §2 accepts produced artifacts (ADR-0013); linking each output to job and cost is the Artifact
+  Publisher, §3 row 13, *scaffolded*. Split into two rows. Inline "are planned" and "Hermes OS
+  accepts" removed from §2's prose.
+- **Standards, VIII.5:** "The word "land" already has two meanings…, so they need one table" was a
+  sentence about a word; deleted.
+- **Standards, README:** the lesson-0024 block had been inserted inside 0022's "Not done here" list,
+  so two of its bullets sat under 0024's "Break it"; moved. The measured path `\a` had been eaten as
+  an escape (`...-reliabilityrtifacts\`); restored.
+- **Standards, smaller:** `buildArtifact`'s signature table gained the `price` row (III.3); the outcome
+  table gained the fourth path (landed with no completed reply → failed); "pure", "POSIX" and "golden
+  tasks" replaced by ordinary words; the atomic-write definition no longer promises more than Windows
+  gives; `main.ts`'s duplicated flag parsing became `valueAfter`, and `--land` with `--cost-report` is a
+  usage error; `type Write` renamed `FileWriter`.
+- **Judged and kept:** `(tracePath, root, price)` travels through three functions (possible Data
+  Clump); kept, since bundling them would add a type for two callers. Status table stays at the end of
+  §4, as in 0022 and 0023. Folders per run, not per job: the departure from the row's wording is
+  recorded in the ROADMAP row.
+- After the fixes: lab 14 56/56, `tsc` clean, `pnpm job --land` gives the same seven lines; the lesson
+  1,976 words, 0 errors; the term notes, the map note and the module graph 0 errors.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0024 — Landing the Outputs</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 4 · Lesson 0024 · lab exercise 14-reliability · ~45–60 min</p>
+  <h1>Landing the Outputs</h1>
+  <p class="lede">A run ends, crashes, or parks. What must it leave on disk, so that a later
+  reader finds its output, its trace and its cost in one place?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S8 (outputs land, linked to cost) gets its first code. S6 (the budget stops a
+  run) already keeps a stopped call's partial text, and now that text reaches a file. S7 (the
+  durable record) is what every landing reads. The trace stays the one record of what happened,
+  and never merges with the workflow graph or the knowledge graph. The win: all seven recorded
+  runs land, and a crashed run lands too.
+</div>
+
+<h2>1 · A run leaves one folder</h2>
+
+<p>An <dfn>artifact</dfn> is the folder one run leaves under <code>artifacts/&lt;run&gt;/</code>:
+its output, its status, and links to its trace and cost report. To land a run is to write its
+artifact. The folder holds two files, and a reader opens only one of them.</p>
+
+<table>
+  <tr><th>File</th><th>What it holds</th><th>Written</th></tr>
+  <tr><td><code>cost-report.json</code></td><td>lesson 0022's <code>CostReport</code>, whole</td><td>first</td></tr>
+  <tr><td><code>artifact.json</code></td><td>status, outcome, output text, a link to the trace, a link to the cost report, the totals</td><td>last, so its presence means the folder is whole</td></tr>
+</table>
+
+<p>The output already exists in the trace. A finished run's answer is the text of its last
+<code>reply</code> with <code>stop: "completed"</code>. A run that the budget or the deadline
+stopped keeps its partial text in <code>job_ended.partialText</code>, as lesson 0009 built.</p>
+
+<table>
+  <tr><th>Term</th><th>Meaning</th><th>Example</th></tr>
+  <tr><td><code>landed</code></td><td>an outcome in <code>job_ended</code>: the model finished</td><td>audit-atlas ends <code>landed</code></td></tr>
+  <tr><td>partial artifact</td><td>the text kept from a call that was stopped (0009)</td><td>46 characters on the tight budget</td></tr>
+  <tr><td>artifact</td><td>the folder a run leaves, whatever its outcome</td><td><code>artifacts/tight-budget/</code>, status failed</td></tr>
+  <tr><td>Artifact Vault</td><td>Hermes OS's versioned <code>artifacts/</code> tree (0006b)</td><td>the place this folder imitates</td></tr>
+</table>
+
+<p>A run that ends <code>over_budget</code> still lands. Its artifact says <code>failed</code>
+and carries the partial text.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>Every run leaves one folder, linked to its trace and its cost report.</li>
+    <li>The artifact is computed from the trace file, so a dead process can still land later.</li>
+    <li>A parked run has not ended, so it lands nothing yet.</li>
+    <li>A rename makes a write all or nothing.</li>
+    <li>The file a reader opens is written last.</li>
+  </ul>
+  <p>Reprise: the partial artifact (0009), the trace and <code>parseTrace</code> (0011), the
+  killed run and its checkpoint (0018), the parked run (0019), the cost report (0022).</p>
+</div>
+
+<h2>2 · The artifact is computed from the trace</h2>
+
+<p>The function <code>buildArtifact</code> reads its arguments and writes nothing, like
+<code>costReport</code>. Import it and pass four arguments. Then check which side of the union came back.</p>
+
+<pre><code>// 14-reliability/src/artifact.ts
+export function buildArtifact(
+  run: string, events: TraceEvent[], price: ModelPrice, trace: string,
+): BuiltArtifact;
+
+export type BuiltArtifact =
+  | { ok: true; artifact: Artifact; report: CostReport }
+  | { ok: false; reason: string };</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At run time for tight-budget</th></tr>
+  <tr><td><code>run</code></td><td>the folder's name, one lowercase path segment</td><td><code>"tight-budget"</code>, from the trace file's name</td></tr>
+  <tr><td><code>events</code></td><td>one trace file, already through <code>parseTrace</code></td><td>7 events, <code>job_started</code> to <code>job_ended</code></td></tr>
+  <tr><td><code>price</code></td><td>one row of lesson 0022's price table, for the cost report</td><td><code>{ model: "claude-opus-4-8", inputMicroUsd: 5, outputMicroUsd: 25 }</code></td></tr>
+  <tr><td><code>trace</code></td><td>the link to store, relative to the artifact's folder</td><td><code>"../../../07-tool-loop/traces/tight-budget.jsonl"</code></td></tr>
+  <tr><td><code>BuiltArtifact</code></td><td>an artifact and its cost report, or the reason there is none</td><td><code>{ ok: true, artifact: {…}, report: {…} }</code></td></tr>
+</table>
+
+<p>There is one declaration and no overload. A signature tells TypeScript what may be called. The
+implementation does the runtime work. A name such as <code>../escape</code> returns
+<code>ok: false</code>, so no run can write outside the artifacts folder.</p>
+
+<pre><code>type Artifact = {                          // tight-budget/artifact.json, as written:
+  run: string;                             { "run": "tight-budget",
+  title: string;                             "title": "Audit the atlas graph under a tight budget",
+  owner: string;                             "owner": "themis",
+  status: "done" | "failed";                 "status": "failed",
+  outcome: string | null;                    "outcome": "over_budget",
+  reason: string | null;                     "reason": "the job ended over_budget",
+  output: { text: string;                    "output": { "text": "Audit complete. The tool reported: graph=atlas",
+            partial: boolean } | null;                   "partial": true },
+  trace: string;                             "trace": "../../../07-tool-loop/traces/tight-budget.jsonl",
+  costReport: "cost-report.json";            "costReport": "cost-report.json",
+  totals: { calls; tokens; microUsd };       "totals": { "calls": 2, "tokens": 191, "microUsd": 4315 },
+  agrees: boolean;                           "agrees": true,
+  endedAt: number | null;                    "endedAt": 1788136282812 }
+};</code></pre>
+
+<p>The type comes from <code>ArtifactSchema</code>, a strict Zod object. A later reader gets
+these bytes and nothing else. So <code>readArtifact</code> parses them and never casts.
+<code>done</code> and <code>failed</code> are the two terminal words of Hermes OS. Every field comes from a trace line, so landing the same trace twice writes the same
+bytes.</p>
+
+<table>
+  <tr><th>How the record ends</th><th>Status</th><th>Output</th></tr>
+  <tr><td><code>job_ended</code> says <code>landed</code></td><td>done</td><td>the last completed reply</td></tr>
+  <tr><td><code>job_ended</code> says <code>landed</code>, with no completed reply</td><td>failed</td><td>none, because nothing finished</td></tr>
+  <tr><td><code>job_ended</code> says another outcome, with <code>partialText</code></td><td>failed</td><td>the partial text, marked partial</td></tr>
+  <tr><td><code>job_ended</code> says another outcome, with no partial text</td><td>failed</td><td>none</td></tr>
+  <tr><td>no <code>job_ended</code> line</td><td>failed, outcome null</td><td>none, because streamed text lived only in memory</td></tr>
+</table>
+
+<h2>3 · Every way a run ends</h2>
+
+<p>The function <code>landTrace</code> reads a trace file and writes the folder. It reads the
+file, not the events a run held in memory. That choice decides what a dead process leaves
+behind.</p>
+
+<p>Lesson 0018's part f killed a run during an approval wait. The process threw, and its code
+ran no further. A process killed by the operating system runs no code at all. Its trace file is
+still on disk, so <code>pnpm job --land &lt;trace.jsonl&gt;</code> lands it later, marked failed.</p>
+
+<p>The function <code>runAndLand</code> wraps one run of lab 12's loop. It appends every event
+to the trace file as it happens. When the run returns or throws, it calls
+<code>landTrace</code>. A throw still reaches the caller after the landing.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    R["one run<br/>lab 12's loop"] -->|"each event"| T[("trace file")]
+    R -->|"returns or throws"| L["landTrace"]
+    R -->|"parks"| P["nothing lands yet"]
+    K["process killed"] -.->|"later: --land with its trace"| L
+    T --> L
+    L --> C["cost-report.json<br/>written first"]
+    C --> A["artifact.json<br/>written last"]
+</pre>
+<figcaption>Diagram 1. Every path to an artifact goes through the trace file. A killed process
+reaches it later, through the same function.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Live run, through <code>startJob</code> and the fake</th><th>Ends</th><th>Artifact</th></tr>
+  <tr><td>wants a tool, then finishes</td><td><code>landed</code></td><td>done, "Audit complete.", 80 tokens</td></tr>
+  <tr><td><code>maxModelCalls: 1</code></td><td><code>gave_up</code></td><td>failed, no output</td></tr>
+  <tr><td>asks for evidence, no pack arrives</td><td><code>no_evidence</code></td><td>failed, no output</td></tr>
+  <tr><td>the approver throws</td><td>no <code>job_ended</code></td><td>failed, outcome null, no output</td></tr>
+  <tr><td>held call with <code>park: true</code></td><td>parked</td><td>none until the verdict and the resume, then done</td></tr>
+</table>
+
+<p>A parked run waits for a verdict, so it has not ended. Its trace and a dead run's trace end
+the same way: a held gate and no <code>job_ended</code>. The file cannot tell them apart.
+<code>runAndLand</code> can, because lab 12 returns a typed park.</p>
+
+<p>No trace line names the job. <code>job_started</code> has a title and an owner and no id, so
+the folder takes the trace file's name. The tight-deadline run and its resume are one job, and
+they land as two folders.</p>
+
+<h2>4 · A kill cannot tear the folder</h2>
+
+<p>Lab 12's checkpoint sink calls <code>writeFileSync</code> on the real file at every step. A
+kill during that call can leave half a JSON document. The next read would fail, and the run's
+position would be lost.</p>
+
+<p>An <dfn>atomic write</dfn> writes a temporary file, then renames it over the target, so no
+reader sees a half-written file. The rename is one call in <code>node:fs</code>.</p>
+
+<pre><code>// @types/node 22.20.1, fs.d.ts
+export function renameSync(oldPath: PathLike, newPath: PathLike): void;
+
+// 14-reliability/src/landing.ts
+export function writeAtomic(path: string, text: string, io: AtomicFs = nodeFs): void {
+  const temp = `${path}.tmp`;
+  io.writeFileSync(temp, text);
+  io.renameSync(temp, path);
+}</code></pre>
+
+<p>Node's documentation says that <code>rename</code> overwrites an existing target. Linux's
+<code>rename(2)</code> page also promises the swap is atomic. Windows documents no such promise, so on
+this machine the guarantee rests on the order of the two steps.</p>
+
+<p>The second rule is order. <code>landTrace</code> writes <code>cost-report.json</code>
+first and <code>artifact.json</code> last. A reader opens only <code>artifact.json</code>.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> Empty: mkdir
+    Empty --> CostOnly: cost-report.json renamed in
+    CostOnly --> Landed: artifact.json renamed in
+    CostOnly --> CostOnly: killed here, reads as not landed
+    CostOnly --> Landed: landTrace again, from the trace
+    Landed --> Landed: landTrace again, same bytes
+</pre>
+<figcaption>Diagram 2. The folder's three states. A kill between the two writes leaves a state
+that every reader treats as not landed.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Layer</th><th>Does landing change it?</th><th>Why</th></tr>
+  <tr><td>files under <code>artifacts/</code></td><td>yes</td><td>two files per run, replaced by rename</td></tr>
+  <tr><td>the trace file</td><td>no</td><td>landing reads it and links to it, never copies it</td></tr>
+  <tr><td>the checkpoint</td><td>no</td><td>it says where a run is, and landing is about where it ended</td></tr>
+  <tr><td>the git repository</td><td>no</td><td><code>artifacts/</code> is ignored, and Hermes OS Wave 1 does no writeback</td></tr>
+  <tr><td>the spec's <code>outputPath</code></td><td>no</td><td>it names one path per spec, so seven audit runs would overwrite one file</td></tr>
+</table>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td><code>buildArtifact</code>, <code>landTrace</code>, <code>runAndLand</code>, <code>--land</code></td><td>implemented</td><td><code>14-reliability/src/</code></td></tr>
+  <tr><td>The spec's <code>outputPath</code></td><td>prepared</td><td>a field since lesson 0007, still read by no code</td></tr>
+  <tr><td>Graders that read the artifact and the trace</td><td>planned</td><td>lesson 0025, <a href="../ROADMAP.md">ROADMAP</a> Phase 4</td></tr>
+  <tr><td>Produced artifacts in the Artifact Vault</td><td>accepted</td><td>ADR-0013, <code>hermes-job-control-plane.md</code> §2</td></tr>
+  <tr><td>The Artifact Publisher, outputs linked to job and cost</td><td>scaffolded</td><td>ADR-0013, <code>hermes-job-control-plane.md</code> §3, row 13</td></tr>
+  <tr><td>Terminal words done and failed</td><td>accepted</td><td><code>hermes-job-control-plane.md</code> §2</td></tr>
+  <tr><td>Kill at the ceiling, partial kept, marked failed</td><td>accepted</td><td>ADR-0007, <code>hermes-job-control-plane.md</code> §5</td></tr>
+  <tr><td>Zero writeback in Wave 1</td><td>accepted</td><td>ADR-0001, 0003, 0008, 0012, <code>hermes-job-control-plane.md</code> §5</td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>14-reliability/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm job --land</code>. Find the two failed runs and their partial text.</li>
+  <li>Open <code>artifacts/tight-budget/artifact.json</code>. Follow its trace link to the file.</li>
+  <li>Delete <code>artifacts/audit-atlas/artifact.json</code>. Land again and compare the bytes.</li>
+  <li>Copy a trace and delete its <code>job_ended</code> line. Land the copy.</li>
+  <li>Swap the two <code>write</code> lines in <code>landing.ts</code>. Predict the failing test, then restore.</li>
+</ol>
+
+<h2>6 · Exercise: what lands?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each run</h3>
+  <p class="rules">Done and failed are artifact statuses. Nothing yet means no artifact.json exists.</p>
+
+  <div class="cl" data-cats="Done|Failed|Nothing yet">
+    <div class="cl-item" data-cat="1" data-why="It ended over_budget. The artifact says failed and keeps the 46 characters of partial text.">
+      <p>The tight-budget recording.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="A parked run waits for a verdict and has not ended. runAndLand lands it when it resumes and ends.">
+      <p>A held call parks the run.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="runAndLand lands before the error reaches the caller. No job_ended exists, so the outcome is null.">
+      <p>The approver throws during the wait.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="The resumed run ends landed. Its output is the last completed reply.">
+      <p>The tight-deadline run's resume.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="A killed process runs no more code. Its trace file is still on disk, and landTrace reads only that file.">
+    <p class="qz-prompt">Q1. Why does <code>landTrace</code> read the trace file and not the run's events?</p>
+    <button class="qz-opt" type="button">The events in memory hold no token counts for the cost report</button>
+    <button class="qz-opt" type="button">The file holds the output text, and the events in memory do not</button>
+    <button class="qz-opt" type="button">A killed process leaves only its file, which still lands later</button>
+    <button class="qz-opt" type="button">The parse refuses events that never passed through a file first</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="A reader opens only artifact.json. A kill between the writes leaves the cost report alone, which reads as not landed.">
+    <p class="qz-prompt">Q2. Why is <code>artifact.json</code> written after <code>cost-report.json</code>?</p>
+    <button class="qz-opt" type="button">Its presence then means the folder is whole for any reader</button>
+    <button class="qz-opt" type="button">The cost report needs the artifact's run name before it can be written</button>
+    <button class="qz-opt" type="button">Rename on Windows refuses a file that has no file beside it</button>
+    <button class="qz-opt" type="button">The totals in artifact.json are read back from the cost report</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="partialText is written only into job_ended. A process that dies writes no job_ended, so no text survives.">
+    <p class="qz-prompt">Q3. Why does a crashed run's artifact have no output?</p>
+    <button class="qz-opt" type="button">A failed artifact never carries output, whatever the trace holds</button>
+    <button class="qz-opt" type="button">The schema refuses an output when the outcome field is null</button>
+    <button class="qz-opt" type="button">The cost report cannot price a call whose output was kept</button>
+    <button class="qz-opt" type="button">Partial text is kept only in job_ended, which it never wrote</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="Both traces end at a held gate with no job_ended. runAndLand holds lab 12's typed park, so it knows the run is waiting.">
+    <p class="qz-prompt">Q4. How does <code>runAndLand</code> know not to land a parked run?</p>
+    <button class="qz-opt" type="button">The parked run's trace ends with a line that no dead run writes</button>
+    <button class="qz-opt" type="button">Lab 12 returns a typed park, which the trace file does not hold</button>
+    <button class="qz-opt" type="button">The checkpoint file is deleted when the run is parked by a gate</button>
+    <button class="qz-opt" type="button">A parked run writes job_ended with an outcome named parked</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say what an artifact links to, and why it copies the output but not the trace.</li>
+  <li>Say how a killed process still gets an artifact.</li>
+  <li>Say what a reader sees if the process dies between the two writes.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. Every run leaves one folder
+with its output, its status, and links to its trace and cost. The folder is computed from the
+trace file, so a run whose process died can land later. A parked run has not ended, so it lands
+nothing yet. Each file is renamed into place, and the file a reader opens comes last.</p>
+
+<h2>Primary source</h2>
+
+<p>Read <code>fs.rename</code> in the
+<a href="https://nodejs.org/docs/latest-v22.x/api/fs.html#fsrenameoldpath-newpath-callback">Node.js
+22 documentation</a>, then the
+<a href="https://man7.org/linux/man-pages/man2/rename.2.html">rename(2)</a> page it links to. Compare
+what each one promises about an existing target.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>zod</code> 4.4.3, <code>vitest</code> 3.2.7, <code>tsx</code> 4.23.1 and
+  <code>@types/node</code> 22.20.1 on Node 22.14.0, Windows 11, on 2026-10-30.</p>
+  <p><strong>Disclosed.</strong> The recordings ran against the mock and the fake. The recorded
+  traces and the landed folders are not committed to git, because the lab's ignore file excludes
+  <code>traces/</code> and <code>artifacts/</code>. Nothing lands a killed process on its own: you
+  run <code>pnpm job --land</code> with its trace file. The code blocks are abridged.</p>
+  <p><strong>Next.</strong> Lesson 0025 is planned to score each artifact against stored test tasks,
+  with graders that read the artifact and the trace, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>
