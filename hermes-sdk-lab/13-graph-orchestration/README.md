@@ -1,6 +1,8 @@
-# Exercise 13 — LangGraph.js, evaluated
+# Exercise 13 — LangGraph.js, evaluated; the spec decides the graph
 
-Lesson: [0020 — LangGraph.js, Evaluated](../../lessons/0020-langgraph-js-evaluated.html)
+Lessons: [0020 — LangGraph.js, Evaluated](../../lessons/0020-langgraph-js-evaluated.html) ·
+[0021 — The Spec Decides the Graph](../../lessons/0021-the-spec-decides-the-graph.html) (parts d
+and e, [below](#lesson-0021--the-spec-decides-the-graph))
 
 Scenario step **S3 (dispatch under the graph)**, on a framework. Lab 12 runs the job lifecycle graph
 with its own interpreter: about forty lines of loop that run a handler, ask the graph for an edge,
@@ -148,4 +150,122 @@ handler asked for). `JobState` lives inside `at`.
   trace shows none of this. A handler with a side effect before its park would repeat it.
 - A refused move is named by calling `findOpenEdge` a second time after the run, so its guards run
   twice. That is safe only because every guard is a pure function of the event being left.
-- No adopt, wrap or skip decision is made here. That is lesson 0021.
+- No adopt, wrap or skip decision is made here. That is lesson 0021, below.
+
+---
+
+## Lesson 0021 — the spec decides the graph
+
+Scenario step **S3 (dispatch under the graph)**, with a graph built for one job. Lab 12's file holds
+every path any spec could need, so the audit, which holds nothing for approval, still has an edge
+into `awaiting_approval`. It stays closed only because `gateToolCall` never answers `hold` for that
+spec. `graphForSpec` cuts what the spec makes unreachable before the job starts, and the result goes
+through `admitWorkflowGraph` like the file does.
+
+| File | What it is |
+|---|---|
+| `src/graph-for-spec.ts` | `graphForSpec(full, spec)`: three rules, each read from one spec field, returning the job graph and the `Cut`s that made it |
+| `src/dispatch.ts` | `dispatch`: one spec value feeds both `graphForSpec` and `startJob` |
+| `tests/graph-for-spec.test.ts` | 19 tests: the cuts, the counts, the re-admission, purity, and the seven recorded traces walked on their own spec's graph |
+| `tests/job-graph-run.test.ts` | 5 tests: dispatched runs, and two moves the job graph refuses (on LangGraph.js, through the swap) |
+| `src/main.ts` | parts d and e, which run on lab 12's own interpreter |
+
+The three rules, each a fact about lab 12's handlers:
+
+| Spec field | Value | Cut | Why |
+|---|---|---|---|
+| `approvalRequired` | empty | `awaiting_approval` and its 5 edges | the gate answers `hold` only for a listed tool |
+| `evidenceQueries` | empty | `grounded` and its 4 edges | `started` enters `grounded` only when a pack answers the queries |
+| `evidenceQueries` | listed | the edge `started > calling` | with queries listed and no pack, `started` ends at `no_evidence` |
+
+Nothing is cut for an empty `allowedTools`: the model may still name a tool, and the gate must run to
+refuse it. `no_evidence` always stays, because a pack the spec never asked for still ends there.
+Hermes's `--no-writeback` audit is lab 07's audit spec: lab 07's TaskSpec has no writeback flag, so
+the job that may change nothing is the one whose `approvalRequired` is empty.
+
+```bash
+pnpm --filter 13-graph-orchestration job d     # three specs, three job graphs, what each cut
+pnpm --filter 13-graph-orchestration job e     # runs under a job graph, on lab 12's interpreter
+pnpm --filter 13-graph-orchestration test      # the same runs on LangGraph.js, through the swap
+```
+
+### Measured, 2026-10-30
+
+Same versions as above. **`pnpm test`:** 14 files, 107 tests, all green (lab 12's 74, lesson 0020's
+9, lesson 0021's 24).
+
+**Red run, tests first:** both new files failed to load, `Cannot find module '../src/dispatch.js'`.
+Green on the first implementation run, 24/24; `tsc -p .` clean.
+
+**Mutations of `graph-for-spec.ts`**, one at a time, restored and verified with `cmp` after each:
+
+| Mutation | Tests failing |
+|---|---|
+| the `approvalRequired` rule never applies | 6 |
+| the `grounded` rule never applies | 4 |
+| the `started > calling` rule never applies | 2 |
+| guards no edge cites are kept | 1 |
+
+**Part d.**
+
+```
+full graph             : 13 nodes, 26 edges, 6 guards
+
+audit                  : 11 nodes, 17 edges, 3 guards
+  cut by approvalRequired: node awaiting_approval, 5 edge(s), because no tool is held for approval, so the gate never answers hold
+  cut by evidenceQueries : node grounded, 4 edge(s), because no evidence is asked for, so no pack can ground the job
+
+held                   : 12 nodes, 22 edges, 6 guards
+  cut by evidenceQueries : node grounded, 4 edge(s), because no evidence is asked for, so no pack can ground the job
+
+grounded               : 12 nodes, 20 edges, 3 guards
+  cut by approvalRequired: node awaiting_approval, 5 edge(s), because no tool is held for approval, so the gate never answers hold
+  cut by evidenceQueries : 1 edge(s), because evidence is asked for, so no model call may start before it is used
+```
+
+**Part e** (lab 12's interpreter; `tests/job-graph-run.test.ts` measures the same on LangGraph.js):
+
+```
+audit, dispatched      : landed, 2 calls, 80 tokens, tools: graph_health → ran
+walks its job graph    : {"ok":true, …, "complete":true, …}
+
+hold on audit's graph  : refused: no_edge gating > awaiting_approval at step 4
+  model calls made     : 1 of the 2 the script held
+  trace                : job_started > call_started > reply > gate
+  last checkpoint      : step 3, node gating
+
+no pack, grounded graph: refused: no_edge started > calling at step 1, 0 model calls
+
+parked-audit.jsonl     : 9 lines
+  on the held graph    : {"ok":true, …, "complete":true, …}
+  on the audit's graph : {"ok":false,"line":5,"from":"gating","to":"awaiting_approval","reason":"no edge gating > awaiting_approval"}
+```
+
+The two refused runs hand `startJob` a spec other than the one the graph was built from. That stands
+in for a gate that disagrees with its spec; `dispatch` never does it.
+
+### Break experiments
+
+1. In `graph-for-spec.ts`, make the `approvalRequired` rule never apply. Six tests fail, and part e's
+   hold parks instead of being refused.
+2. Make the `started > calling` rule never apply and run part e. The run with no pack now makes a
+   model call: its handler read a spec that asks for no evidence, and the graph no longer objects.
+3. Walk `../11-evidence-in-the-loop/traces/audit-atlas-grounded.jsonl` against the plain audit's job
+   graph. It is refused at line 2, entering `grounded`.
+
+### What lesson 0021 does not do
+
+- The rules are facts about lab 12's handlers, checked by tests. Nothing ties them to the handlers'
+  code, so a handler change could make a rule false; the recorded traces and the run tests are what
+  would catch it.
+- No writeback flag exists in the TaskSpec. An empty `approvalRequired` stands in for `--no-writeback`.
+- No rule reads `allowedTools`, `maxModelCalls` or the deadline. The bounds can end a job from several
+  nodes, and those edges stay.
+
+### The decision this lab informs
+
+[`docs/adr/0001-skip-langgraph-js-keep-the-port.md`](../../docs/adr/0001-skip-langgraph-js-keep-the-port.md):
+skip LangGraph.js for the loop's graph, and keep `runGraph`'s signature as the port. This package
+stays as the harness that measures any later engine against lab 12's tests. Line counts used there
+(comments and blank lines excluded): `interpreter.ts` 66, `langgraph-runner.ts` 157, `job-thread.ts`
+80. The two pinned packages bring 19 more into the lockfile, zod excluded.

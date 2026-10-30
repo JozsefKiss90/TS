@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0021 — The Spec Decides the Graph</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 3 · Lesson 0021 · lab exercise 13-graph-orchestration · ~45–60 min</p>
+  <h1>The Spec Decides the Graph</h1>
+  <p class="lede">Lab 12 runs every job under one graph of 13 nodes and 26 edges. Which of them can
+  one job's TaskSpec remove before the job starts?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S3 (dispatch under the graph) now starts from a graph built for one job. In S5
+  (the loop iterates), a job that holds nothing has no approval wait. S2 (evidence before dispatch)
+  becomes a missing edge. The workflow graph stays apart from the knowledge graph and the trace.
+  The win is a hold on the audit's graph, refused before anyone is asked.
+</div>
+
+<h2>1 · One graph holds every job's paths</h2>
+
+<p>Lab 12's graph file holds every path that any spec could need. The audit holds no tool for
+approval, but its run still has an edge from <code>gating</code> to <code>awaiting_approval</code>.
+That edge stays closed only because <code>gateToolCall</code> never answers <code>hold</code> for
+this spec. If the gate code changed, the graph would allow the wait.</p>
+
+<p>A <dfn>job graph</dfn> is the workflow graph one job runs under: the full graph without the
+nodes and edges its TaskSpec makes unreachable. The function <code>graphForSpec</code> builds it
+before the job starts. The rule then lives in a value you can read, not only in the gate's
+code.</p>
+
+<p>A Hermes OS design note draws <code>awaiting_approval</code> only on paths that mutate.
+Its <code>--no-writeback</code> audit skips that state. Lab 07's spec has no writeback flag, so the
+audit that may change nothing is a spec with an empty <code>approvalRequired</code>.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>A job's spec removes nodes and edges from the graph before the job starts.</li>
+    <li>A missing edge refuses a move that only the gate code refused before.</li>
+    <li>A recorded trace shows which job graph its run stayed inside.</li>
+    <li>The decision on LangGraph.js is written down with its evidence.</li>
+  </ul>
+  <p>Reprise: the TaskSpec (0007), the gate (0010), the Context Pack (0016), the strict graph and
+  the walker (0017), the refusal (0018), the port (0020).</p>
+</div>
+
+<h2>2 · Three rules, read from the spec</h2>
+
+<p>The call has a short object path: import the function, call it, then check which side of
+the union came back.</p>
+
+<pre><code>// 13-graph-orchestration/src/graph-for-spec.ts
+export function graphForSpec(full: WorkflowGraph, spec: TaskSpec): JobGraph;
+
+export type JobGraph =
+  | { admitted: true; graph: WorkflowGraph; cuts: Cut[] }
+  | { admitted: false; rejections: string[] };</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At run time for the audit</th></tr>
+  <tr><td><code>full</code></td><td>lab 12's admitted graph file</td><td>13 nodes, 26 edges, 6 guards</td></tr>
+  <tr><td><code>spec</code></td><td>the admitted TaskSpec this job will run</td><td><code>approvalRequired: []</code>, <code>evidenceQueries: []</code></td></tr>
+  <tr><td><code>JobGraph</code></td><td>the same union shape as <code>admitTaskSpec</code> returns</td><td><code>{ admitted: true, graph: { nodes: [11 names], edges: [17], guards: [3], … }, cuts: [2] }</code></td></tr>
+</table>
+
+<p>There is one declaration and no overload, so the return type never depends on the arguments. A
+signature tells TypeScript what may be called. The implementation does the runtime work.</p>
+
+<p>Each removal is reported as a <code>Cut</code>, which names the spec field that caused it.</p>
+
+<pre><code>interface Cut {                              // the audit's first cut, measured:
+  field: "approvalRequired"                  { field: "approvalRequired",
+       | "evidenceQueries";                    because: "no tool is held for approval, so
+  because: string;                                       the gate never answers hold",
+  nodes: string[];                             nodes: ["awaiting_approval"],
+  edges: string[];  // "from&gt;to"               edges: ["gating&gt;awaiting_approval", … 5 in all] }
+}</code></pre>
+
+<table>
+  <tr><th>Spec field</th><th>Value</th><th>Removed</th><th>Why no run of this job needs it</th></tr>
+  <tr><td><code>approvalRequired</code></td><td>empty</td><td><code>awaiting_approval</code>, 5 edges</td><td>the gate answers <code>hold</code> only for a tool on this list</td></tr>
+  <tr><td><code>evidenceQueries</code></td><td>empty</td><td><code>grounded</code>, 4 edges</td><td><code>started</code> moves to <code>grounded</code> only when a pack answers the spec's queries</td></tr>
+  <tr><td><code>evidenceQueries</code></td><td>listed</td><td>the edge <code>started</code> to <code>calling</code></td><td>with queries listed and no pack, <code>started</code> ends at <code>no_evidence</code></td></tr>
+  <tr><td><code>allowedTools</code></td><td>empty</td><td>nothing</td><td>the model may still name a tool, and the gate must refuse it</td></tr>
+</table>
+
+<table>
+  <tr><th>Graph</th><th>Nodes</th><th>Edges</th><th>Guards</th></tr>
+  <tr><td>full, lab 12's file</td><td>13</td><td>26</td><td>6</td></tr>
+  <tr><td>the audit</td><td>11</td><td>17</td><td>3</td></tr>
+  <tr><td>the audit with <code>graph_health</code> held</td><td>12</td><td>22</td><td>6</td></tr>
+  <tr><td>the audit with two evidence queries</td><td>12</td><td>20</td><td>3</td></tr>
+</table>
+
+<p>Guards that no remaining edge cites are dropped. The result then goes through
+<code>admitWorkflowGraph</code>, the strict parse the graph file goes through. So a job graph holds
+names only. The evidence queries remove a node, but their answers from the knowledge graph never
+enter the workflow graph. The trace stays the record of what happened.</p>
+
+<table>
+  <tr><th>Phrase</th><th>What it names</th></tr>
+  <tr><td>the atlas graph</td><td>the knowledge graph the audit inspects with <code>graph_health</code></td></tr>
+  <tr><td>the full graph</td><td>lab 12's <code>job-lifecycle.json</code>, every path any spec could need</td></tr>
+  <tr><td>the audit's job graph</td><td>the full graph after the audit's spec removed what it cannot reach</td></tr>
+</table>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    S["started"] --> C["calling"]
+    C --> R["replied"]
+    R --> G["gating"]
+    G --> T["tool_ran"]
+    T --> C
+    T --> G
+    R --> L(["landed"])
+    S -. "cut: no evidence asked" .-> GR["grounded"]
+    GR -.-> C
+    G -. "cut: nothing held" .-> A["awaiting_approval"]
+    A -.-> T
+    classDef cut stroke-dasharray: 5 5
+    class GR,A cut
+</pre>
+<figcaption>Diagram 1. The audit's job graph. Dashed parts are in the full graph and not in the
+audit's. The edges to the five failure outcomes are left out of the drawing.</figcaption>
+</figure>
+
+<h2>3 · The graph refuses what the spec ruled out</h2>
+
+<p>The function <code>dispatch</code> feeds one spec value to both sides. It builds the job graph
+from the spec, then passes the same spec to <code>startJob</code>. Dispatched this way, the audit
+lands at 2 calls and 80 tokens, as it did on the full graph.</p>
+
+<p>The tests then hand a run a spec other than the one its graph came from. That stands in for a
+gate that disagrees with its own spec. The graph refuses the move before any handler acts on
+it.</p>
+
+<table>
+  <tr><th>Run</th><th>Result</th><th>Cost before the refusal</th></tr>
+  <tr><td>a held spec on the audit's job graph</td><td><code>no_edge</code>, <code>gating</code> to <code>awaiting_approval</code>, step 4</td><td>1 model call, 4 trace lines, last checkpoint at <code>gating</code></td></tr>
+  <tr><td>no pack on the evidence job's graph</td><td><code>no_edge</code>, <code>started</code> to <code>calling</code>, step 1</td><td>0 model calls, 1 trace line</td></tr>
+</table>
+
+<p>Two engines can run a job graph, and both refuse both moves. An engine is the code that
+runs the graph. In <code>pnpm job e</code> it is lab 12's interpreter. In <code>pnpm test</code> it
+is LangGraph.js, through lesson 0020's swap. The job graph holds the
+rule, so the engine does not matter.</p>
+
+<p>The trace shows which job graph a run stayed inside. Lab 12's parked audit wrote nine lines
+under a held spec. The walker finds them legal and complete on that spec's job graph. On the
+audit's job graph it refuses line 5: <code>no edge gating &gt; awaiting_approval</code>. All seven
+recorded traces in the repo walk legal and complete on their own spec's job graph.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    SP[/"TaskSpec<br/>admitted"/] --> GF["graphForSpec<br/>remove what the spec rules out"]
+    FG[("full graph<br/>13 nodes")] --> GF
+    GF --> AD["admitWorkflowGraph<br/>names only"]
+    AD --> JG[("job graph")]
+    SP --> RUN["startJob<br/>either engine"]
+    JG --> RUN
+    RUN --> TR[("trace")]
+    TR --> W["walk<br/>against the same job graph"]
+    JG --> W
+</pre>
+<figcaption>Diagram 2. One spec feeds the graph and the run. The trace is then checked against the
+graph that spec produced.</figcaption>
+</figure>
+
+<h2>4 · The decision on LangGraph.js</h2>
+
+<p>An <dfn>architecture decision record</dfn> is a short file that records one design decision,
+its options, its evidence, and when to revisit it. The course's first is
+<code>docs/adr/0001-skip-langgraph-js-keep-the-port.md</code>.</p>
+
+<table>
+  <tr><th>Option</th><th>What it means</th><th>What lessons 0018 to 0021 measured</th></tr>
+  <tr><td>Adopt</td><td>the framework keeps the run's record and its resume</td><td>two records say a job waits, the paused node reruns, and Hermes ADR-0018 keeps job truth in Hermes's own files</td></tr>
+  <tr><td>Wrap</td><td>the framework runs behind <code>runGraph</code></td><td>it took over traversal only: 66 lines of loop, replaced by 157 lines and two packages that bring 19 more</td></tr>
+  <tr><td>Skip</td><td>lab 12's interpreter runs the graph</td><td>resume from a checkpoint, a verdict from another process, and job graphs all work without the framework</td></tr>
+</table>
+
+<p>The record decides skip, and it keeps the port. The signature of <code>runGraph</code> stays the
+place where an engine plugs in. Lab 13's test swap can measure a later candidate with one new
+file. The record names when to revisit: a store shared by several workers, or progress streamed to
+a client.</p>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td>A job graph built from the spec, and <code>dispatch</code></td><td>implemented</td><td><code>src/graph-for-spec.ts</code>, <code>src/dispatch.ts</code></td></tr>
+  <tr><td>The no-writeback audit, as an empty <code>approvalRequired</code></td><td>implemented</td><td>the audit spec, part d</td></tr>
+  <tr><td>Hermes's <code>--no-writeback</code> job skips <code>awaiting_approval</code></td><td>proposed clarification</td><td><code>hermes-job-control-plane.md</code> §4</td></tr>
+  <tr><td>LangGraph.js behind the port, kept for measurement only</td><td>implemented</td><td>lab 13, and ADR 0001 in <code>docs/adr/</code></td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>13-graph-orchestration/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm job d</code>. Say why the held audit keeps six guards.</li>
+  <li>Run <code>pnpm job e</code>. Find the step where the hold is refused.</li>
+  <li>Run <code>pnpm test</code> in lab 13. Name the engine that refused the same move.</li>
+  <li>Delete the <code>approvalRequired</code> rule. Predict the failures, run the tests, then restore it.</li>
+  <li>Read the decision record. Pick the row that would change your mind.</li>
+</ol>
+
+<h2>6 · Exercise: removed or kept?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each part of the full graph for the plain audit</h3>
+  <p class="rules">The audit lists <code>graph_health</code>, holds nothing, and asks for no evidence.</p>
+
+  <div class="cl" data-cats="Removed|Kept">
+    <div class="cl-item" data-cat="0" data-why="The gate answers hold only for a tool in approvalRequired. The audit's list is empty, so no run can enter the node.">
+      <p>The node <code>awaiting_approval</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The model's reply is untrusted. It may name a tool the spec never offered, and the gate must still run and refuse it.">
+      <p>The node <code>gating</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="A pack the spec never asked for still ends the job there, so the edge stays.">
+      <p>The edge from <code>started</code> to <code>no_evidence</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="This edge is removed only when evidence is asked for. The audit asks for none, so its first call starts here.">
+      <p>The edge from <code>started</code> to <code>calling</code>.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="The audit's job graph has no edge into awaiting_approval. The interpreter asks for the edge before the move, finds none, and returns no_edge.">
+    <p class="qz-prompt">Q1. A held spec runs on the audit's job graph. What refuses the hold?</p>
+    <button class="qz-opt" type="button">The gate, which reads the audit's spec and answers auto</button>
+    <button class="qz-opt" type="button">The walker, which reads the trace after the run has ended</button>
+    <button class="qz-opt" type="button">The engine, which finds no edge from gating to that node</button>
+    <button class="qz-opt" type="button">The handler, which checks the list before it parks the run</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="A spec may offer no tools, and the reply can still name one. The gate must run and refuse it, so gating and tool_ran stay.">
+    <p class="qz-prompt">Q2. Why does an empty <code>allowedTools</code> remove nothing from the graph?</p>
+    <button class="qz-opt" type="button">The model may still name a tool, and the gate must refuse it</button>
+    <button class="qz-opt" type="button">The graph file has no field that lists the tools by their name</button>
+    <button class="qz-opt" type="button">The parse would refuse a graph that has no <code>gating</code> node in it</button>
+    <button class="qz-opt" type="button">The guards on those edges need the tool names to be declared</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The walker reads a recorded trace against a graph. Against the job graph of the run's spec, a legal path proves the run stayed inside it.">
+    <p class="qz-prompt">Q3. How do you show that a past run stayed inside its job graph?</p>
+    <button class="qz-opt" type="button">Read its last checkpoint file and compare the node it names</button>
+    <button class="qz-opt" type="button">Count the edges in its job graph and the lines in its trace</button>
+    <button class="qz-opt" type="button">Parse its job graph again and check that the parse admits it</button>
+    <button class="qz-opt" type="button">Walk its trace against the job graph built from its own spec</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="Under the port the framework took over traversal and nothing else. It replaced 66 lines with 157 lines and 21 packages in all.">
+    <p class="qz-prompt">Q4. Why does the decision record choose skip over wrap?</p>
+    <button class="qz-opt" type="button">LangGraph.js cannot run a graph that is built while a job starts</button>
+    <button class="qz-opt" type="button">Behind the port it took over traversal only, at more code than before</button>
+    <button class="qz-opt" type="button">Lab 12's tests failed on the framework once job graphs were added</button>
+    <button class="qz-opt" type="button">The framework keeps its own copy of the trace beside lab 12's own file</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say what the audit's spec removes from the full graph, and why.</li>
+  <li>Explain why the job graph refuses a hold that the gate code would allow.</li>
+  <li>Give the evidence for skip, and the need that would reopen it.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A job graph is the full graph
+without what the job's spec makes unreachable. An empty approval list removes the approval wait,
+and asked-for evidence removes the edge that skips it. A move the job graph lacks is refused on
+either engine before a handler acts. The course skips LangGraph.js and keeps lab 12's <code>runGraph</code>
+signature, because the framework took over traversal only.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the proposed lifecycle in
+<a href="../docs/hermes_os/architecture/hermes-job-control-plane.md">hermes-job-control-plane.md</a>
+§4. Find the line about <code>awaiting_approval</code> and <code>--no-writeback</code>, and compare it
+with the audit's job graph.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>@langchain/langgraph</code> 1.4.21, <code>@langchain/core</code> 1.2.17, <code>zod</code>
+  4.4.3 and <code>vitest</code> 3.2.7 on Node 22.14.0, on 2026-10-30.</p>
+  <p><strong>Disclosed.</strong> The removal rules are facts about lab 12's handlers, checked by
+  tests, and a change to a handler could make one false. The mismatched runs stand in for a faulty
+  gate. Line counts leave out comments and blank lines. The 21 packages are the two pinned ones and
+  the 19 the lockfile adds for them, with zod left out. The code blocks are abridged.</p>
+  <p><strong>Next.</strong> Phase 3 is complete. Phase 4, reliability and evaluation, opens next,
+  per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

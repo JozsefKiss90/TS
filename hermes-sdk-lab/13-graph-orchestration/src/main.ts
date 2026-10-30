@@ -1,17 +1,25 @@
 /**
- * Exercise 13 — LangGraph.js, evaluated (lesson 0020).
+ * Exercise 13 — LangGraph.js, evaluated (lesson 0020), and the job graph
+ * built from the spec (lesson 0021).
  *
- * Lesson: ../../../lessons/0020-langgraph-js-evaluated.html
+ * Lessons: ../../../lessons/0020-langgraph-js-evaluated.html
+ *          ../../../lessons/0021-the-spec-decides-the-graph.html
  *
- * Three parts. Run them separately:
+ * Five parts. Run them separately:
  *   pnpm job a   — the audit on StateGraph: same report, two checkpoint records
  *   pnpm job b   — a held call paused by interrupt(), resumed by Command
  *   pnpm job c   — a resume value the verdict schema refuses
+ *   pnpm job d   — three specs, three job graphs, and what each one cut
+ *   pnpm job e   — runs under a job graph, and two moves it refuses
  * `pnpm job` with no argument runs a.
  *
- * The main measurement is not here. It is `pnpm test`, which runs lab 12's
- * 74 tests unchanged with the interpreter swapped for the framework
- * (vitest.config.ts). Nothing here needs the mock, a key, or a network.
+ * Parts d and e run on lab 12's own interpreter. The swap lives only in
+ * vitest.config.ts, so tsx loads lab 12's file, and `pnpm test` runs the
+ * same cases on the framework (tests/job-graph-run.test.ts).
+ *
+ * The main measurement of lesson 0020 is not here. It is `pnpm test`, which
+ * runs lab 12's 74 tests unchanged with the interpreter swapped for the
+ * framework. Nothing here needs the mock, a key, or a network.
  */
 import { MemorySaver } from "@langchain/langgraph";
 import { FakeModelGateway } from "../../07-tool-loop/src/fake-gateway.js";
@@ -24,7 +32,13 @@ import type { JobState } from "../../12-workflow-graph/src/job-state.js";
 import { loadGraph } from "../../12-workflow-graph/src/load-graph.js";
 import { parkedJobs } from "../../12-workflow-graph/src/queue.js";
 import { done, wantsTool } from "../../12-workflow-graph/src/scripted-replies.js";
+import { readFileSync } from "node:fs";
+import { parseTrace } from "../../07-tool-loop/src/trace.js";
+import { startJob } from "../../12-workflow-graph/src/handlers.js";
 import { walk } from "../../12-workflow-graph/src/walker.js";
+import type { WorkflowGraph } from "../../12-workflow-graph/src/workflow-graph.js";
+import { dispatch } from "./dispatch.js";
+import { graphForSpec, requireJobGraph } from "./graph-for-spec.js";
 import { answerOnThread, frameworkCheckpoints, startOnThread, waitingAt } from "./job-thread.js";
 
 const graph = loadGraph(new URL("../../12-workflow-graph/graphs/job-lifecycle.json", import.meta.url));
@@ -133,10 +147,78 @@ async function partC_refusedAnswer(): Promise<void> {
   console.log(`framework says waiting : ${JSON.stringify(await waitingAt(graph, saver, "audit-c"))}`);
 }
 
+const jobGraph = (spec: TaskSpec): WorkflowGraph => requireJobGraph(graph, spec);
+
+/** The three specs parts d and e run: the plain audit, one tool held, and evidence asked for. */
+const heldSpec = (): TaskSpec => auditSpec({ approvalRequired: ["graph_health"] });
+const groundedSpec = (): TaskSpec => auditSpec({ evidenceQueries: ["supervisor", "trace"], evidenceLimit: 3 });
+const specs = (): Array<[string, TaskSpec]> => [
+  ["audit", auditSpec()],
+  ["held", heldSpec()],
+  ["grounded", groundedSpec()],
+];
+
+async function partD_threeSpecsThreeGraphs(): Promise<void> {
+  console.log("\n=== D. Three specs, three job graphs ===");
+  console.log(`full graph             : ${graph.nodes.length} nodes, ${graph.edges.length} edges, ${graph.guards.length} guards`);
+  for (const [name, spec] of specs()) {
+    // graphForSpec rather than jobGraph: this part prints the cuts too.
+    const built = graphForSpec(graph, spec);
+    if (!built.admitted) throw new Error(built.rejections.join("; "));
+    const g = built.graph;
+    console.log(`\n${name.padEnd(23)}: ${g.nodes.length} nodes, ${g.edges.length} edges, ${g.guards.length} guards`);
+    for (const cut of built.cuts) {
+      const what = [...cut.nodes.map((n) => `node ${n}`), `${cut.edges.length} edge(s)`].join(", ");
+      console.log(`  cut by ${cut.field.padEnd(16)}: ${what}, because ${cut.because}`);
+    }
+    if (built.cuts.length === 0) console.log("  nothing cut");
+  }
+}
+
+async function partE_runsUnderTheJobGraph(): Promise<void> {
+  console.log("\n=== E. Runs under a job graph, on lab 12's interpreter ===");
+
+  const trace = memoryTrace();
+  const landed = await dispatch(graph, auditSpec(), new FakeModelGateway([wantsTool, done]), { trace: trace.port });
+  console.log(`audit, dispatched      : ${summarize(landed)}`);
+  console.log(`walks its job graph    : ${JSON.stringify(walk(jobGraph(auditSpec()), jobLifecycleGuards, trace.events))}`);
+
+  // The audit's graph, handed a spec that holds graph_health. A gate that
+  // disagrees with the spec is what this stands for.
+  const holdTrace = memoryTrace();
+  const holdCheckpoints = memoryCheckpoints();
+  const gateway = new FakeModelGateway([wantsTool, done]);
+  const refusedHold = await startJob(jobGraph(auditSpec()), heldSpec(), gateway, {
+    park: true,
+    trace: holdTrace.port,
+    checkpoints: holdCheckpoints.port,
+  });
+  console.log(`\nhold on audit's graph  : ${summarize(refusedHold)}`);
+  console.log(`  model calls made     : ${gateway.calls.length} of the 2 the script held`);
+  console.log(`  trace                : ${holdTrace.events.map((e) => e.kind).join(" > ")}`);
+  console.log(`  last checkpoint      : step ${holdCheckpoints.saved.at(-1)?.step}, node ${holdCheckpoints.saved.at(-1)?.node}`);
+
+  // The evidence job's graph, handed a spec and a run with no pack.
+  const bare = new FakeModelGateway([done]);
+  const refusedCall = await startJob(jobGraph(groundedSpec()), auditSpec(), bare);
+  console.log(`\nno pack, grounded graph: ${summarize(refusedCall)}, ${bare.calls.length} model calls`);
+
+  // A trace recorded under the held spec, read against the audit's graph.
+  const parked = parseTrace(
+    readFileSync(new URL("../../12-workflow-graph/traces/parked-audit.jsonl", import.meta.url), "utf8"),
+  ).flatMap((line) => (line.ok ? [line.event] : []));
+  const held = heldSpec();
+  console.log(`\nparked-audit.jsonl     : ${parked.length} lines`);
+  console.log(`  on the held graph    : ${JSON.stringify(walk(jobGraph(held), jobLifecycleGuards, parked))}`);
+  console.log(`  on the audit's graph : ${JSON.stringify(walk(jobGraph(auditSpec()), jobLifecycleGuards, parked))}`);
+}
+
 const parts: Record<string, () => Promise<void>> = {
   a: partA_sameJobTwoRecords,
   b: partB_pausedAndResumed,
   c: partC_refusedAnswer,
+  d: partD_threeSpecsThreeGraphs,
+  e: partE_runsUnderTheJobGraph,
 };
 
 const which = process.argv[2] ?? "a";

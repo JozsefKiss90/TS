@@ -1860,6 +1860,115 @@ SVGs each run, no "Syntax error" text).
   overclaimed and the lesson, row and this note now state; `bound.test.ts` is small extra scope
   that measures a which-layer row.
 
+## Update 2026-10-30 — lesson 0021 shipped: the spec decides the graph; ADR 0001; Phase 3 complete
+
+Lesson 0021 (*The Spec Decides the Graph*) continues lab `13-graph-orchestration` and closes Phase 3.
+**1,943 words, 0 errors, 0 warnings** from `tools/lesson-lint.mjs`; the map note, both term notes and
+the module graph pass 0 errors (one SENT-6 warning on the ADR term note, "records one design
+decision", judged a verb phrase). **Two new Technical Names** against a budget of six: `job-graph`,
+`architecture-decision-record`. One em-dash, in the `<title>`. Two diagrams, render-verified 3× in
+headless Edge (2 SVGs each run, no "Syntax error" text, both removed nodes carry the dashed `cut`
+class).
+
+- **Three decisions, all the user's, taken before writing:**
+  - **Scope: one lesson, decision in an ADR.** The row carried two wins (the per-job graph, and the
+    adopt / wrap / skip decision). Offered the split into 0021 + 0022; the user chose one lesson with
+    the full argument in a decision record and a short §4 (about 240 words) in the lesson.
+  - **Title: "The Spec Decides the Graph", not "The Workflow Graph Is Policy".** ste-profile TERM-3
+    names "a whole rule set drawn as a graph" as one of the three meanings of *policy* to rename. The
+    lesson does not use the word. Also avoided: *derive*, because `wiki/terms/derivation.md` already
+    registers *derivation* for provenance (TERM-3); the code says `graphForSpec`, the prose says
+    "build" and "remove".
+  - **ADR verdict: skip, keep the port** (`docs/adr/0001-skip-langgraph-js-keep-the-port.md`, the
+    repo's first `docs/adr/` file). Offered with the 0020 measurements; the user picked the
+    recommended option. The record is a course decision, numbered separately from Hermes OS's
+    ADR-0001..0021; the term note says so.
+- **The design decision of the session: three removal rules, each a fact about lab 12's handlers.**
+  Empty `approvalRequired` → no `awaiting_approval` (the gate answers `hold` only for a listed tool);
+  empty `evidenceQueries` → no `grounded` (only a pack matching the queries enters it); listed
+  `evidenceQueries` → no edge `started > calling` (S2's "no pack, no dispatch" becomes a missing
+  edge). Nothing is removed for an empty `allowedTools`, because the model's reply may name a tool
+  the spec never offered and the gate must refuse it; `no_evidence` always stays, because a stray
+  pack still ends there. The result is re-admitted through `admitWorkflowGraph`, so a job graph is
+  still names only (the "no claims, no events" guardrail holds by the same parse). Guards no
+  remaining edge cites are dropped.
+- **`--no-writeback` is an empty `approvalRequired`.** Lab 07's TaskSpec has no writeback flag (lab
+  12's README already said so). The Hermes record's line "awaiting_approval only on paths that
+  mutate; --no-writeback jobs skip it" (`hermes-job-control-plane.md` §4) is a proposed
+  clarification and is labelled so in the status table. The row's "permission levels" reduce to the
+  one level that changes edges, `hold`; the lesson says why `not_permitted` and `auto` change none.
+- **Measured before taught** (`@langchain/langgraph` 1.4.21, `@langchain/core` 1.2.17, zod 4.4.3,
+  vitest 3.2.7, Node 22.14.0): full graph 13 nodes / 26 edges / 6 guards; audit 11 / 17 / 3; held
+  12 / 22 / 6; grounded 12 / 20 / 3. A held spec on the audit's job graph: `no_edge gating >
+  awaiting_approval` at step 4, 1 of 2 scripted calls, 4 trace lines, last checkpoint at `gating`. A
+  pack-less run on the evidence job's graph: `no_edge started > calling` at step 1, 0 calls. Both on
+  lab 12's interpreter (`pnpm job e`, tsx has no swap) and on LangGraph.js (`pnpm test`, through
+  0020's plugin). All seven recorded traces walk legal and complete on their own spec's job graph;
+  the parked audit's is refused at line 5 on the audit's, the grounded one at line 2.
+- **TDD at two seams, red captured:** `graph-for-spec.test.ts` (19) and `job-graph-run.test.ts` (5)
+  written first; red run: both files failed to load (`Cannot find module '../src/dispatch.js'`).
+  Green on the first implementation run, 24/24, with the predicted counts. Mutations of
+  `graph-for-spec.ts`, restored and verified with `cmp` after each (0020's stacked-mutation mistake
+  not repeated): approval rule off → 6 fail; `grounded` rule off → 4; `started > calling` rule off
+  → 2; unused guards kept → 1. README break experiments 1 and 2 run and confirmed (the hold parks
+  instead; the pack-less run makes 1 call).
+- **ADR evidence measured this session:** code lines without comments or blanks, `interpreter.ts` 66,
+  `langgraph-runner.ts` 157, `job-thread.ts` 80; the two pinned packages bring 19 more into
+  `pnpm-lock.yaml` (transitive closure over `snapshots:`, zod excluded). Everything else in the ADR
+  cites lesson 0020's measurements.
+- **Totals:** lab 13 107 tests (lab 12's 74 + 0020's 9 + 24 new); lab 12 74, exercise 11 21, exercise
+  08 29, all green; 157 distinct tests across labs 08/11/12/13; `pnpm -r typecheck` passes. Lab 12
+  unchanged.
+- **Not registered, on purpose:** "engine" (ordinary English, defined in a sentence in §3 as the code
+  that runs the graph), "full graph" (ordinary; the collision table separates it from the atlas
+  graph and the job graph).
+- **Article II.2 thread now named:** the mission callout says the workflow graph stays apart from the
+  knowledge graph and the trace, without the banned coinage. Lessons 0016 to 0020 still omit it.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2, PARA-4,
+  PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Lab
+  instructions judged against 20 words: the longest step is 13. Article III.3's third sentence ("the
+  SDK abstracts chores…") left out: `graphForSpec` is the course's own function and no SDK is
+  involved. Article III.1 (wire) not applicable: nothing crosses the network.
+- **Recall debt, unchanged and growing:** say-it answers for lessons 0016 to 0020 are still not in
+  the repo. No learner answers in this session's chat. No promotions.
+- Bookkeeping: ROADMAP row 0021 ✅ with the measured win and the ADR link, Phase 3 header *complete*,
+  exit criteria *met*, Phase 4 header *next, lessons not yet defined*; module graph synced (P3 ✅, P4
+  ▶, Q21 ✅, the workflow-graph artifact node, the S3 row, lesson-map list). Lab 13 README gained a
+  0021 section with outputs, mutations, break experiments and the not-done list.
+
+### What the two-axis review caught, and what I did about it
+
+- **Standards, PARA-7, a real defect:** the compression said "keeps the port", and *port* is defined
+  in 0020, not here. Now "keeps lab 12's `runGraph` signature".
+- **Standards, Article I.5:** NOTES not yet updated at review time (by design); this entry.
+- **Standards, TERM-3 / BAN-6:** "the evidence pack (0016)" gave the Context Pack a second name; now
+  "the Context Pack". "engine / interpreter / framework / runner" cycled: "runner" removed from the
+  lesson, "engine" defined once in ordinary words.
+- **Standards, TERM-1 / III.4:** "read the arm of the result" → "check which side of the union came
+  back"; `JobGraph`'s value cell is now a value, not a description.
+- **Standards, BAN-3 / PARA-6:** "The win: …" colon reveal rewritten (0020's precedent not
+  followed); "Hermes OS's proposed lifecycle" in prose → "A Hermes OS design note", and the grade
+  stays in the one status table.
+- **Standards, V.1:** Q4's correct option began "Wrapped", echoing the question; now "Behind the
+  port…". Lengths rechecked: no correct option is the longest.
+- **Standards, a factual error:** `job-graph-run.test.ts` said `pnpm job d` runs the cases; it is
+  part e.
+- **Standards, smells:** the unwrap-or-throw around `graphForSpec` appeared five times; now one
+  exported `requireJobGraph`, used by `dispatch`, `main.ts` and both test files (`main.ts` part d
+  still calls `graphForSpec`, because it prints the cuts). The held and grounded specs are named
+  once in `main.ts`. `goes` → `isRemoved`. Tests and typecheck re-run green, outputs unchanged.
+- **Spec, a number stated two ways:** "21 packages" in the lesson, ROADMAP and map vs "19 more" in
+  the ADR and README. Now "two packages that bring 19 more" in the body; the 21 survives only in
+  quiz feedback and the footer, which gives the breakdown.
+- **Spec, an ADR row mixing options:** the 80 `job-thread.ts` lines belong to Adopt, not Wrap; split
+  into their own row.
+- **Spec, judged and kept:** the two evidence rules go beyond the row's "permission levels and
+  `--no-writeback`". Kept, because they are the same mechanism, cost two short rules and six tests,
+  and give the S2 missing edge. `dispatch.ts` kept as the one place where one spec value feeds both
+  sides. The ADR's third revisit trigger (multi-agent, Phase 6) is not repeated in the lesson. The
+  "kept apart" thread is carried by the mission callout, one paragraph and the collision table,
+  which the reviewer called thin but present.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*
