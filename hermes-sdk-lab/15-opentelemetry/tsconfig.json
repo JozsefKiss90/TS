@@ -1,0 +1,8 @@
+{
+  // Same shared config as every exercise. This package imports lab 14's
+  // costReport, price table and recordings, and lab 07's TraceEvent.
+  // Nothing is copied. What it adds is the telemetry library: lab 14
+  // stays library-free, the way lab 12 stayed framework-free beside lab 13.
+  "extends": "../tsconfig.base.json",
+  "include": ["src", "tests"]
+}

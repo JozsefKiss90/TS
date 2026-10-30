@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0023 — OpenTelemetry, Evaluated</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 4 · Lesson 0023 · lab exercise 15-opentelemetry · ~45–60 min</p>
+  <h1>OpenTelemetry, Evaluated</h1>
+  <p class="lede">Lesson 0022 built spans by hand. If OpenTelemetry JS emits the same spans, what
+  does the library add, and should Hermes keep it?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S7 (the durable record) gets an export that trace viewers can read. S6 (budget
+  enforcement) gets its alert as a span event. The trace stays the one record of what Hermes did,
+  and it never merges with the workflow graph or the knowledge graph. The win is <code>pnpm job</code>, which
+  reads all seven runs back equal to lab 14's spans, and ADR 0002.
+</div>
+
+<h2>1 · The library meets work you already did</h2>
+
+<p>OpenTelemetry is a vendor-neutral standard for traces, with an SDK per language. Lab 15 hands lab
+14's spans to it and reads them back. Any difference is a field the library dropped or changed.</p>
+
+<p>An <dfn>exporter</dfn> is the SDK object that receives ended spans and sends them somewhere. Lab
+15 uses <code>InMemorySpanExporter</code>, which keeps them in an array. <dfn>OTLP</dfn> is
+OpenTelemetry's wire format for sending spans to a trace viewer.
+A <dfn>semantic convention</dfn> is a published list of attribute names and values, so that viewers read one span
+the same way.</p>
+
+
+<table>
+  <tr><th>Word</th><th>In this course</th><th>In OpenTelemetry</th></tr>
+  <tr><td>trace</td><td>the JSON Lines file of one job's events</td><td>the spans that share one <code>traceId</code></td></tr>
+  <tr><td>span</td><td>lab 14's <code>ModelSpan</code> or <code>ToolSpan</code>, computed from two lines</td><td>an object with ids, a parent, times and attributes</td></tr>
+  <tr><td>event</td><td>one trace line, such as <code>reply</code></td><td>a named, timed note inside a span, from <code>addEvent</code></td></tr>
+</table>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>A <code>Tracer</code> emits spans, and an exporter receives them.</li>
+    <li>A replayed run must pass every recorded start and end time.</li>
+    <li>OTLP spans carry attribute names from a convention that is not yet stable.</li>
+    <li>A library is judged by which layers it takes over, then recorded in an ADR.</li>
+  </ul>
+  <p>Reprise: the trace (0011), the evaluation shape and ADR 0001 (0020, 0021), spans and
+  <code>costReport</code> (0022).</p>
+</div>
+
+<h2>2 · From <code>TracerProvider</code> to an exported span</h2>
+
+<p>The object path has five steps. Import the classes, construct a <code>TracerProvider</code>, ask it
+for a <code>Tracer</code>, start a span, and end it.</p>
+
+<pre><code>// 15-opentelemetry/src/telemetry.ts
+import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider }
+  from "@opentelemetry/sdk-trace";
+
+const exporter = new InMemorySpanExporter();
+const provider = new TracerProvider({
+  resource: SERVICE,                                   // service.name = "hermes"
+  spanProcessors: [new SimpleSpanProcessor({ exporter })],
+});
+const tracer = provider.getTracer("hermes");
+
+// @opentelemetry/api, the Tracer interface:
+startSpan(name: string, options?: SpanOptions, context?: Context): Span;
+// Span:
+end(endTime?: TimeInput): void;        // TimeInput = HrTime | number | Date</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At run time for audit-atlas's call 1</th></tr>
+  <tr><td><code>name</code></td><td>the span's name, built from the operation and the model</td><td><code>"chat claude-opus-4-8"</code></td></tr>
+  <tr><td><code>options.startTime</code></td><td>when the step began, or now if omitted</td><td><code>1788134444286</code>, from <code>call_started.at</code></td></tr>
+  <tr><td><code>context</code></td><td>which span is the parent</td><td>a context that holds the job span</td></tr>
+  <tr><td><code>end(endTime)</code></td><td>closes the span and hands it to <code>SimpleSpanProcessor</code></td><td><code>1788134445940</code>, from <code>reply.at</code></td></tr>
+</table>
+
+<p><code>startSpan</code> has one signature. Its sibling <code>startActiveSpan</code> has three
+overloads, and each returns whatever its callback returns. Lab 15 does not use it. A signature tells
+TypeScript what may be called. The implementation does the runtime work. The SDK abstracts chores
+away from your application code, not away from TypeScript.</p>
+
+<p>The interface lives in <code>@opentelemetry/api</code>, and the work lives in the SDK. With no
+SDK registered, the API's <code>Tracer</code> records nothing, and its span id is sixteen zeros.</p>
+
+<p>The function <code>exportRun(events, price, tracer)</code> calls lab 14's
+<code>costReport</code> and emits one job span plus one span per step. Then
+<code>readBack</code> rebuilds lab 14's span objects from the exporter alone. The test compares the
+two with <code>toEqual</code>.</p>
+
+<pre><code>interface ReadableSpan {                  // call 1, as the exporter holds it:
+  name: string;                           { name: "chat claude-opus-4-8",
+  kind: SpanKind;                           kind: SpanKind.CLIENT,
+  parentSpanContext?: SpanContext;          parentSpanContext: { spanId: "01a46e860d005c7e", … },
+  startTime: HrTime;                        startTime: [1788134444, 286000000],
+  endTime: HrTime;                          endTime: [1788134445, 940000000],
+  attributes: Attributes;                   attributes: { "gen_ai.usage.input_tokens": 23,
+                                              "gen_ai.usage.output_tokens": 42,
+                                              "hermes.cost.micro_usd": 1165, … },
+  events: TimedEvent[];                     events: [] }
+}</code></pre>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    T["trace file"] --> CR["costReport<br/>lab 14"]
+    CR --> ER["exportRun"]
+    ER --> TR["tracer"]
+    TR --> SP["SimpleSpanProcessor"]
+    SP --> EX["InMemorySpanExporter"]
+    EX --> RB["readBack"]
+    RB -. "toEqual" .-> CR
+</pre>
+<figcaption>Diagram 1. One trace file, two routes to the same spans. The dashed arrow is the test
+that compares them.</figcaption>
+</figure>
+
+<h2>3 · What moved, and what did not</h2>
+
+<p>On all seven recordings, the spans read back equal lab 14's, field for field. The job totals and
+<code>agrees</code> match too. So the export loses nothing.</p>
+
+<table>
+  <tr><th>Layer</th><th>Moved into the library?</th><th>Measured by</th></tr>
+  <tr><td>span and trace ids</td><td>yes, random and new on every export</td><td>two exports of one file share no id</td></tr>
+  <tr><td>parent links</td><td>yes, from the context passed to <code>startSpan</code></td><td>pass no context, and every step becomes a root</td></tr>
+  <tr><td>time format</td><td>yes, <code>[seconds, nanoseconds]</code></td><td>round to the second, and seven read-backs fail</td></tr>
+  <tr><td>export</td><td>yes, <code>SimpleSpanProcessor</code>, exporter and the OTLP body</td><td><code>BatchSpanProcessor</code> holds spans, and 23 tests fail</td></tr>
+  <tr><td>which lines make a step</td><td>no, <code>costReport</code> decides</td><td><code>exportRun</code> calls it first</td></tr>
+  <tr><td>dollars, remainder, the alert's call</td><td>no, <code>costReport</code> decides</td><td>the alert becomes a span event at call 2</td></tr>
+  <tr><td>the record</td><td>no, the trace file</td><td>ids differ per export, so an export cannot replace it</td></tr>
+</table>
+
+<p>Two traps surfaced in the lab. A span with a given start and no given end ends at
+<code>Date.now()</code>, so a replayed run lasts until the export. And the SDK's default service name
+is <code>unknown_service:</code> plus the Node binary's path, which leaks a local path into every
+export.</p>
+
+<p>Nothing crosses the network in this lab. A real exporter would send this body as
+<code>POST /v1/traces</code> with <code>Content-Type: application/json</code>. Here it is for call 1,
+built offline and abridged.</p>
+
+<pre><code>{ "traceId": "256de65370160eb0e30ea16c626a6be2",
+  "spanId": "e53920c837086560",
+  "parentSpanId": "01a46e860d005c7e",
+  "name": "chat claude-opus-4-8",
+  "kind": 3,
+  "startTimeUnixNano": "1788134444286000000",
+  "endTimeUnixNano": "1788134445940000000",
+  "attributes": [
+    { "key": "gen_ai.usage.input_tokens", "value": { "intValue": 23 } },
+    { "key": "hermes.cost.micro_usd",    "value": { "intValue": 1165 } } ] }</code></pre>
+
+<p>Kind 3 is <code>CLIENT</code>. The times are the trace's <code>at</code> values with six zeros
+added. The body is about three times the size of the trace lines it came from.</p>
+
+<table>
+  <tr><th>Lab 14 field</th><th>Attribute</th><th>Why that name</th></tr>
+  <tr><td><code>inputTokens</code>, <code>outputTokens</code></td><td><code>gen_ai.usage.*</code></td><td>the convention's name for counts the provider reported</td></tr>
+  <tr><td>a cut-off call's remainder</td><td><code>hermes.tokens</code> only</td><td>the provider never reported it, so no <code>gen_ai.usage.*</code> appears</td></tr>
+  <tr><td><code>tool</code>, <code>id</code></td><td><code>gen_ai.tool.name</code>, <code>gen_ai.tool.call.id</code></td><td>the convention's names for a tool run</td></tr>
+  <tr><td><code>microUsd</code>, <code>pack</code>, <code>decision</code></td><td><code>hermes.*</code></td><td>no convention covers dollars, the pack or the gate</td></tr>
+</table>
+
+<p>Every <code>gen_ai.*</code> name has status Development, so a rename can arrive without a major
+version. Lab 15 keeps all names as strings in one file, <code>conventions.ts</code>. A test names the
+expected strings, because the round trip cannot catch a rename.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TB
+    J["invoke_workflow hermes_job<br/>job span, 2671 ms"]
+    J --> C1["chat claude-opus-4-8<br/>call 1, CLIENT, 1654 ms"]
+    J --> T["execute_tool graph_health<br/>INTERNAL, 1 ms"]
+    J --> C2["chat claude-opus-4-8<br/>call 2, CLIENT, 1013 ms"]
+</pre>
+<figcaption>Diagram 2. Audit-atlas as four OpenTelemetry spans. Every step's parent is the job
+span, and all four share one <code>traceId</code>.</figcaption>
+</figure>
+
+<h2>4 · The decision</h2>
+
+<p>ADR 0002 records it: adopt OTLP as the export format, and keep the trace as the record. The full
+evidence is in the <a href="../docs/adr/0002-adopt-otlp-as-the-export-format.md">decision
+record</a>.</p>
+
+<table>
+  <tr><th>Option</th><th>What the measurements say</th></tr>
+  <tr><td>Adopt as the export format</td><td>chosen: lossless on seven runs, 147 code lines, and Phoenix, the trace viewer Hermes OS names, accepts OTLP</td></tr>
+  <tr><td>Wrap behind a port</td><td>rejected: <code>CostReport</code> is already Hermes's own type, and the API package already separates calling code from the SDK</td></tr>
+  <tr><td>Skip</td><td>rejected: Phoenix would need a custom importer for lab 14's report</td></tr>
+</table>
+
+<p>Four pinned packages bring five more. Three of those come from the package
+that builds the offline body, which calls itself experimental and internal. The loop itself, labs 12
+and 14, imports none of them.</p>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td><code>exportRun</code>, <code>readBack</code>, the OTLP body</td><td>implemented</td><td><code>15-opentelemetry/src/</code></td></tr>
+  <tr><td>Spans sent to Phoenix by an exporter</td><td>planned</td><td><a href="../ROADMAP.md">ROADMAP</a> row 0023</td></tr>
+  <tr><td>The <code>gen_ai.*</code> names in <code>conventions.ts</code></td><td>implemented</td><td>lab 15, with upstream status Development</td></tr>
+  <tr><td>Phoenix's container in Hermes OS's Compose stack</td><td>scaffolded</td><td><code>docs/hermes_os/README.md</code>, Wave 0</td></tr>
+  <tr><td>Phoenix traces in the Trace Recorder, component 12</td><td>planned</td><td><code>hermes-job-control-plane.md</code>, component 12: "Phoenix Core v1"</td></tr>
+  <tr><td>The rest of the Trace Recorder: hooks and ledger</td><td>scaffolded, partially</td><td><code>hermes-job-control-plane.md</code>, component 12</td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>15-opentelemetry/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm job</code> twice. Say which numbers changed and why.</li>
+  <li>Run <code>pnpm job --otlp</code> on <code>tight-budget.jsonl</code>. Find the alert event.</li>
+  <li>End one step with <code>end()</code> and no time. Predict the failures, then run the tests.</li>
+  <li>Rename <code>gen_ai.usage.input_tokens</code> in <code>conventions.ts</code>. Say why only one test fails.</li>
+  <li>Say what Hermes would lose if the export replaced the trace file.</li>
+</ol>
+
+<h2>6 · Exercise: library or Hermes?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each piece of an exported span</h3>
+  <p class="rules">Library means the SDK produced it. Hermes means lab 14 or the trace file decided it.</p>
+
+  <div class="cl" data-cats="Library|Hermes">
+    <div class="cl-item" data-cat="0" data-why="The SDK's id generator makes every id. A second export of the same file gets new ones.">
+      <p>The <code>parentSpanId</code> of call 1's span.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="costReport placed the alert at call 2. exportRun only wrote it as a span event.">
+      <p>The alert event on the tight budget's call 2.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="exportRun built it from the convention's pattern and the model the caller priced. The SDK only stored it.">
+      <p>The span name <code>chat claude-opus-4-8</code>.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="The OTLP serializer builds the body from the spans the exporter holds.">
+      <p>The JSON body with <code>resourceSpans</code> at the top.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="2" data-why="The exporter's spans are rebuilt into lab 14's shape and compared with toEqual. Any dropped or changed field fails the test.">
+    <p class="qz-prompt">Q1. How does lab 15 show that the export loses nothing?</p>
+    <button class="qz-opt" type="button">It counts the spans and checks there are four of them per run</button>
+    <button class="qz-opt" type="button">It sends the body to Phoenix and reads what Phoenix shows</button>
+    <button class="qz-opt" type="button">It rebuilds lab 14's spans from what the exporter holds</button>
+    <button class="qz-opt" type="button">It checks that every span has a sixteen-character id</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="A span with a given start and no given end ends at Date.now(). A replay must pass every recorded end time.">
+    <p class="qz-prompt">Q2. What goes wrong if <code>exportRun</code> calls <code>end()</code> with no time?</p>
+    <button class="qz-opt" type="button">Each step ends at the moment of export, not when it ended</button>
+    <button class="qz-opt" type="button">The SDK refuses the span and the exporter stays empty</button>
+    <button class="qz-opt" type="button">The span keeps its start time, and its duration becomes zero</button>
+    <button class="qz-opt" type="button">The step takes its end time from its parent job span</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The provider never reported the remainder. gen_ai.usage.* means provider-reported counts, so only hermes.tokens carries it.">
+    <p class="qz-prompt">Q3. Why does a cut-off call carry no <code>gen_ai.usage.*</code> attributes?</p>
+    <button class="qz-opt" type="button">The SDK drops numeric attributes on spans that were cut off</button>
+    <button class="qz-opt" type="button">The convention forbids token counts on calls that failed</button>
+    <button class="qz-opt" type="button">The remainder is a dollar amount and not a token count</button>
+    <button class="qz-opt" type="button">The provider never reported those tokens, so none apply</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="1" data-why="Ids are random per export and the spans are computed from the trace. The trace file stays the record, and the export is a view.">
+    <p class="qz-prompt">Q4. Why can the OTLP export not replace the trace file?</p>
+    <button class="qz-opt" type="button">OTLP has no field for a time, so the order of steps would be lost</button>
+    <button class="qz-opt" type="button">It is a view of the trace, and its ids change on each export</button>
+    <button class="qz-opt" type="button">The body is too large to store beside the trace lines</button>
+    <button class="qz-opt" type="button">Phoenix deletes spans after it has displayed them once</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say which layers the library took over, and which stayed with lab 14.</li>
+  <li>Say why the round trip cannot catch a renamed attribute.</li>
+  <li>Say why the decision was adopt, not wrap.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A <code>Tracer</code> emits spans,
+and an exporter receives them. Lab 15's spans read back equal to lab 14's on all seven runs. The library
+took over ids, parent links, the time format and export, and nothing Hermes decides. Hermes adopts
+OTLP as its export format and keeps the trace file as the record.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the inference span section of the GenAI conventions at
+<code>github.com/open-telemetry/semantic-conventions-genai</code>,
+<code>docs/gen-ai/client-inference.md</code>. Find the status line, then the usage attributes.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>@opentelemetry/api</code> 1.9.1, <code>@opentelemetry/sdk-trace</code> 2.12.0,
+  <code>@opentelemetry/resources</code> 2.12.0, <code>@opentelemetry/otlp-transformer</code> 0.223.0,
+  <code>zod</code> 4.4.3, <code>vitest</code> 3.2.7 and <code>tsx</code> 4.23.1 on Node 22.14.0, on
+  2026-10-30. The conventions were read the same day. Phoenix's OTLP support is from Phoenix's tracing
+  docs.</p>
+  <p><strong>Disclosed.</strong> The recordings ran against the mock and the fake. The spans are emitted
+  after the run, so this lab does not show live instrumentation. Which attribute names Phoenix displays
+  was not checked. The recorded traces are not committed to git. The code blocks are abridged.</p>
+  <p><strong>Next.</strong> Lesson 0024 is planned to land each run's output as an artifact linked to
+  its trace and its cost report, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

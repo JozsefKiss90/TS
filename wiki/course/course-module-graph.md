@@ -20,7 +20,7 @@ flowchart TD
     P1["Phase 1 · Own the loop<br/>manual bounded loop · complete ✅ (0006 to 0012)"]
     P2["Phase 2 · Feed it evidence<br/>Graph RAG through MCP · complete ✅ (0013 to 0016)"]
     P3["Phase 3 · Encode the policy<br/>the workflow graph · complete ✅ (0017 to 0021)"]
-    P4["Phase 4 · Prove it<br/>reliability & evaluation · open ▶ (0022 shipped)"]
+    P4["Phase 4 · Prove it<br/>reliability & evaluation · open ▶ (0022, 0023 shipped)"]
     P5["Phase 5 · Meet the harness<br/>Claude Agent SDK"]
     P6["Phase 6 · Scale the agents<br/>multi-agent"]
     P0 -->|"0005 ships: every boundary runtime-validated"| P1
@@ -115,8 +115,8 @@ Opened 2026-10-30. Shipped rows are history. The next row is firm, and the rest 
 ```mermaid
 flowchart TD
     R22["0022 What the Run Cost ✅<br/>lab 14-reliability · costReport pairs trace lines into spans<br/>sums equal job_ended on all seven runs · alert placed at a call"]
-    R23["0023 OpenTelemetry, Evaluated ▶<br/>lab 15 · the same spans through a library, tested equal"]
-    R24["0024 Landing the Outputs<br/>S8 · one artifact per run, linked to its trace and cost"]
+    R23["0023 OpenTelemetry, Evaluated ✅<br/>lab 15 · the same spans through a library, read back equal<br/>ADR 0002 · OTLP adopted as the export format"]
+    R24["0024 Landing the Outputs ▶<br/>S8 · one artifact per run, linked to its trace and cost"]
     R25["0025 Golden Tasks<br/>lab 16 · named graders read the artifact and the trace"]
     R26["0026 Many Runs, One Verdict<br/>seeded fake · pass rate and pass^k"]
     R27["0027 The Regression Gate<br/>a committed baseline refuses a drop"]
@@ -127,7 +127,7 @@ flowchart TD
     R26 --> R27
 ```
 
-Lesson maps: [[lesson-0022-what-the-run-cost]].
+Lesson maps: [[lesson-0022-what-the-run-cost]] · [[lesson-0023-opentelemetry-evaluated]].
 
 ## What accumulates (artifacts → the loop)
 
@@ -159,6 +159,7 @@ flowchart LR
     TLOOP --> WG["workflow graph ✅ 0017<br/>as data, replayed against the trace<br/>drives the loop ✅ 0018 · checkpoint per step<br/>a held call parks ✅ 0019 · the queue is the parked checkpoints<br/>run on LangGraph.js behind the same port ✅ 0020<br/>one job graph per spec ✅ 0021 · framework skipped, port kept"]
     TR -->|"recordings replayed"| WG
     TR -->|"lines paired into spans"| COST["cost report ✅ 0022<br/>time, tokens, dollars per step<br/>sums checked against job_ended"]
+    COST -->|"emitted, read back equal"| OTLP["OTLP export ✅ 0023<br/>computed after the run · ADR 0002<br/>the trace stays the record"]
     TR --> EVAL["golden tasks + evals — Phase 4"]
     TESTS --> EVAL
     EVAL -->|"gates"| P5P6["Phases 5–6 decisions"]
@@ -174,6 +175,6 @@ Scenario steps these feed (see [[hermes-integration]]):
 | S4 (model calls) | Phase 0's mechanics, below Phase 1's port |
 | S5 (the loop iterates) | Phase 1, from lesson 0008, with the approval gate since lesson 0010. Since lesson 0019 a held call parks the run, and the queue is the checkpoints at `awaiting_approval`, answered from any process |
 | S6 (budget enforcement) | Phase 0's cancellation, enforced by lesson 0009's bounds. Since lesson 0022 the 80% alert is placed at the call that crossed it, read back from the trace |
-| S7 (the durable record) | Phase 1 since lesson 0011, deepened in Phase 4. Lesson 0018's checkpoint is a separate record under S3, not part of the trace. Since lesson 0022 a cost report is computed from the trace and checked against it, a view and never a second record |
+| S7 (the durable record) | Phase 1 since lesson 0011, deepened in Phase 4. Lesson 0018's checkpoint is a separate record under S3, not part of the trace. Since lesson 0022 a cost report is computed from the trace and checked against it, a view and never a second record. Since lesson 0023 the same spans export as OTLP, read back equal, with new ids on every export (ADR 0002) |
 | S8 (landing the outputs) | Phase 4 |
 | S9 (scoring the run) | Phase 4, growing from lesson 0012's offline suite |

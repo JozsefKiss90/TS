@@ -2095,6 +2095,133 @@ error" text).
   follows from the missing model id, and `heldMs` is what makes the parked run's 6.8 s readable as
   a human's time rather than the tool's.
 
+## Update 2026-10-30 — lesson 0023 shipped: OpenTelemetry, evaluated; ADR 0002
+
+Lesson 0023 (*OpenTelemetry, Evaluated*) opens lab `15-opentelemetry`. **1,821 words, 0 errors, 0
+warnings** from `tools/lesson-lint.mjs`; the three term notes, the map note and the module graph pass
+0 errors and 0 warnings. **Three new Technical Names** against a budget of six: `exporter`, `otlp`,
+`semantic-convention`. One em-dash, in the `<title>`. Two diagrams, render-verified 3× in headless
+Edge (2 SVGs each run, no "Syntax error" text).
+
+- **Two decisions, both the user's, taken after measuring and before writing:**
+  - **Scope: one lesson, decision in an ADR,** as 0021 did. ROADMAP had flagged 0023 as the likeliest
+    split (export, then decision). §4 is the decision in about 200 words; the evidence lives in
+    `docs/adr/0002-adopt-otlp-as-the-export-format.md`.
+  - **ADR verdict: adopt OTLP as the export format, keep the trace as the record.** Offered with the
+    measurements; the user picked the recommended option. Wrap was rejected because the spans are
+    already Hermes's own type (`CostReport`), so a port would carry one adapter and nothing to swap.
+- **Prerequisite met (ROADMAP Phase 4):** versions pinned exact. `@opentelemetry/api` 1.9.1 (1.10.0 is
+  ten days old and not taken; `sdk-trace` 2.12.0 also requires api below 1.10.0),
+  `@opentelemetry/sdk-trace` 2.12.0, `@opentelemetry/resources` 2.12.0,
+  `@opentelemetry/otlp-transformer` 0.223.0; transitively `core` 2.12.0 and `semantic-conventions`
+  1.44.0 (two days old, but pinned by the lockfile and not imported). Verified through Context7, the
+  installed `.d.ts` (`Tracer.startSpan`, three `startActiveSpan` overloads, `TimeInput = HrTime | number
+  | Date`, `SimpleSpanProcessor({ exporter })`) and the shipped JS (`core`'s `timeInputToHrTime`,
+  `Span._getTime`). The GenAI conventions moved to `open-telemetry/semantic-conventions-genai`; every
+  attribute and document read there on 2026-10-30 has status Development.
+- **Found while installing:** `sdk-trace-base` 2.12.0, the package most guides name, is now a shim over
+  the newer `@opentelemetry/sdk-trace` (first published 2.9.0, July 2026). Lab 15 depends on
+  `sdk-trace` directly. Adding OpenTelemetry to the workspace also made lab 13's `@langchain/core`
+  resolve its optional `@opentelemetry/api` peer: a cross-lab lockfile change. Lab 13's 107 tests
+  re-run green.
+- **The design decision of the session: `exportRun` does not pair lines.** It calls lab 14's
+  `costReport` and emits what it returns, with every recorded start and end time. The comparison
+  therefore needed a second, independent route: `readBack` rebuilds lab 14's span objects from the
+  exporter alone, and the test compares with `toEqual`. This is also what makes the which-layer table
+  measurable: anything Hermes decides stays in `costReport`, and the export cannot change it.
+- **Measured before taught** (versions above, zod 4.4.3, vitest 3.2.7, tsx 4.23.1, Node 22.14.0): all
+  seven recordings read back equal, totals and `agrees` too; one trace id and one root per run, every
+  step's parent the root; fresh ids per export; audit-atlas's job span 2,671 ms; the OTLP JSON body
+  3,733 bytes (the serializer's own bytes) from a 1,268-byte trace file (about 3×); with no SDK registered, the API's span id is
+  sixteen zeros. Two traps, each now a test: a span with a given start and no given end ends at
+  `Date.now()`; the SDK's default `service.name` is `unknown_service:` plus the Node binary's path
+  (fixed with `service.name = "hermes"`, test written first and seen red). Code lines without comments
+  or blanks: emit side 147 (`export-run.ts` 90, `conventions.ts` 36, `telemetry.ts` 21),
+  `read-back.ts` 97 (test only), against lab 14's `cost-report.ts` 183. Packages: 4 pinned bring 5
+  more, 9 new lockfile names; 3 of the 5 (`api-logs`, `sdk-logs`, `sdk-metrics`) come from
+  `otlp-transformer`, which calls itself internal and experimental.
+- **Attribute names:** 8 `gen_ai.*`, 22 `hermes.*`, all strings in `conventions.ts` rather than the
+  `semantic-conventions/incubating` entry point, because the names are Development. A cut-off call
+  gets no `gen_ai.usage.*` (the provider never reported the remainder), only `hermes.tokens` with
+  `source: "remainder"`. The `requestId` is the HTTP request id, not the response's message id, so it
+  goes to `hermes.request_id`, not `gen_ai.response.id`. The job span uses `invoke_workflow` with a
+  static `gen_ai.workflow.name` of `hermes_job`, since the convention asks for a static name; the
+  title has its own attribute. The 80% alert is a span event on the call `costReport` placed it at.
+- **Hermes OS evidence for the ADR:** Phoenix is in the tool catalogue (Core v1), in component 12's
+  row of `hermes-job-control-plane.md` ("Phoenix Core v1", partially scaffolded) and in the Wave 0
+  Compose stack. Phoenix's tracing docs: "Phoenix accepts traces over the OpenTelemetry protocol
+  (OTLP)." Not checked: whether Phoenix displays `gen_ai.*` names (it documents OpenInference names).
+  Graded in the lesson's status table as scaffolded, not accepted: the catalogue is not a decision
+  record.
+- **TDD at one seam, red captured:** `tests/export-run.test.ts` (25) written first; red run: the file
+  failed to load (`Cannot find module '../src/export-run.js'`). Green on the first implementation run,
+  25/25. One test added after, before its fix (`service.name`), seen failing, then 26/26. Mutations of
+  `export-run.ts`, each restored and checked with `cmp`: steps end with no time → 8 fail; no parent
+  context → 7; usage attributes on a remainder → 3; start times rounded to the second → 7. README break
+  experiments run: renaming `gen_ai.usage.input_tokens` fails 1 (only the test that names the string;
+  the round trip reads the same constant); a batch processor fails 23.
+- **Totals:** lab 15 26 tests; lab 14 27, lab 13 107, lab 12 74, exercise 11 21, exercise 08 29, all
+  green; `pnpm -r typecheck` passes. Labs 07, 12, 13 and 14 unchanged in source.
+- **Not registered, on purpose:** "OpenTelemetry" (a project's name, like LangGraph.js). `Tracer`,
+  `TracerProvider` and `SimpleSpanProcessor` appear only as `<code>` (after review; see below).
+  "Provider" in prose means the model provider only, as in every earlier lesson. The OpenTelemetry
+  senses of trace, span and event are handled by one Article III.5 collision table; the prose keeps the
+  course senses. The word "resource" is avoided in prose, because `wiki/terms/resource.md` is the MCP
+  sense; the code says `resourceFromAttributes`, the prose says "service name".
+- **Article III.1:** nothing crosses the network, and the lesson shows the OTLP/HTTP JSON body that
+  would, built offline. **Article III.3:** all three sentences used, since an SDK is involved this time.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye; SENT-2, PARA-2, PARA-4,
+  PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Two
+  writing-about-the-writing sentences cut in the detect pass ("The next question is…", "The course
+  keeps its meaning…"), and "The cost is real." cut as a dramatic fragment. Lab instructions judged
+  against 20 words: the longest step is 13. Quiz option lengths checked by script after rebalancing
+  three questions where the correct option was the longest.
+- **Recall debt, unchanged and growing:** say-it answers for lessons 0016 to 0022 are not in the repo.
+  No learner answers in this session. No promotions.
+- Bookkeeping: ROADMAP row 0023 ✅ with the measured win and the ADR link, 0024 ▶, Phase 4 header *2 of
+  6 shipped*, the 0023 prerequisite marked met, a Phase 4 lesson-maps line; module graph synced (P4
+  text, R23 ✅, R24 ▶, an OTLP export artifact node, the S7 row, lesson-map list).
+
+### What the two-axis review caught, and what I did about it
+
+- **Standards, TERM-1 / TERM-3, a real defect:** "tracer", "provider", "processor" and "collector"
+  stood in plain prose, unregistered, and "provider" meant both `TracerProvider` and Anthropic. Now
+  `Tracer`, `TracerProvider`, `SimpleSpanProcessor` and `BatchSpanProcessor` appear as code,
+  "collector" is gone from the lesson and the OTLP note, and "provider" keeps its course meaning. My
+  earlier NOTES claim that these were "always `<code>`" was false when written.
+- **Standards and Spec, III.9, two wrong grades:** §4 called Phoenix "Hermes OS's chosen trace viewer",
+  and the status table graded component 12 "scaffolded" with "partially" dropped. Now Phoenix is "the
+  trace viewer Hermes OS names"; the table splits Phoenix's container (scaffolded, README Wave 0),
+  Phoenix traces in component 12 (planned, "Phoenix Core v1") and the rest of the Trace Recorder
+  (scaffolded, partially). The planned export row cites ROADMAP row 0023, which now says so.
+- **Spec, IV.2, a wrong measurement:** the "bytes" were `JSON.stringify(...).length` of re-serialized
+  events, a character count and not the file. Now `main.ts` reports the serializer's `Uint8Array`
+  length and the trace file's size on disk. Re-serialized lines differ from the file (1,212 against
+  1,214 for tight-budget), so the earlier 1,267 was wrong in two ways. Audit-atlas is 3,733 from 1,268.
+- **Spec, field for field at job level:** the round trip compared only totals and `agrees`. Now
+  `readBack` also returns title, ceiling, carried, outcome and the alert (read from the span event),
+  and the seven round-trip tests compare the whole job object; seen red (7 fail) before the change.
+- **Standards, III.1:** the body now comes with its method and header, `POST /v1/traces` and
+  `Content-Type: application/json`, in the lesson, the OTLP note, the README and `otlpBody`'s comment.
+- **Standards, prose:** the mission callout's "apart from the workflow graph" read as an exception;
+  now "never merges with". The sentence above the collision table was about the words; cut. The
+  classification item on `endTimeUnixNano` was ambiguous against the layer table; replaced by the span
+  name, which `exportRun` chose. Q4's correct option echoed the table; reworded and rebalanced.
+- **Spec, ADR reasoning:** "a port would have one adapter" did not answer what a port is for. The ADR
+  now says later replacement is already met twice: `CostReport` is Hermes's own type, and the API
+  package lets the SDK, processor and exporter change without touching `exportRun`.
+- **Smells fixed:** `emitModel` took the whole report for two fields; now it takes `model` and
+  `alert`. The tests' `: ""` and `: -1` fallbacks became a narrowing guard. `zod` was declared and
+  never imported; removed.
+- **Judged and kept:** the model/tool ↔ CLIENT/INTERNAL mapping appears once in each direction, because
+  the round trip needs both. `main.ts`'s `if (!l.ok)` inside the refused loop is lab 14's narrowing
+  idiom. `costReport` runs twice per recording in `pnpm job`, because the comparison needs an
+  independent route. The ADR fails `lesson-lint` (ADRs sit outside Article VIII.7, and ADR 0001 fails
+  it too, with 9 errors). The spine thread is now named in the callout as the three records that never
+  merge, without the banned coinage.
+- After the fixes: lab 15 26/26, `tsc` clean, `pnpm job` all seven equal; the lesson 1,821 words,
+  0 errors, 0 warnings; the term notes, the map note and the module graph 0 errors.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*
