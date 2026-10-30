@@ -1,0 +1,10 @@
+{
+  // Same shared config as every exercise. This package scores the loop
+  // (lesson 0025). The runner drives lab 12's startJob with lab 07's fake
+  // gateway and lands each run through lab 14's runAndLand. The graders
+  // import types only: an Artifact (lab 14) and a TraceEvent (lab 07).
+  // A grader that imported the loop could share its bugs, so none does.
+  // No model, no network: every reply is replayed from a recorded trace.
+  "extends": "../tsconfig.base.json",
+  "include": ["src", "tests"]
+}

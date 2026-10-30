@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0025 — Golden Tasks</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 4 · Lesson 0025 · lab exercise 16-benchmark · ~45–60 min</p>
+  <h1>Golden Tasks</h1>
+  <p class="lede">The loop's tests check its code. What checks a whole run, and how do you know
+  that check can fail?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S9 (score the run) gets its first code. It reads what S8 (outputs land) wrote:
+  one artifact per run. The task file is a JSON boundary, so it is parsed, never trusted. The
+  win: four stored tasks score the real loop at 13 of 13, and each bug added on purpose drops a
+  named check on a named task.
+</div>
+
+<h2>1 · A task written before the run</h2>
+
+<p>A <dfn>golden task</dfn> is a stored test case for a whole run: a spec, a recorded fixture,
+the expected ending, and grader names. A <dfn>grader</dfn> is a function
+that reads a landed artifact, its trace and the task, and returns pass or fail with a reason.</p>
+
+<p>Lesson 0012 defined a fixture as recorded data that a test replays. Here the fixture is a
+trace file. Each <code>reply</code> line holds the text, tool calls, stop reason, token counts and
+request id. So <code>fixtureFromTrace</code> turns a recorded run into a script for the fake
+gateway. No reply is typed by hand.</p>
+
+<pre><code>type GoldenTask = {                      // held-audit, after admitGoldenTasks:
+  id: string;                            { id: "held-audit",
+  spec: TaskSpec;                          spec: { approvalRequired: ["graph_health"], … },
+  fixture: string;                         fixture: "../../07-tool-loop/traces/audit-atlas.jsonl",
+  operator?: "approves" | "denies";        operator: "approves",
+  pack?: AdmittedPack;                     expect: { status: "done", outcome: "landed" },
+  expect: { status; outcome };             graders: ["ends_as_expected", "asks_before_held_tool",
+  graders: GraderName[];                             "reports_tool_output", "within_ceiling"] }
+};</code></pre>
+
+<p>A golden task may expect a failure. <code>capped-audit</code> replays the same recording as
+<code>audit</code> but allows one model call. A correct loop ends <code>failed (gave_up)</code>, and
+a loop that lands it has a bug.</p>
+
+<table>
+  <tr><th>Term</th><th>What it checks</th><th>Where</th></tr>
+  <tr><td>test</td><td>one function or module, in Vitest</td><td><code>tests/*.test.ts</code> in every lab</td></tr>
+  <tr><td>guard</td><td>whether one move inside a run is allowed (0017)</td><td>lab 12's <code>guards.ts</code></td></tr>
+  <tr><td>golden task</td><td>a whole run, from spec to artifact</td><td><code>16-benchmark/tasks/golden.json</code></td></tr>
+  <tr><td>grader</td><td>one property of one finished run</td><td><code>16-benchmark/src/graders.ts</code></td></tr>
+  <tr><td>fixture</td><td>0012: a wire exchange. Here: the reply lines of a trace</td><td>both are replayed, never edited</td></tr>
+</table>
+
+<div class="callout">
+  <p><strong>New today.</strong> Five ideas are new.</p>
+  <ul>
+    <li>A golden task states the right ending before the run, and that ending may be a failure.</li>
+    <li>A recorded trace is a script the fake gateway can replay.</li>
+    <li>A grader reads what landed and never the loop.</li>
+    <li>A task passes only when every grade on it passes.</li>
+    <li>A bug added on purpose proves that a grader can fail.</li>
+  </ul>
+  <p>Reprise: the fake and the fixture (0006, 0012), the TaskSpec parse (0007), held tools and
+  the operator (0010), guards as names in a file (0017), the artifact and <code>runAndLand</code>
+  (0024).</p>
+</div>
+
+<h2>2 · Graders read what landed</h2>
+
+<p>Lab 12's guards have two halves. The graph file names a rule, and <code>guards.ts</code>
+implements it. Graders copy that shape. The task file names graders, and
+<code>admitGoldenTasks</code> refuses a name with no function behind it.</p>
+
+<pre><code>// 16-benchmark/src/graders.ts
+export interface Seen { task: GoldenTask; artifact: Artifact; events: TraceEvent[] }
+export interface Verdict { pass: boolean; why: string }   // { pass: false, why: "no evidence_used line" }
+export type Grader = (seen: Seen) =&gt; Verdict;
+export const GRADERS: Record&lt;GraderName, Grader&gt;;</code></pre>
+
+<table>
+  <tr><th>Grader</th><th>Reads</th><th>Passes when</th></tr>
+  <tr><td><code>ends_as_expected</code></td><td>artifact</td><td>status and outcome equal the task's <code>expect</code></td></tr>
+  <tr><td><code>reports_tool_output</code></td><td>artifact, trace</td><td>every successful tool result appears in the output text</td></tr>
+  <tr><td><code>asks_before_held_tool</code></td><td>trace, task</td><td>every held tool's result follows an <code>approved</code> line</td></tr>
+  <tr><td><code>uses_the_pack</code></td><td>trace, task</td><td>the task's pack is recorded before the first model call</td></tr>
+  <tr><td><code>within_ceiling</code></td><td>trace, artifact, task</td><td>the reply lines' tokens match <code>job_ended</code> and the artifact, and stay under the ceiling</td></tr>
+</table>
+
+<p>Every import in <code>graders.ts</code> is <code>import type</code>, and a test fails if one
+is not. A grader that called the loop's code could share the loop's bugs and pass them. Hermes
+OS names the rule "grader ≠ graded".</p>
+
+<p>Anthropic's guide to agent evaluation advises grading what the agent produced, not the path it
+took. Four graders follow that advice. <code>asks_before_held_tool</code> grades the path,
+because a held tool that runs early can still produce the right answer.</p>
+
+<h2>3 · The runner and the scorecard</h2>
+
+<p>A <dfn>scorecard</dfn> is the file one benchmark run writes: every task, every grade with its
+reason, and the counts that passed. The function <code>runGolden</code> writes it.</p>
+
+<pre><code>// 16-benchmark/src/runner.ts
+export function runGolden(
+  tasks: GoldenTask[], taskFile: string, root: string, loop: NamedLoop, price: ModelPrice,
+): Promise&lt;Scorecard&gt;;</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At run time for <code>pnpm bench</code></th></tr>
+  <tr><td><code>tasks</code></td><td>the admitted task file</td><td>4 tasks, 13 grader names</td></tr>
+  <tr><td><code>taskFile</code></td><td>the file the tasks came from, which fixture paths resolve against</td><td><code>…/tasks/golden.json</code></td></tr>
+  <tr><td><code>root</code></td><td>where traces, artifacts and the scorecard go</td><td><code>runs/real/</code></td></tr>
+  <tr><td><code>loop</code></td><td>a name and a function with <code>startJob</code>'s shape</td><td><code>{ name: "real", run }</code></td></tr>
+  <tr><td><code>Promise&lt;Scorecard&gt;</code></td><td>the scorecard, also written to disk</td><td>2,336 bytes, no clock in it</td></tr>
+</table>
+
+<p>There is one declaration and no overload. A signature tells TypeScript what may be called. The
+implementation does the runtime work. Only <code>loop.ts</code> names lab 12. The runner calls the
+loop it was given, so the graders cannot tell the real loop from a broken copy.</p>
+
+<pre><code>type Scorecard = {                     // runs/drops-the-pack/scorecard.json, abridged:
+  loop: string;                        { "loop": "drops-the-pack",
+  tasks: { id; status; crashed;          "tasks": [ …, { "id": "grounded-audit", "status": "failed",
+           pass; grades }[];                            "crashed": null, "pass": false, "grades": […] } ],
+  passed: number; total: number;         "passed": 10, "total": 13,
+  tasksPassed: number;                   "tasksPassed": 3 }
+};</code></pre>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    F["golden.json"] -->|"admitGoldenTasks"| G["one task"]
+    G -->|"fixtureFromTrace"| K["fake gateway"]
+    G --> L["the loop under test"]
+    K --> L
+    L -->|"runAndLand"| T[("trace file")]
+    L -->|"runAndLand"| A[("artifact.json")]
+    T --> J["graders"]
+    A --> J
+    G -->|"expect, spec, pack"| J
+    J --> S["scorecard.json"]
+    L -.-x|"no import"| J
+</pre>
+<figcaption>Diagram 1. Graders see the task and what landed on disk. The crossed line is the
+import a test forbids.</figcaption>
+</figure>
+
+<p>A task passes only when every grade on it passes. The rule matters on the evidence task when
+the pack is lost. Nothing runs, so nothing is spent, and <code>within_ceiling</code> passes at
+"0 of 2000 tokens". The other three grades on that task fail, so the task fails.</p>
+
+<h2>4 · A grader nobody can fail is untested</h2>
+
+<p>A <dfn>planted defect</dfn> is a copy of the loop with one bug added on purpose, to prove that
+some grader fails on it. Lab 16 ships three, each the real loop with one change.</p>
+
+<table>
+  <tr><th>Loop</th><th>The one change</th><th>Tasks</th><th>Grades that fail</th></tr>
+  <tr><td>real</td><td>none</td><td>4 of 4</td><td>none</td></tr>
+  <tr><td><code>ignores-approval-list</code></td><td>the spec's held tools are dropped</td><td>3 of 4</td><td>held-audit: <code>asks_before_held_tool</code></td></tr>
+  <tr><td><code>ignores-call-cap</code></td><td>ten calls allowed, not one</td><td>3 of 4</td><td>capped-audit: <code>ends_as_expected</code></td></tr>
+  <tr><td><code>drops-the-pack</code></td><td>the evidence pack never arrives</td><td>3 of 4</td><td>grounded-audit: three of four</td></tr>
+</table>
+
+<p>Under <code>ignores-approval-list</code>, held-audit still ends <code>done</code> with the
+right answer. Only the path grader sees the bug.</p>
+
+<p>The defects change what the loop is given, not lab 12's code. A hand edit makes the same point in
+real code. It changed lab 07's <code>gateToolCall</code> to return <code>"auto"</code> for a held
+tool. Then <code>pnpm bench</code> failed held-audit on <code>asks_before_held_tool</code> alone.
+The restored code scored 13 of 13.</p>
+
+<p>A bug added to the runner on purpose found a gap in the first draft. Held-audit replayed the parked audit,
+whose answer is "Audit complete." A loop with no operator wired still passed every grade.
+The hold was denied by default, the tool result was marked failed, and the model still
+finished. Held-audit now replays the audit whose answer quotes the tool, and grades
+<code>reports_tool_output</code>.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TB
+    R["real loop"] --> B["runGolden<br/>same tasks, same graders"]
+    D1["ignores-approval-list"] --> B
+    D2["ignores-call-cap"] --> B
+    D3["drops-the-pack"] --> B
+    B --> S1["13 of 13"]
+    B --> S2["12 of 13<br/>held-audit"]
+    B --> S3["12 of 13<br/>capped-audit"]
+    B --> S4["10 of 13<br/>grounded-audit"]
+</pre>
+<figcaption>Diagram 2. Four loops, one runner. Each defect fails exactly one task.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Layer</th><th>Does the benchmark change it?</th><th>Why</th></tr>
+  <tr><td>lab 12's loop and graph</td><td>no</td><td>the runner calls it through a function type</td></tr>
+  <tr><td>the model</td><td>no</td><td>the fake replays recorded replies, so no score is about a model</td></tr>
+  <tr><td>token counts</td><td>no</td><td>they are the recording's numbers, replayed</td></tr>
+  <tr><td>files under <code>runs/</code></td><td>yes</td><td>one trace, one artifact per task, one scorecard per loop</td></tr>
+</table>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td>Golden-task file, five graders, <code>runGolden</code>, three defects, <code>pnpm bench</code></td><td>implemented</td><td><code>16-benchmark/</code></td></tr>
+  <tr><td>Repeated trials and pass^k</td><td>planned</td><td>lesson 0026, <a href="../ROADMAP.md">ROADMAP</a> Phase 4</td></tr>
+  <tr><td>A committed baseline and a regression gate</td><td>planned</td><td>lesson 0027, <a href="../ROADMAP.md">ROADMAP</a> Phase 4</td></tr>
+  <tr><td>Grader ≠ graded</td><td>accepted</td><td>ADR-0009, <code>hermes-job-control-plane.md</code> §3, row 10</td></tr>
+  <tr><td>The verification coordinator, which runs checks and records verdicts</td><td>accepted and scaffolded</td><td><code>hermes-job-control-plane.md</code> §3, row 10</td></tr>
+  <tr><td>Two advisory checks turn blocking at 30 golden questions</td><td>accepted and scaffolded</td><td>same row, issue 09</td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>16-benchmark/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm bench</code>. Count the tasks and the grades.</li>
+  <li>Run <code>pnpm bench --all</code>. Name the grade each defect drops.</li>
+  <li>Open <code>runs/drops-the-pack/scorecard.json</code>. Find the grade that passed on a failed task.</li>
+  <li>In lab 07's <code>approval.ts</code>, return <code>"auto"</code> for a held tool. Predict the failing grade.</li>
+  <li>Run <code>pnpm bench</code>, then restore <code>approval.ts</code>.</li>
+  <li>Remove <code>reports_tool_output</code> from held-audit. Run the tests and name the one that fails.</li>
+</ol>
+
+<h2>6 · Exercise: what kind of check?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each check</h3>
+  <p class="rules">An outcome grader reads the ending. A path grader reads the order of events.
+  The third group decides moves inside a run.</p>
+
+  <div class="cl" data-cats="Outcome grader|Path grader|Not a grader">
+    <div class="cl-item" data-cat="0" data-why="It compares the artifact's status and outcome with the task's expectation. The order of events never matters.">
+      <p><code>ends_as_expected</code></p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="It checks that an approval line comes before the held tool's result. The final answer can be right and it still fails.">
+      <p><code>asks_before_held_tool</code></p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="It is a guard. It runs inside the loop and decides whether one move is allowed, before the run ends.">
+      <p><code>gate_held</code> in lab 12</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="It reads the artifact's totals and the spec's ceiling. It passed at 0 tokens on a task where nothing ran.">
+      <p><code>within_ceiling</code></p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="1" data-why="A grader that runs the loop's code can share its bugs. A grader that reads only what landed cannot.">
+    <p class="qz-prompt">Q1. Why does <code>graders.ts</code> import types only?</p>
+    <button class="qz-opt" type="button">Type imports make the benchmark run faster under Vitest</button>
+    <button class="qz-opt" type="button">A grader that runs the loop's code could share its bugs</button>
+    <button class="qz-opt" type="button">The artifact schema refuses graders that import functions</button>
+    <button class="qz-opt" type="button">Lab 12's loop cannot be imported outside of its own folder</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The cap allows one call. A correct loop gives up after the tool runs, so failed (gave_up) is the right ending.">
+    <p class="qz-prompt">Q2. Why does <code>capped-audit</code> expect <code>failed</code>?</p>
+    <button class="qz-opt" type="button">Its fixture has no completed reply for the fake to replay</button>
+    <button class="qz-opt" type="button">A task that expects done would pass under every planted defect</button>
+    <button class="qz-opt" type="button">Its ceiling is lower than the tokens that the recording spent</button>
+    <button class="qz-opt" type="button">One model call is too few, so a correct loop must give up</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The defect drops the held tools, so the tool runs at once. The run still ends done with the right answer.">
+    <p class="qz-prompt">Q3. Why can only a path grader catch <code>ignores-approval-list</code>?</p>
+    <button class="qz-opt" type="button">The run still ends done, with the same answer as the real loop</button>
+    <button class="qz-opt" type="button">The artifact hides the gate decision from every other grader</button>
+    <button class="qz-opt" type="button">The defect deletes the approval line after the run has ended</button>
+    <button class="qz-opt" type="button">Outcome graders are skipped on tasks that hold a tool for approval</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="A denied hold marks the tool result failed, and the grader skipped failed results. The model still finished, so every grade passed.">
+    <p class="qz-prompt">Q4. Why did a loop with no operator first pass held-audit?</p>
+    <button class="qz-opt" type="button">The runner wired a default operator that approves every call</button>
+    <button class="qz-opt" type="button">The task file refused the run before any grader could read it</button>
+    <button class="qz-opt" type="button">A denied hold failed the tool, and the model still finished</button>
+    <button class="qz-opt" type="button">The fake gateway skipped the tool call when no operator answered</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say what a golden task holds, and why it is written before the run.</li>
+  <li>Say what a grader may read, and what it may not.</li>
+  <li>Say how you know a grader can fail.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A golden task stores a spec, a
+recorded fixture, the right ending and its grader names. A grader reads the artifact, the trace
+and the task, and never the loop. A task passes only when every grade on it passes. A bug added on
+purpose proves that a grader can fail.</p>
+
+<h2>Primary source</h2>
+
+<p>Read Anthropic's <a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Demystifying
+evals for AI agents</a> (2026-01-09). Compare its words task, trial, grader and transcript with
+golden task, grader and trace here. Then find its advice on grading the outcome, and name the
+grader in this lab that does not follow it.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>zod</code> 4.4.3, <code>vitest</code> 3.2.7, <code>tsx</code> 4.23.1 and
+  <code>@types/node</code> 22.20.1 on Node 22.14.0, Windows 11, on 2026-10-30.</p>
+  <p><strong>Disclosed.</strong> Every score measures the benchmark code and the loop, not a model.
+  The fake replays recorded replies, so token counts are the recording's, whatever the loop sent.
+  Four tasks are a check of the setup. Anthropic's guide suggests 20 to 50 tasks to start, and
+  Hermes OS sets 30 golden questions as a threshold.</p>
+  <p>The planted defects wrap the loop. The one source edit was made by hand and restored. The code
+  blocks are abridged.</p>
+  <p><strong>Sources.</strong> The τ-bench paper (Yao et al., arXiv 2406.12045) defines pass^k, used
+  in lesson 0026. Anthropic's <a href="https://platform.claude.com/docs/en/test-and-evaluate/develop-tests">Define
+  success criteria and build evaluations</a> ranks code-based grading first.</p>
+  <p><strong>Next.</strong> Lesson 0026 is planned to run each task many times with a seeded fake,
+  and report pass rate and pass^k, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

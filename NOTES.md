@@ -2327,6 +2327,80 @@ SVGs each run, no "Syntax error" text).
 - After the fixes: lab 14 56/56, `tsc` clean, `pnpm job --land` gives the same seven lines; the lesson
   1,976 words, 0 errors; the term notes, the map note and the module graph 0 errors.
 
+## Update 2026-10-30 — lesson 0025 shipped: golden tasks; S9 gets code
+
+- **Prerequisite met first:** the "vet a primary source" gap open since session 1. Vetted live by a
+  background agent (WebFetch, which summarises through a small model, so quotes are near-verbatim):
+  Anthropic, *Demystifying evals for AI agents* (2026-01-09; task, trial, grader, transcript,
+  outcome, pass@k, pass^k, "grade what the agent produced, not the path", "20-50 simple tasks drawn
+  from real failures"); τ-bench (Yao et al., arXiv 2406.12045; pass^k defined; the formula needs a
+  PDF check before 0026 prints it); Anthropic's *Define success criteria and build evaluations*
+  (code-based grading ranked first). RESOURCES gap closed, ROADMAP prerequisite marked met.
+- **Lab `16-benchmark`:** `tasks/golden.json` (four tasks), `admitGoldenTasks` (strict Zod, the spec
+  nests lab 07's `TaskSpecSchema`, five cross-field rules), `fixtureFromTrace` (a trace's reply lines
+  are the fake's script, so fixtures are recorded, never typed), five graders (type imports only,
+  enforced by a test), `runGolden` (any `NamedLoop` → lab 14's `runAndLand` → read back → grade →
+  strict, clock-free `scorecard.json` via `writeAtomic`), three planted defects, `pnpm bench`.
+  `runs/` added to the lab ignore file.
+- **Measured** (zod 4.4.3, vitest 3.2.7, tsx 4.23.1, Node 22.14.0, Windows 11): real loop 4 of 4
+  tasks, 13 of 13 grades; `ignores-approval-list` → held-audit `asks_before_held_tool` only, and the
+  run still ends done with the right answer, so only the path grader sees it; `ignores-call-cap` →
+  capped-audit `ends_as_expected`; `drops-the-pack` → three grades on grounded-audit, while
+  `within_ceiling` passes at 0 tokens. That last fact is why the scorecard gained a per-task verdict
+  (a task passes only when every grade does). Hand edit of lab 07 `gateToolCall` (held → auto):
+  held-audit `asks_before_held_tool` alone; restored 13 of 13. Token totals equal the recordings
+  (217, 217, 65, 494): replayed, not computed. Scorecard 2,336 bytes, identical across runs.
+- **TDD, red captured:** 23 tests written first; red run: the file failed to load (no `src/`). Green
+  on the first implementation run. Mutation checks, each restored: ten mutations, two survivors at
+  first. `uses_the_pack` ignoring order survived (no test) → test added. **The runner wiring no
+  operator survived**, and it was a real gap: held-audit replayed the parked audit ("Audit
+  complete."), the default denial marked the tool result failed (which `asks_before_held_tool`
+  skips), and the model still finished, so every grade passed. Held-audit now replays
+  `audit-atlas.jsonl`, whose answer quotes the tool, and grades `reports_tool_output` (3 tests fail
+  under that mutation now).
+- **Totals:** lab 16 27 tests; lab 15 26, lab 14 56, lab 13 107, lab 12 74, exercise 11 21, exercise 08
+  29, all green; `pnpm -r typecheck` passes. Labs 07, 11, 12, 13, 14, 15 unchanged.
+- **Judged rather than measured, per Article VIII.6:** linter 0 errors, 1 SENT-6 warning (a code
+  identifier, false positive), 1,900 words. SENT-3 read by eye; SENT-2, PARA-2, PARA-4 to PARA-6,
+  TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and BAN-18 judged. Lab steps judged against 20
+  words. Quiz option lengths checked by script. Article III.1: no network; bytes on disk shown (the
+  scorecard excerpt). III.5: one collision table for test / guard / golden task / grader / fixture.
+  III.6: grader names in the file taught from lab 12's guard names (0017). The banned word "harness"
+  forced "Verification / Harness Coordinator" to be written as "the verification coordinator".
+- **Recall debt, unchanged and growing:** say-it answers for lessons 0016 to 0024 are not in the repo.
+  No learner answers this session. No promotions.
+- Bookkeeping: ROADMAP row 0025 ✅ with the measured win, 0026 ▶, Phase 4 *4 of 6 shipped*, lesson-maps
+  line, the lab-16 guardrail sentence rewritten to what was built; module graph synced (R25 ✅, R26 ▶,
+  a scorecard node, the stale "golden tasks + evals" node replaced, S9 row); RESOURCES gained three
+  entries.
+
+### What the two-axis review caught, and what I did about it
+
+- **Spec, a guardrail stated more strongly than the code:** "Lab 16 … never imports its internals".
+  The runner imports lab 14's `runAndLand`, `readArtifact`, `writeAtomic` and `loop.ts` imports lab
+  12's `startJob`. Only the graders are type-only. Kept the code (those are exported functions, and
+  re-implementing landing would duplicate lab 14); rewrote the ROADMAP sentence and the lesson
+  ("Only `loop.ts` names lab 12") to say what holds.
+- **Spec, "a planted defect in the loop":** the three defects change what the loop is given, not its
+  code. The lesson already said so; the ROADMAP row, README and term note now say it too, and name the
+  `gateToolCall` hand edit (lab step 4) as the one defect inside the loop's code.
+- **Spec, grader trusting loop-side code:** `within_ceiling` read `artifact.agrees`, which lab 14's
+  cost report computed. It now recounts tokens from the reply lines and checks them against
+  `job_ended` and the artifact (test written first, seen red). The import test also refuses
+  `import(` and `require(`.
+- **Standards, Article V.1:** Q4's correct option was the uniquely longest (68 chars); shortened to 59.
+- **Standards, III.4:** `Verdict` and `Scorecard` gained runtime values beside their declarations.
+- **Standards, term gate:** "mutation check" reworded; held tools and the operator added to the
+  reprise (0010). "Outcome grader" / "path grader" are defined in ordinary words in §6's rules, at
+  first use; judged and kept.
+- **Standards, smaller:** golden-task definition aligned between lesson and note ("a whole run");
+  alias `defect` dropped; `PackSchema` annotated `z.ZodType<AdmittedPack>` and the "Nothing is
+  re-declared" comment corrected; scorecard `id` uses `RunNameSchema`; two small duplications removed.
+- **Judged and kept:** `(tasks, taskFile, root, loop, price)` travel together (possible Data Clump),
+  kept as in 0024's call; defect names written as key and `name` (a helper would add more than it
+  removes); status table stays at the end of §4, as in 0022 to 0024; no import → construct → method
+  decomposition for `runGolden`, which is one plain function with no object path.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

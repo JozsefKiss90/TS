@@ -20,6 +20,12 @@
   Phase 3 candidate for state-graph orchestration, persistence, interruption. Do not learn alongside Mastra.
 - [OpenTelemetry JavaScript](https://opentelemetry.io/docs/languages/js/)
   Phase 4. Use for: traces, spans, cost/latency accounting on the Hermes loop.
+- [Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) (Anthropic engineering, 2026-01-09)
+  Phase 4 evaluation anchor, vetted 2026-10-30. Use for: the vocabulary (task, trial, grader, transcript, outcome, evaluation harness), pass@k vs pass^k, code-based vs model-based graders, "grade what the agent produced, not the path", and "20-50 simple tasks drawn from real failures is a great start".
+- [τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains](https://arxiv.org/abs/2406.12045) (Yao, Shinn, Razavi, Narasimhan; arXiv, June 2024)
+  Phase 4, lesson 0026. Use for: the original definition of pass^k, "the chance that all k i.i.d. task trials are successful, averaged across tasks". Check the formula against the PDF before printing it.
+- [Define success criteria and build evaluations](https://platform.claude.com/docs/en/test-and-evaluate/develop-tests) (Anthropic docs)
+  Phase 4 secondary. Use for: ranking grading methods, code-based first (exact or string match against a golden answer), LLM grading only where rules cannot decide.
 - [Temporal SDK concepts](https://docs.temporal.io/encyclopedia/temporal-sdks)
   Later. Use for: durable execution vocabulary (checkpointing, replay) once the manual loop exposes the need.
 - [W3C PROV-DM](https://www.w3.org/TR/prov-dm/) (W3C Recommendation)
@@ -39,5 +45,5 @@
 
 ## Gaps
 
-- No vetted primary source yet for evaluating agent harnesses (golden tasks, replayable fixtures) — search when Phase 4 approaches.
+- ~~No vetted primary source yet for evaluating agent harnesses~~ — resolved 2026-10-30: Anthropic's *Demystifying evals for AI agents* (anchor), τ-bench (pass^k), Anthropic's success-criteria docs (see Knowledge).
 - ~~Graph RAG evidence-schema design references~~ — resolved 2026-09-01: W3C PROV-DM (anchor), nanopublication guidelines, LEDGER preprint (see Knowledge). The practice side to compare against is `C:\Code\el_nino\dev_graph` — it cites no external literature itself, so the comparison is genuinely new.
