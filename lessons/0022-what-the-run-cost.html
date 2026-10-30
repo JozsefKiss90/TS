@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0022 — What the Run Cost</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 4 · Lesson 0022 · lab exercise 14-reliability · ~45–60 min</p>
+  <h1>What the Run Cost</h1>
+  <p class="lede">Every trace line records a time, and every reply records its tokens. Can one
+  function turn a trace file into a cost per step that agrees with the job's own total?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  Scenario step S7 (the durable record) gets a second reader that computes cost from it. S6
+  (budget enforcement) gets its alert placed at a call. S8 (landing the outputs) will link each
+  output to this report. The trace stays the one record of what happened, apart from the workflow
+  graph and the knowledge graph. The win is <code>--cost-report</code>, which agrees with
+  <code>job_ended</code> on all seven recorded runs.
+</div>
+
+<h2>1 · The trace already holds most of the cost</h2>
+
+<p>Lab 07's supervisor writes one JSON line per event, and every line carries <code>at</code>, the
+time in epoch milliseconds. Every <code>reply</code> line carries the provider's token counts.
+The last line, <code>job_ended</code>, carries the job's totals.</p>
+
+<table>
+  <tr><th>Question</th><th>In the trace?</th><th>Where it comes from</th></tr>
+  <tr><td>How long did call 2 take?</td><td>yes</td><td><code>reply.at</code> minus <code>call_started.at</code> for the same <code>call</code></td></tr>
+  <tr><td>How many tokens did call 2 use?</td><td>yes</td><td><code>reply.inputTokens</code> from the wire's <code>message_start</code>, <code>outputTokens</code> from <code>message_delta</code></td></tr>
+  <tr><td>What did call 2 cost in dollars?</td><td>no</td><td>no line names a model, so a price table and a model name come from outside</td></tr>
+  <tr><td>What did a cut-off call use?</td><td>partly</td><td>the supervisor wrote no reply line, so only <code>job_ended.tokensSpent</code> holds it</td></tr>
+  <tr><td>How many tokens did the pack add?</td><td>no</td><td><code>evidence_used</code> records the pack's characters, not its tokens</td></tr>
+  <tr><td>Which call crossed 80% of the ceiling?</td><td>no</td><td><code>job_ended.notes</code> holds the alert as a string, with no call number</td></tr>
+</table>
+
+<p>A <dfn>span</dfn> is one timed step of a run: when it started, when it ended, and what it
+used. The function <code>costReport</code> reads the trace's events and returns one span per model
+call and one per tool run. It writes nothing.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>Trace lines pair into spans that carry time, tokens and dollars.</li>
+    <li>The per-step sums must equal the job's own totals, and a test fails if they differ.</li>
+    <li>A cut-off call's tokens are a remainder, so the report labels them estimated.</li>
+    <li>The 80% alert gets a call number, which the trace's note never held.</li>
+  </ul>
+  <p>Reprise: the abort that keeps a partial artifact (0004), the bounds (0009), the trace and
+  <code>parseTrace</code> (0011), the Context Pack and its 129 tokens per call (0016), the
+  parked run (0019).</p>
+</div>
+
+<h2>2 · Lines pair into spans</h2>
+
+<p>The function has a short object path. Import it, pass the events and a price, then check
+which side of the union came back.</p>
+
+<pre><code>// 14-reliability/src/cost-report.ts
+export function costReport(events: TraceEvent[], price: ModelPrice): CostReportResult;
+
+export type CostReportResult =
+  | { ok: true; report: CostReport }
+  | { ok: false; reason: string };</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At run time for audit-atlas</th></tr>
+  <tr><td><code>events</code></td><td>one trace file, already through <code>parseTrace</code></td><td>8 events, <code>job_started</code> to <code>job_ended</code></td></tr>
+  <tr><td><code>price</code></td><td>one row of the pinned price table</td><td><code>{ model: "claude-opus-4-8", inputMicroUsd: 5, outputMicroUsd: 25 }</code></td></tr>
+  <tr><td><code>CostReportResult</code></td><td>a report, or the reason there is none</td><td><code>{ ok: true, report: { spans: [3], totals: {…}, agrees: true, … } }</code></td></tr>
+</table>
+
+<p>There is one declaration and no overload. A signature tells TypeScript what may be called. The
+implementation does the runtime work. A record with no <code>job_started</code> line returns
+<code>ok: false</code>, because it cannot say what ran.</p>
+
+<p>The table stores prices as integer micro-dollars per token. Five dollars per million tokens is 5
+micro-dollars per token. Integer sums are exact, so the test can compare totals with
+<code>===</code>.</p>
+
+<pre><code>interface ModelSpan {                        // audit-atlas's call 1, computed:
+  kind: "model";                             { kind: "model",
+  call: number;                                call: 1,
+  ms: number;                                  ms: 1654,
+  inputTokens: number | null;                  inputTokens: 23,
+  outputTokens: number | null;                 outputTokens: 42,
+  tokens: number;                              tokens: 65,
+  source: "reply" | "remainder";               source: "reply",
+  microUsd: number;                            microUsd: 1165,      // 23 × 5 + 42 × 25
+  pack: { ids; chars; tokens } | null;         pack: null }
+}
+
+interface ToolSpan {                         // the parked audit's tool run:
+  kind: "tool";                              { kind: "tool",
+  tool: string;                                tool: "graph_health",
+  decision: "not_permitted" | "auto" | "hold"; decision: "hold",
+  ms: number;                                  ms: 6803,
+  heldMs: number | null;                       heldMs: 6802,
+  failed: boolean;                             failed: false }
+}
+
+interface CostReport {                       // tight-budget, abridged:
+  spans: Span[];                             { spans: [3],
+  totals: { calls; tokens; microUsd };         totals: { calls: 2, tokens: 191, microUsd: 4315 },
+  recorded: { calls; tokens; outcome } | null; recorded: { calls: 2, tokens: 191, outcome: "over_budget" },
+  agrees: boolean;                             agrees: true,
+  alertThreshold: number;                      alertThreshold: 152,
+  alert: { call; tokensAfter; estimated }      alert: { call: 2, tokensAfter: 191, estimated: true } }
+       | null;
+}</code></pre>
+
+<table>
+  <tr><th>Span</th><th>Starts at</th><th>Ends at</th><th>Joined by</th></tr>
+  <tr><td>a model call</td><td><code>call_started</code></td><td>the <code>reply</code> with the same <code>call</code></td><td>the call number, on both lines</td></tr>
+  <tr><td>a cut-off model call</td><td><code>call_started</code></td><td><code>job_ended</code></td><td>no reply has that call number</td></tr>
+  <tr><td>a tool run</td><td>the <code>gate</code> line</td><td>the <code>tool_result</code> for the same tool</td><td>line order, because the gate line holds no tool-call id</td></tr>
+  <tr><td>a wait for a verdict</td><td>a <code>gate</code> that answered <code>hold</code></td><td>the <code>approval</code> line</td><td>kept inside the tool span as <code>heldMs</code></td></tr>
+</table>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    CS1["call_started 1"] --> R1["reply 1<br/>23 in, 42 out"]
+    R1 --> G["gate<br/>auto"]
+    G --> TR["tool_result"]
+    TR --> CS2["call_started 2"]
+    CS2 --> R2["reply 2<br/>110 in, 42 out"]
+    R2 --> JE["job_ended<br/>217 tokens"]
+    CS1 -. "model span, 1654 ms" .-> R1
+    G -. "tool span, 1 ms" .-> TR
+    CS2 -. "model span, 1013 ms" .-> R2
+</pre>
+<figcaption>Diagram 1. The audit-atlas trace. Solid arrows are line order. Dashed arrows are
+the three spans the report pairs from them.</figcaption>
+</figure>
+
+<p>The parked audit shows why the wait is its own number. Its tool span lasts 6,803 ms, and 6,802
+ms of that is a human deciding. The model calls take 1 ms each, because the fake answers at once.</p>
+
+<h2>3 · The sums must agree with the record</h2>
+
+<p>The report computes its totals from the spans, then compares them with
+<code>job_ended</code>. A report that disagrees with the record says
+<code>agrees: false</code>, and <code>--cost-report</code> exits 1.</p>
+
+<table>
+  <tr><th>Recording</th><th>Spans</th><th>Sum of spans</th><th><code>job_ended</code></th><th>Dollars as claude-opus-4-8</th></tr>
+  <tr><td>audit-atlas</td><td>2 calls, 1 tool</td><td>217</td><td>217</td><td>$0.002765</td></tr>
+  <tr><td>tight-budget</td><td>2 calls, 1 tool</td><td>65 + 126 remainder</td><td>191</td><td>$0.004315 at most</td></tr>
+  <tr><td>tight-deadline</td><td>2 calls, 1 tool</td><td>65 + 118 remainder</td><td>183</td><td>$0.004115 at most</td></tr>
+  <tr><td>tight-deadline-resume</td><td>1 call, 183 carried</td><td>183 + 152</td><td>335</td><td>$0.001600 this run</td></tr>
+  <tr><td>audit-atlas-grounded</td><td>2 calls, 1 tool</td><td>494</td><td>494</td><td>$0.004150</td></tr>
+  <tr><td>audit-atlas-bare</td><td>2 calls, 1 tool</td><td>236</td><td>236</td><td>$0.002860</td></tr>
+  <tr><td>parked-audit</td><td>2 calls, 1 held tool</td><td>80</td><td>80</td><td>$0.000800</td></tr>
+</table>
+
+<p>Two runs stopped inside a call, and no <code>reply</code> line exists for it. The supervisor
+still booked that call's spend into <code>job_ended</code>, from its own estimate. The report books
+the remainder to the cut-off call and marks it <code>source: "remainder"</code>. A remainder is
+booked as zero when it would fall below zero, and the totals then miss the record. On these two
+runs the totals match by construction, so that floor is the only token check.</p>
+
+<p>A remainder has no input and output split, so the report prices it at the output rate. That
+gives an upper bound. The tight budget's cut-off call shows "$0.003150 at most". That is more than
+audit-atlas's completed call 2, which cost $0.001600.</p>
+
+<table>
+  <tr><th>Name</th><th>What it counts</th></tr>
+  <tr><td><code>costCeilingTokens</code></td><td>tokens, set in the TaskSpec. Lab 07's bounds stop a job here</td></tr>
+  <tr><td><code>tokensSpent</code></td><td>tokens, as the supervisor booked them, estimates included</td></tr>
+  <tr><td><code>microUsd</code></td><td>dollars, computed by the report from tokens and the price table</td></tr>
+</table>
+
+<p>A test changes one reply's output count by one token. The sum becomes 218 against the
+record's 217, and <code>agrees</code> turns false. A record with no <code>job_ended</code> also
+fails to agree, because nothing confirms the sum.</p>
+
+<h2>4 · The pack's share, and the call that crossed 80%</h2>
+
+<p>The pack sits in the first turn, and every call resends the transcript. So every call pays for
+the pack again. The report estimates the pack at one token per four characters, which is the mock's
+counting rule. 509 characters give about 128 tokens per call.</p>
+
+<p>Lesson 0016 measured the pack by pairing two runs. The grounded run's inputs, 162 and 248, are
+129 above the bare run's, 33 and 119. The estimate is one token short. The test allows two. Over
+two calls the pack used about 256 of the grounded run's 494 tokens.</p>
+
+<p>The alert fires when spend reaches 80% of the ceiling. The tight budget's ceiling is 190 tokens,
+so the line is 152. Its <code>job_ended</code> note says only "estimated spend passed 80% of 190".
+The report adds each call's tokens in order and finds the first call whose total reaches the
+line.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    J["job_started<br/>ceiling 190"] --> C1["call 1<br/>65 tokens<br/>total 65"]
+    C1 --> C2["call 2, cut off<br/>126 remainder<br/>total 191"]
+    C2 --> E["job_ended<br/>over_budget"]
+    C2 -. "first total over 152" .-> A{{"alert at call 2"}}
+</pre>
+<figcaption>Diagram 2. The tight budget. The report places the alert at call 2, which the note
+in <code>job_ended</code> never said.</figcaption>
+</figure>
+
+<p>On all seven recordings, the report places an alert exactly where <code>job_ended</code> noted
+one. The tight budget's placement rests on the estimated remainder, and the report says so. The
+supervisor checks an estimate while a call runs, so close to the line the two could disagree.</p>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td><code>costReport</code>, the price table, <code>--cost-report</code></td><td>implemented</td><td><code>14-reliability/src/</code></td></tr>
+  <tr><td>The same spans through a telemetry library</td><td>planned</td><td>lesson 0023, <a href="../ROADMAP.md">ROADMAP</a> Phase 4</td></tr>
+  <tr><td>Each landed output linked to its cost report</td><td>planned</td><td>lesson 0024, S8</td></tr>
+  <tr><td>Hermes job ceilings in dollars, alert at 80%</td><td>accepted</td><td>ADR-0007, <code>hermes-job-control-plane.md</code> §5</td></tr>
+  <tr><td>The audit's <code>--cost-report</code> flag</td><td>scaffolded</td><td><code>hermes-job-control-plane.md</code> §8, Wave-1 issues</td></tr>
+</table>
+
+<h2>5 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>14-reliability/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm job</code>. Find the run whose tool span is mostly waiting.</li>
+  <li>Run <code>--cost-report</code> on <code>tight-budget.jsonl</code> with <code>--model claude-opus-5-5</code>. Say what changed.</li>
+  <li>Edit one <code>outputTokens</code> in a copy of a trace. Run the report and read the exit code.</li>
+  <li>Remove the zero floor on the remainder. Predict which test fails, run it, then restore it.</li>
+  <li>Say why Hermes's dollar ceilings need this report and the course's token ceiling does not.</li>
+</ol>
+
+<h2>6 · Exercise: measured or estimated?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each number from the seven reports</h3>
+  <p class="rules">Measured means a trace line recorded it. Estimated means a rule or a remainder produced it.</p>
+
+  <div class="cl" data-cats="Measured|Estimated">
+    <div class="cl-item" data-cat="0" data-why="The reply line holds the provider's own counts, 23 in and 42 out.">
+      <p>Audit-atlas's call 1 used 65 tokens.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="No reply line exists for that call. The number is job_ended's total minus everything else, and the supervisor estimated that total.">
+      <p>The tight budget's call 2 used 126 tokens.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The trace holds 509 characters. The report divides by four, the mock's counting rule.">
+      <p>The pack added 128 tokens to each call.</p>
+    </div>
+    <div class="cl-item" data-cat="0" data-why="It is the approval line's time minus the gate line's time, both recorded when they happened.">
+      <p>The parked audit waited 6,802 ms for a verdict.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="1" data-why="No trace line names a model. The tokens are in the trace, and the price per token comes from the pinned table for the model the caller names.">
+    <p class="qz-prompt">Q1. Why does <code>costReport</code> take a price as an argument?</p>
+    <button class="qz-opt" type="button">The trace stores dollars, and the price turns them to tokens</button>
+    <button class="qz-opt" type="button">No trace line names a model, so the price comes from outside</button>
+    <button class="qz-opt" type="button">The price changes per call, and the trace records each change</button>
+    <button class="qz-opt" type="button">The parse refuses a trace that holds a price inside its lines</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The cut-off call has no reply line. Its tokens are the remainder of job_ended's total, which the supervisor estimated, so the report labels it.">
+    <p class="qz-prompt">Q2. Where do the tight budget's 126 tokens for call 2 come from?</p>
+    <button class="qz-opt" type="button">The reply line for call 2, which the abort wrote before it ended</button>
+    <button class="qz-opt" type="button">The mock's counting rule, applied to the partial text it kept</button>
+    <button class="qz-opt" type="button">The call_started line, which records the input tokens it sent</button>
+    <button class="qz-opt" type="button">The total in job_ended, minus what the other spans already hold</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="With no input and output split, the report prices every token at the higher output rate. The true cost is no higher, so the number is an upper bound.">
+    <p class="qz-prompt">Q3. Why does a cut-off call show "at most" beside its dollars?</p>
+    <button class="qz-opt" type="button">All its tokens are priced at the output rate, the higher one</button>
+    <button class="qz-opt" type="button">The provider bills a cut-off call at less than its full price</button>
+    <button class="qz-opt" type="button">The price table holds no row for calls that were cut off early</button>
+    <button class="qz-opt" type="button">The abort refunds the output tokens after the call has ended</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="The report adds each call's tokens in order. The first call whose running total reaches 80% of the ceiling is where the alert goes.">
+    <p class="qz-prompt">Q4. How does the report place the 80% alert at a call?</p>
+    <button class="qz-opt" type="button">It reads the call number from the alert note in job_ended</button>
+    <button class="qz-opt" type="button">It finds the call with the most tokens and places it there</button>
+    <button class="qz-opt" type="button">It adds calls in order until the total reaches the 80% line</button>
+    <button class="qz-opt" type="button">It reads the call number from the gate line that had fired it</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>8 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say which two lines make a model span, and which line ends a cut-off one.</li>
+  <li>Say on which runs the sum check can catch a fault, and why.</li>
+  <li>Say what the trace lacks for dollars and for the pack's tokens.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A span pairs a start line with
+an end line and carries time, tokens and dollars. The report sums its spans and must match
+<code>job_ended</code>, or it says it disagrees. A cut-off call gets the remainder, labelled
+estimated and priced as an upper bound. The report places the 80% alert at the first call whose
+running total reaches the line.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the cost and resource row in
+<a href="../docs/hermes_os/architecture/hermes-job-control-plane.md">hermes-job-control-plane.md</a>
+§5. Compare its dollar ceilings with the course's token ceiling.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>zod</code> 4.4.3, <code>vitest</code> 3.2.7 and <code>tsx</code> 4.23.1 on Node 22.14.0,
+  on 2026-10-30. Prices are
+  Anthropic's first-party rates from the <code>claude-api</code> skill's model table, cached
+  2026-10-06: claude-opus-4-8 at $5 and $25 per million input and output tokens, claude-opus-5-5 at
+  $4 and $20.</p>
+  <p><strong>Disclosed.</strong> The recordings ran against the mock and the fake, so their dollars are
+  prices for imitation tokens. The mock counts a token per four characters of JSON, and a real tokenizer
+  differs. The parked audit's times change whenever lesson 0019's parts g to j run again. The
+  recorded traces are not committed to git, because the lab's ignore file excludes
+  <code>traces/</code>. The code blocks are abridged.</p>
+  <p><strong>Next.</strong> Lesson 0023 is planned to emit the same spans through OpenTelemetry JS
+  and test them against these, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

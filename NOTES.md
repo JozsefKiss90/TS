@@ -1969,6 +1969,132 @@ class).
   "kept apart" thread is carried by the mission callout, one paragraph and the collision table,
   which the reviewer called thin but present.
 
+## Update 2026-10-30 — Phase 4 lessons defined (provisional ids 0022–0027)
+
+ROADMAP's Phase 4 section goes from three bullets to a six-row table, same shape as Phases 0–3.
+No lesson is authored; 0022 is marked ▶ and the rest ○. The why:
+
+- **Hand-written before the library, again.** The old first bullet put OpenTelemetry in the first
+  lesson. 0022 computes spans, durations and dollars from the trace file with no package; 0023 then
+  meets OpenTelemetry JS with a which-layer-moved table and a course ADR, the way 0020 met LangGraph.js.
+  Lab 15 holds the library so lab 14 stays library-free.
+- **Six lessons, not three.** Each bullet carried two or three wins. The split follows the measurable
+  ones: per-step sums equal `job_ended`'s totals (0022), OTel spans equal hand spans (0023), every run
+  lands an artifact (0024), a planted defect drops a named grader (0025), the verdict stabilises after
+  *k* trials (0026), a planted regression is refused by the gate (0027).
+- **S8 gets a lesson.** The module graph has assigned S8 (landing) to Phase 4 since the start and no
+  lab has code for it. It comes before golden tasks because graders read the landed artifact.
+- **The 80% alert already exists.** Lab 07 and lab 12 push it into `job_ended.notes` as a string.
+  0022's win is placing it at the call that crossed it, not inventing it.
+- **Three guardrails recorded in the header:** the JSON Lines trace stays the one record (spans and
+  exports are views, tested equal); grader ≠ graded (Hermes ADR-0009); a benchmark on fakes measures
+  the harness, not the model, so a Phase 6 ceiling claim needs live runs.
+- **Prerequisites added:** OTel versions pinned and GenAI semconv status checked before 0023; the
+  eval-source gap vetted before 0025 (candidates named, none vetted); the run source for 0026.
+- **Run source decided the same day (user): no budget, a seeded fake model.** The fake is a
+  `ModelGateway` adapter picking among recorded reply variants by seed, so variation is injected at a
+  known rate and every trial reruns from its seed. Consequences written into ROADMAP: every 0026/0027
+  number is labelled a harness measurement; the Phase 6 entry criterion cannot be met in Phase 4,
+  because a fake's ceiling is whatever its variants were written to do. Phase 5's adopt / wrap / skip
+  argument still works on fakes, since it compares harnesses, not models.
+- Module graph not touched: no status flipped. Its Phase 4 detail is drawn when 0022 ships.
+
+## Update 2026-10-30 — lesson 0022 shipped: what the run cost; Phase 4 opens
+
+Lesson 0022 (*What the Run Cost*) opens Phase 4 with lab `14-reliability`. **1,991 words, 0 errors,
+0 warnings** from `tools/lesson-lint.mjs`; the term note, the map note and the module graph pass 0
+errors and 0 warnings. **One new Technical Name** against a budget of six: `span`. One em-dash, in
+the `<title>`. Two diagrams, render-verified 3× in headless Edge (2 SVGs each run, no "Syntax
+error" text).
+
+- **Scope: one lesson, no split.** The row's four parts (spans, sums equal `job_ended`, the pack's
+  share, the alert's call) share one function and fit the budget.
+- **Three things the row assumed that the trace does not hold, found by reading the seven files
+  before writing:**
+  - *A cut-off call has no reply line.* tight-budget and tight-deadline stop inside call 2, and the
+    supervisor books that call's estimated spend only into `job_ended.tokensSpent`. The report
+    books the remainder (126 and 118) to that call as `source: "remainder"`, priced at the output
+    rate as an upper bound ("$0.003150 at most", more than audit-atlas's completed call 2 at
+    $0.001600). Consequence, stated in the lesson, the ROADMAP row and the code: on those two runs
+    the totals match by construction, and the only token check left is the zero floor. The row's
+    "a test fails if they ever differ" holds fully on five of seven.
+  - *The trace records the pack's characters, not tokens.* The pack's share is estimated at the
+    mock's rule, four characters per token: 509 chars → 128 per call, within 1 of 0016's paired 129.
+    At the supervisor's output rule (3) it would be 170, and both pack tests fail.
+  - *No trace line names a model.* The price is an argument. Default claude-opus-4-8, lab 07's
+    `MODEL`; `--model claude-opus-5-5` also priced.
+  - Not changed: lab 07's trace schema. Adding a model id or pack tokens would change the schema
+    every earlier lab reads; the README lists both gaps.
+- **Prices pinned from the `claude-api` skill's model table, cached 2026-10-06** (Article IV.2):
+  claude-opus-4-8 $5 / $25 per MTok, claude-opus-5-5 $4 / $20. Stored as integer micro-dollars per
+  token, so sums compare with `===`.
+- **Measured** (zod 4.4.3, vitest 3.2.7, tsx 4.23.1, Node 22.14.0): all seven recordings agree
+  (217, 191, 183, 335, 494, 236, 80 tokens); audit-atlas $0.002765, 2,671 ms wall against 2,668 ms
+  of spans; the parked audit's tool span 6,803 ms, 6,802 of them waiting for a verdict (this
+  machine's times; parts g to j rewrite that file). The tight budget's alert is placed at call 2
+  (191 ≥ 152), on the estimated remainder, and labelled so; on all seven runs a placed alert
+  matches a noted one.
+- **TDD at one seam, red captured:** `tests/cost-report.test.ts` written first; red run: the file
+  failed to load (`Failed to load url ../src/cost-report.js`). Green on the first implementation
+  run, 26/26. One test added after review (two holds on one tool), 27. Mutations, each restored and
+  checked with `cmp`: zero floor removed → 1 fails; remainder never booked → 5; alert skips
+  estimated calls → 2; tool span starts after the wait → 1; every held gate takes the newest
+  verdict → 1. README break experiments 1–3 run and confirmed (exit 1 on a changed count, exit 1
+  with no `job_ended`, two pack tests fail at 3 chars per token).
+- **Totals:** lab 14 27 tests; lab 13 107, lab 12 74, exercise 11 21, exercise 08 29, all green;
+  `pnpm -r typecheck` passes (14 packages). Labs 07, 11, 12 and 13 unchanged.
+- **Found, not fixed, out of scope:** every recorded trace is gitignored (`hermes-sdk-lab/.gitignore`
+  excludes `traces/`, and lab 12's own ignore file excludes its `traces/`). Labs 12, 13 and now 14
+  test against local files a fresh clone does not have. Disclosed in the lesson footer, the README
+  and the map note. Committing them as fixtures is the user's decision.
+- **Article II.2 thread:** carried as in 0021, "the one record of what happened, apart from the
+  workflow graph and the knowledge graph". The spec reviewer read it as implied, not named; the
+  standards reviewer read it as correct, since "the three graphs" is a banned coinage. Kept.
+- **Judged rather than measured, per Article VIII.6:** SENT-3 read by eye (two passives fixed after
+  review); SENT-2, PARA-2, PARA-4, PARA-5, PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14 and
+  BAN-18 judged. Lab instructions judged against 20 words: the longest step is 16. Article III.1:
+  no network in this lab; the which-field table names the wire source of each count
+  (`message_start`, `message_delta`). Quiz option lengths checked by script; no correct option is
+  the uniquely longest.
+- **Recall debt, unchanged and growing:** say-it answers for lessons 0016 to 0021 are not in the
+  repo. No learner answers in this session. No promotions.
+- Bookkeeping: ROADMAP row 0022 ✅ with the measured win, 0023 ▶, Phase 4 header *open, 1 of 6
+  shipped*; module graph synced (P4 open, new Phase 4 module detail, the cost-report artifact node,
+  the S6 and S7 rows).
+
+### What the two-axis review caught, and what I did about it
+
+- **Standards, hard, a real bug:** approvals were joined to gates through one `lastApproval`
+  variable, so two holds on one tool would both take the newest verdict. Now each held gate takes
+  the oldest unanswered verdict for its tool, the order rule results already used. New test with
+  both gates written before either verdict: fails on the old join, passes now.
+- **Standards, hard, III.9:** the footer said "Lesson 0023 emits…", present tense for planned
+  work. Now "is planned to emit".
+- **Standards, Article I.4:** `tsconfig.json`'s comment said the lab imports nothing from earlier
+  labs but the trace parse; it also imports lab 12's recordings. Comment corrected.
+- **Standards, smells:** the `ModelSpan` literal built twice → one `modelSpan` helper; the 80% rule
+  in three places → `ALERT_SHARE` plus `alertThreshold` on the report; unused `Recording` type
+  removed. A negative remainder printed negative dollars → it is booked as zero, which also made a
+  separate remainder check dead code (the zero floor already leaves the totals unequal), so the
+  check was deleted and the floor is the rule a mutation now breaks.
+- **Standards, prose:** "the plain audit" (coined) → audit-atlas, the file's name; "bill" removed
+  (one name, the cost report); "call" as invoking the function → "pass"; two passives made active;
+  `ToolSpan` and `CostReport` declarations added beside values (III.4, inside code blocks); Q3's
+  feedback "lower" → "no higher"; map-note headings "Hermes anchoring" and "What the lesson does
+  not claim" renamed.
+- **Spec, a teaching error:** the say-it prompt asked why the sum test "is not true by definition",
+  which is false on two runs. Prompt now asks on which runs the check can catch a fault; §3 says
+  the totals match by construction there.
+- **Spec, a teaching error:** "the report checks recorded counts" was false for the one run with
+  an alert. §4 now says the placement rests on the estimated remainder, and the report prints
+  "placed on an estimate".
+- **Spec, a wrong answer key:** the README's mutation row named the wrong failing test, and lab
+  step 4 asked learners to predict it. Both now name the zero floor and its one failing test.
+- **Spec, IV.1:** `tsx` 4.23.1 added to every version pin.
+- **Spec, judged and kept:** `--model`, `heldMs` and `wallMs` go beyond the row. Kept: `--model`
+  follows from the missing model id, and `heldMs` is what makes the parked run's 6.8 s readable as
+  a human's time rather than the tool's.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

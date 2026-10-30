@@ -102,16 +102,33 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 
 ---
 
-## Phase 4 — Reliability and evaluation — *next; Phase 3 exit met 2026-10-30; lessons not yet defined*
+## Phase 4 — Reliability and evaluation — *open since 2026-10-30; 1 of 6 shipped*
 
 **Goal:** make claims about the loop with evidence: traces, costs, golden tasks, regressions.
-**Prerequisite:** vet a primary source for agent-harness evaluation (golden tasks, replayable fixtures) — RESOURCES gap flagged since session 1.
+**Sequence rule, applied:** hand-written before the library, as in Phases 0 and 3. Lesson 0022 computes spans and cost from the trace file with no telemetry package; lesson 0023 meets OpenTelemetry JS as a layer whose work you already did, and ends in an adopt / wrap / skip record like ADR 0001. Outputs land (0024) before anything scores them (0025), because a grader needs an addressable artifact to read.
+**Starting point:** lab 12's trace already records everything a cost report needs: every event carries `at` (epoch ms), every `reply` carries `inputTokens` / `outputTokens` and `requestId`, `job_ended` carries the totals, and `evidence_used` carries the pack's size. The S6 alert at 80% of the ceiling fires (lab 07 `supervisor.ts`, lab 12 `handlers.ts`), but only as a string in `job_ended.notes`, with no time and no step. What is missing: per-step attribution, dollars, any landed output (S8 has no code), and any score (S9 is the 0012 test suite, which checks behavior but grades nothing).
+**Guardrails:**
+- The JSON Lines trace stays the one record of what happened. Spans, cost reports and OpenTelemetry exports are computed from it or emitted beside it as views, and a test proves they agree with it. None becomes a second record.
+- A grader is never the thing it grades (Hermes ADR-0009, *accepted*). Graders are names in the golden-task file and functions in code, the shape lab 12's guards already have.
+- A benchmark run on fakes measures the harness, not the model. Phase 4 runs on fakes only (decided 2026-10-30, below), so no Phase 4 number is a claim about the model, and none can open the Phase 6 gate.
 
-- **Traces and Spans** — OpenTelemetry on the loop; cost and latency accounting per step; the trace graph earns its keep.
-- **Golden Tasks and Replay** — recorded fixtures grow into a benchmark harness; deterministic replays of probabilistic runs.
-- **Eval-Driven Decisions** — regression gates; the benchmark that any Phase 6 ambition must answer to.
+**Prerequisites:**
+- *Before 0023:* pin exact `@opentelemetry/*` versions and check in-session the status of the GenAI semantic conventions (`gen_ai.*` attributes); they were not yet stable when last read, so the lesson labels whatever it uses (Article IV.1–2).
+- *Before 0025:* vet a primary source for agent-harness evaluation (golden tasks, repeated trials, replayable fixtures). RESOURCES gap, flagged since session 1. Candidates to check, none vetted yet: the τ-bench paper (pass^k over repeated trials), Anthropic's published guidance on agent evals, and the Hermes OS harness record (`docs/harness-wiring.md` in the `hermes-os` repo; the ≥30-golden-question threshold in [hermes-job-control-plane.md](docs/hermes_os/architecture/hermes-job-control-plane.md), component 10).
+- *Run source, decided 2026-10-30 (user): no budget; a seeded fake model.* The fake draws its replies from a fixed set of recorded variants with a seed, so a trial's variation is chosen, and any trial is reproducible from its seed. Every number in 0026 and 0027 is labelled a harness measurement. Live runs stay out of Phase 4.
 
-**Exit criteria (from MISSION):** trace, resume, and diagnose runs; framework and architecture decisions made on measurements, not taste.
+| # (prov.) | Lesson | Lab (prov.) | The win | Status |
+|---|---|---|---|---|
+| 0022 | [What the Run Cost](lessons/0022-what-the-run-cost.html) | `14-reliability` | `--cost-report` exists: `costReport(events, price)` is pure and pairs `call_started` with `reply` (or with `job_ended` for a cut-off call) and `gate` with `tool_result`, each span carrying ms, tokens and integer micro-dollars from a pinned table (claude-opus-4-8 $5/$25, claude-opus-5-5 $4/$20, cached 2026-10-06); the sums equal `job_ended`'s totals on all seven recordings, and `agrees` turns false on a changed reply count or a remainder below zero; on the two cut-off runs the totals match by construction, so that floor is their only token check. Measured: the trace holds no model id and no pack tokens, and a cut-off call has no reply, so two runs book a remainder (126, 118), labelled estimated and priced at the output rate as an upper bound. The pack is estimated at 128 tokens per call from 509 chars, within 1 of 0016's paired 129. The tight budget's alert is placed at call 2 (191 ≥ 152), and on all seven runs a placed alert matches a noted one; the tight budget's placement is labelled estimated, because it rests on the remainder. 27 tests | ✅ |
+| 0023 | OpenTelemetry, Evaluated | `15-opentelemetry` | the same spans emitted through `@opentelemetry/api` to an in-memory exporter, offline; a test proves they match 0022's hand-computed spans field for field; which-layer-moved table (span ids, parent links, timing and export moved; what counts as a step, the dollars and the record did not); the decision written as a course ADR: adopt as the export format, wrap behind a port, or skip || ▶ |
+| 0024 | Landing the Outputs | `14-reliability` continues | S8 gets code: every run files one artifact under `artifacts/<job>/`, linked to its trace and its cost report, and a killed run lands its partial output marked failed rather than nothing; a run that ends with no artifact is a failing test; mutation of the repo stays out of scope (Wave 1 does zero writeback, so landing writes files, never commits) | ○ |
+| 0025 | Golden Tasks | `16-benchmark` | a Zod-admitted golden-task file (spec + recorded fixture + named graders); a runner scores every task offline and writes a scorecard; graders read the landed artifact and the trace, never the loop's internals; measured: a planted defect in the loop drops a named grader on a named task, and the scorecard says which | ○ |
+| 0026 | Many Runs, One Verdict | `16-benchmark` continues | one trial is an anecdote: a seeded fake model (a `ModelGateway` adapter that picks among recorded reply variants by seed) runs each task *k* times; the scorecard reports pass rate and pass^k (did every trial pass); any failed trial reruns identically from its seed; measured: how many trials it takes before the verdict stops moving at a known injected failure rate, labelled a harness measurement | ○ |
+| 0027 | The Regression Gate | `16-benchmark` continues | a baseline scorecard is committed; a gate refuses any change whose score drops below it, measured on a planted regression; the Hermes promotion rule (≥10 consecutive clean runs + a signed ADR) applied to one of the course's own choices; the benchmark Phase 5 and the Phase 6 gate must answer to is frozen and named | ○ |
+
+*Provisional shape: lab `14` carries lab 12's codebase forward (ADR 0001 kept lab 12's interpreter as the engine), and exercise 08's, lab 11's and lab 12's tests stay the regression proof. Lab `15` holds the telemetry library so lab 14 stays library-free, the way lab 13 sat beside lab 12. Lab `16` reads lab 14's artifacts and traces and never imports its internals. Id 0022 is firm; 0023–0027 may compress or split. 0023 is the likeliest to split (export and decision), 0026 and 0027 the likeliest to merge.*
+
+**Exit criteria (from MISSION):** trace, resume, and diagnose runs; framework and architecture decisions made on measurements, not taste. 0022 and 0024 meet *diagnose* (where the tokens and the time went, and what each run left behind); 0023 and 0027 meet *decisions on measurements*; trace and resume were met in Phases 1 and 3.
 
 ---
 
@@ -129,6 +146,7 @@ The course builds the **Hermes Spec-to-Evidence Loop** — a bounded, typed, obs
 ## Phase 6 — Multi-agent — *⛔ gated on benchmark evidence*
 
 **Entry criterion (hard):** a Phase 4 benchmark showing a mission-relevant task where the single-agent loop's ceiling — not its tuning — is the blocker. No evidence, no phase. MISSION lists premature multi-agent demos as explicitly out of scope.
+**Consequence of the 2026-10-30 run-source decision:** Phase 4 runs on a seeded fake only, and a fake's ceiling is whatever its variants were written to do. The criterion stays unmet until a live benchmark run exists, which needs a budget.
 
 - **When Two Agents Beat One** — coordination cost accounted honestly against the measured single-agent baseline.
 - **Orchestration, As Much As the Evidence Buys** — only the patterns the benchmark justifies; the loop remains the unit of control.

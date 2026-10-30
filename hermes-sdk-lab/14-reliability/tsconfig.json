@@ -1,0 +1,10 @@
+{
+  // Same shared config as every exercise. This package reads the trace
+  // files labs 07, 11 and 12 wrote. It imports lab 07's TraceEvent and
+  // parseTrace, and lab 12's list of recordings and the reader that
+  // parses them. Nothing is copied. No telemetry package: lesson 0022
+  // computes every span by hand, so lesson 0023 can compare a library's
+  // spans against these.
+  "extends": "../tsconfig.base.json",
+  "include": ["src", "tests"]
+}
