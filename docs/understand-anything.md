@@ -57,11 +57,30 @@ The root run only merges files named `*knowledge-graph*.json` in `.ua/`.
 
 The run merges the wiki graph first, then analyzes the lessons, the lab and the ADRs. It pauses once to confirm `.ua/.understandignore`. Confirm it unchanged unless you want to add `docs/hermes_os/`.
 
-### 4. Check the merge
+### 4. Bridge the wiki half to the lessons and the lab
 
-Open the dashboard with `/understand-dashboard` and follow links from a lesson file to its term notes.
+```
+node tools/ua-bridge-wiki.mjs
+```
 
-This step decides whether the merge worked. It has not been tested on this repo. Wiki node IDs are relative to `wiki/` (`article:terms/<slug>`), while root node IDs use repo paths (`document:lessons/…`). If no links join the two halves, the result is two graphs side by side. The fix then is a small script that adds edges from each lesson map to its files, using the `material:` and `lab:` fields in its frontmatter.
+The merge alone adds no edges between the two halves. Wiki node IDs are relative to `wiki/` (`article:lessons/<map>`), while root node IDs use repo paths (`file:lessons/<lesson>.html`). The script reads each lesson map's `material:` and `lab:` frontmatter and adds two edges per map:
+
+| Edge | From | To |
+|---|---|---|
+| `documents` | `article:lessons/<map>` | `file:<material>`, the lesson page |
+| `related` | `article:lessons/<map>` | `document:<lab>/README.md`, the lab module |
+
+The lab README already links to the module's code, so every lab `.ts` file is two hops from its lesson map. The script adds an edge only when both nodes exist, and it is idempotent. Run it after every `/understand`, because a rebuild drops the added edges.
+
+Measured on the first build (2026-10-31):
+
+- 54 edges added. The only unresolved map is lesson 0006b, which has no lab.
+- 209 of 212 tracked lab files have a graph node. The other three are `.gitignore` files and the lockfile, which the plugin skips by default.
+- Every lesson map with a lab reaches all of its lab's `.ts` files within two hops.
+
+### 5. Check the dashboard
+
+Open it with `/understand-dashboard`. Follow a path from a term note to its lesson map, then to the lesson page and the lab code.
 
 ## Optional, after the merge
 
@@ -75,7 +94,7 @@ This step decides whether the merge worked. It has not been tested on this repo.
 ## Refreshing after new lessons
 
 1. Run `node tools/build-wiki-index.mjs` and commit.
-2. Repeat steps 1–3. `/understand` updates only what changed since the recorded commit.
+2. Repeat steps 1–4. `/understand` updates only what changed since the recorded commit.
 
 ## What git tracks
 
