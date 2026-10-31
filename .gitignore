@@ -1,0 +1,4 @@
+# Understand Anything: keep the ignore rules, not the generated graphs.
+.ua/*
+!.ua/.understandignore
+wiki/.ua/

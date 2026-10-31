@@ -1,0 +1,45 @@
+# .understandignore for the root /understand run (gitignore syntax).
+# The plugin's built-in defaults already drop node_modules/, dist/, lock files,
+# images, PDFs and *.min.js. This file adds what is specific to this repo.
+#
+# What the root graph keeps: lessons/*.html, hermes-sdk-lab/ source, specs,
+# fixtures and tasks, docs/adr/, and the governing files at the root
+# (CLAUDE.md, MISSION.md, ROADMAP.md, RESOURCES.md).
+
+# The wiki gets its own graph from /understand-knowledge, merged in later.
+# Analyzing it here too would put every note in the graph twice.
+wiki/
+
+# Generated lab output. runs/ alone is ~16,500 files; all three are gitignored.
+hermes-sdk-lab/**/runs/
+hermes-sdk-lab/**/traces/
+hermes-sdk-lab/**/artifacts/
+
+# The learner's own records and session logs, not course content.
+learning-records/
+agent-transcripts/
+
+# History and post-hoc reviews. The decisions they record already live in
+# ROADMAP.md, docs/adr/ and wiki/course/course-pedagogy.md.
+NOTES.md
+lessons_review.md
+
+# Authoring tooling and lesson page plumbing.
+tools/
+assets/
+docs/style/
+docs/agents/
+skills-lock.json
+
+# Hermes OS reference docs (system of record, ~2.9 MB). Left out for the first
+# run. Delete this line if the graph cannot explain steps S1–S9 without them.
+docs/hermes_os/
+
+# Editor, agent and scratch folders.
+.agents/
+.claude/
+.obsidian/
+.serena/
+.cmem-projects/
+.scratch/
+.github/
