@@ -2543,6 +2543,35 @@ SVGs each run, no "Syntax error" text).
   adds its name. Phase 4 marked complete because 0027 was its last row.
 - After the fixes: lab 16 67 tests, `tsc` clean, lesson 0 errors and 0 warnings at 1,844 words.
 
+## Update 2026-10-31 — glossary gaps closed; reference notes get a `first_used` field
+
+User asked to complete the glossary for missing terms. Mechanical checks first found **no** gap of the
+expected kind: every `<dfn>` in all 29 lessons has a note, every `[[wikilink]]` in `wiki/`,
+`learning-records/` and `lessons/` resolves, and every promotion a learning record claims is reflected
+in the note's status. The user then chose four smaller gaps, all done:
+
+- **Five reference notes** for words the 0019–0027 study notes rely on with no note: [[cost-report]],
+  [[budget-alert]] (0022), [[langgraph-js]], [[interrupt]] (0020), [[opentelemetry]] (0023). Facts taken
+  from the lessons and their version pins. All lint 0/0.
+- **They carry `lesson: ""` on purpose.** The linter's TERM-1 asks a lesson for a `<dfn>` of every term
+  registered to it, and BUDGET-terms counts them. Registering "cost report" to 0022 would have failed a
+  shipped lesson. Lessons 0001, 0020, 0022, 0023 re-linted after the change: all pass, 0 errors.
+- **New frontmatter field `first_used`** (reference notes only) names the lesson that first uses the
+  word. Added to the five new notes and to the seven demoted notes (all `"0001"`), which fixes the empty
+  Lesson column flagged as an accepted side effect on 2026-08-17. GLOSSARY.md: the All-terms view shows
+  `choice(lesson, lesson, first_used)`, *Awaiting promotion* now excludes `lesson: ""`, and a new
+  *Reference notes* view lists them. Schema table documents the field. The 2026-08-17 house-rule
+  sentence (29 words, SENT-1) was split while there; GLOSSARY.md now lints 0 errors.
+- **Map-note term lists:** 0005 now lists [[discriminated-union]] and 0006 lists [[model-gateway]], both
+  moved there on 2026-08-16 without the map line being updated. Three other diff hits were false alarms:
+  0003's list wraps two lines, 0006a uses a table, and 0016/0023 label their extras as reprise.
+- **Six missing study notes** written in the 0019–0027 reconstructed format: records 0028–0033 for
+  lessons 0002, 0006a, 0006b, 0016, 0017, 0018. Same caveat as the others: nothing rerun, recall not
+  assessed, no promotions.
+- **Judged, not measured:** the linter does not check `NOTES.md` or learning records (Article VIII.7).
+  DataView queries not rendered in Obsidian this session; `choice()` and truthiness of `""` are per
+  DataView's documented semantics.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

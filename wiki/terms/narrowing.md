@@ -4,6 +4,7 @@ aliases:
   - type narrowing
 type: glossary-term
 lesson: ""
+first_used: "0001"
 phase: 0
 category: type-system
 status: demonstrated

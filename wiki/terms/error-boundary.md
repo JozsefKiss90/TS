@@ -4,6 +4,7 @@ aliases:
   - typed errors
 type: glossary-term
 lesson: ""
+first_used: "0001"
 phase: 0
 category: sdk-layer
 status: introduced

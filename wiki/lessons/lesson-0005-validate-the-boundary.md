@@ -59,7 +59,7 @@ Step S1 (the envelope is parsed) rejects invalid work before a token is spent, w
 
 ## Terms introduced
 
-[[json-boundary]] · [[zod-schema]] · [[safe-parse]] · [[schema-inference]]
+[[json-boundary]] · [[zod-schema]] · [[safe-parse]] · [[schema-inference]] · [[discriminated-union]], registered here from lesson 0001
 
 ```dataview
 TABLE term AS Term, category AS Category, status AS Status

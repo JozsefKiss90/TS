@@ -5,6 +5,7 @@ aliases:
   - x-api-key
 type: glossary-term
 lesson: ""
+first_used: "0001"
 phase: 0
 category: protocol
 status: introduced

@@ -80,7 +80,7 @@ The lesson went from 3,860 words and 60 linter errors to 1,992 words and none. T
 
 ## Terms introduced
 
-[[port]] · [[adapter]] · [[fake]] · [[dependency-inversion]]
+[[model-gateway]] · [[port]] · [[adapter]] · [[fake]] · [[dependency-inversion]]
 
 ```dataview
 TABLE term AS Term, category AS Category, status AS Status
