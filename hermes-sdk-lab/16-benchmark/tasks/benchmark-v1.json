@@ -1,0 +1,129 @@
+{
+  "tasks": [
+    {
+      "id": "audit",
+      "spec": {
+        "title": "Audit the atlas graph",
+        "owner": "themis",
+        "instruction": "Summarize the atlas graph health check in three bullet points.",
+        "costCeilingTokens": 2000,
+        "allowedTools": [
+          "graph_health"
+        ],
+        "outputPath": "vault/audits/atlas.md"
+      },
+      "fixture": [
+        {
+          "recording": "../../07-tool-loop/traces/audit-atlas.jsonl",
+          "weight": 9
+        },
+        {
+          "recording": "../../12-workflow-graph/traces/parked-audit.jsonl",
+          "weight": 1
+        }
+      ],
+      "expect": {
+        "status": "done",
+        "outcome": "landed"
+      },
+      "graders": [
+        "ends_as_expected",
+        "reports_tool_output",
+        "within_ceiling"
+      ]
+    },
+    {
+      "id": "held-audit",
+      "spec": {
+        "title": "Audit the atlas graph",
+        "owner": "themis",
+        "instruction": "Summarize the atlas graph health check in three bullet points.",
+        "costCeilingTokens": 2000,
+        "allowedTools": [
+          "graph_health"
+        ],
+        "approvalRequired": [
+          "graph_health"
+        ],
+        "outputPath": "vault/audits/atlas.md"
+      },
+      "fixture": "../../07-tool-loop/traces/audit-atlas.jsonl",
+      "operator": "approves",
+      "expect": {
+        "status": "done",
+        "outcome": "landed"
+      },
+      "graders": [
+        "ends_as_expected",
+        "asks_before_held_tool",
+        "reports_tool_output",
+        "within_ceiling"
+      ]
+    },
+    {
+      "id": "capped-audit",
+      "spec": {
+        "title": "Audit the atlas graph in one call",
+        "owner": "themis",
+        "instruction": "Summarize the atlas graph health check in three bullet points.",
+        "costCeilingTokens": 2000,
+        "maxModelCalls": 1,
+        "allowedTools": [
+          "graph_health"
+        ],
+        "outputPath": "vault/audits/atlas.md"
+      },
+      "fixture": "../../07-tool-loop/traces/audit-atlas.jsonl",
+      "expect": {
+        "status": "failed",
+        "outcome": "gave_up"
+      },
+      "graders": [
+        "ends_as_expected",
+        "within_ceiling"
+      ]
+    },
+    {
+      "id": "grounded-audit",
+      "spec": {
+        "title": "Audit the atlas graph",
+        "owner": "themis",
+        "instruction": "Summarize the atlas graph health check in three bullet points. Cite a canonical id for every claim.",
+        "costCeilingTokens": 2000,
+        "allowedTools": [
+          "graph_health"
+        ],
+        "evidenceQueries": [
+          "supervisor",
+          "trace"
+        ],
+        "evidenceLimit": 3,
+        "outputPath": "vault/audits/atlas.md"
+      },
+      "fixture": "../../11-evidence-in-the-loop/traces/audit-atlas-grounded.jsonl",
+      "pack": {
+        "text": "[MOD-004] Job supervisor loop is implemented (module).\n[MOD-006] Trace writer is implemented (module).",
+        "queries": [
+          "supervisor",
+          "trace"
+        ],
+        "snapshot": "dev-graph-2026-09-09",
+        "assembledAt": "2026-09-29T23:54:41.397Z",
+        "ids": [
+          "MOD-004",
+          "MOD-006"
+        ]
+      },
+      "expect": {
+        "status": "done",
+        "outcome": "landed"
+      },
+      "graders": [
+        "ends_as_expected",
+        "uses_the_pack",
+        "reports_tool_output",
+        "within_ceiling"
+      ]
+    }
+  ]
+}

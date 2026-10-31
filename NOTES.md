@@ -2470,6 +2470,79 @@ SVGs each run, no "Syntax error" text).
   "τ-bench" kept as proper names with a gloss; the "New today" callout kept, as in every shipped lesson.
 - After the fixes: lab 16 48 tests, `tsc` clean, lesson 0 errors.
 
+## Update 2026-10-31 — lesson 0027 shipped: the regression gate; ADR 0003; Phase 4 complete
+
+- **Primary source checked first:** Anthropic's *Demystifying evals for AI agents*, section
+  "Capability vs. regression evals": regression evals "should have a nearly 100% pass rate" and
+  catch backsliding. The lesson's primary-source task asks how `benchmark-v1` carries audit's known
+  failure at 19 of 20; the answer is the per-seed baseline.
+- **Lab `16-benchmark`, part three:** `tasks/benchmark-v1.json` (0025's four tasks, audit on 0026's
+  9 : 1 recordings); `benchmarkHash` (sha256 over the task file and each recording, CRLF read as LF,
+  because `core.autocrlf` is true here); strict, clock-free `BaselineSchema` keeping failed trials by
+  seed and grader plus the ADR path; pure `gate` (refusals `benchmark_changed`, `counts_changed`,
+  `tasks_changed`, `regression`; fixed failures reported, baseline unmoved); `promote` (ADR status
+  line accepted and naming the hash, then ten consecutive clean runs with identical bytes);
+  `dropsThePackAfter(limit)`, kept out of `DEFECTS` because 0025's suite expects each of those to
+  fail on one pass. `pnpm gate`, `--defect`, `--promote --adr`.
+- **Design decisions:** the baseline compares seed by seed, not by count, because seeds pair trials
+  on the fake (a swap at 19 of 20 is refused). The promotion rule guards the course's choice of
+  baseline; on a fake, "consecutive clean runs" can only test that the harness repeats itself, so the
+  planted defect is one that leaks state across runs. The lesson says so, and gives pass^10 = 0.362
+  from 0026's 4,000 trials as the number a live promotion would face.
+- **User decision:** ADR 0003 (freeze `benchmark-v1`; the real loop's scorecard is its baseline;
+  Phase 5 answers to it; Phase 6 does not open on it) accepted 2026-10-31 when asked. Before that, a
+  promotion with the ADR at *proposed* was refused at 0 runs; this is in the lesson.
+- **Measured** (zod 4.4.3, vitest 3.2.7, tsx 4.23.1, Node 22.14.0, Windows 11): real loop passes
+  (audit 19 of 20, seed 4); `ignores-approval-list` 20 regressions, `ignores-call-cap` 20,
+  `drops-the-pack` 60, each on its own task; hand edit of lab 07 `gateToolCall` (held → auto) the
+  same 20 as the first, restored; weight 9 → 3 refused as `benchmark_changed` before any trial;
+  `drops-the-pack-after-200` passes one gate run, promotion refused after 2 clean runs; real loop
+  promoted after 10 runs, about 20 s through `pnpm gate` (about 12 s in one process). Baseline 764 bytes.
+- **TDD, red captured:** 18 tests written first; red run: the file failed to load (no
+  `benchmark.ts`). Two failed until the baseline was promoted, as intended. Mutation checks, six,
+  each killed (1 / 3 / 1 / 1 / 1 / 2 failing tests), each restored.
+- **Totals:** lab 16 67 tests (27 + 21 + 19); lab 15 26, lab 14 56, lab 13 107, lab 12 74,
+  exercise 11 21, exercise 10 32, exercise 08 29, all green; `pnpm -r typecheck` passes. Labs 07,
+  12, 14 unchanged.
+- **Prose:** "harness" is a banned word for the linter, so the lesson says "the benchmark code and the
+  loop". Five new Technical Names: benchmark, baseline, regression, regression gate, promotion.
+  III.5: no collision table; "gate" keeps one meaning (a check that refuses a move), and the
+  regression gate is taught from `gateToolCall` (III.6). III.1: no network; the baseline's bytes are
+  shown. Linter 0 errors, 0 warnings on the lesson, map and term notes. Judged: SENT-2, SENT-3,
+  PARA-2, PARA-4 to PARA-6, TERM-2, TERM-3, TERM-5, TERM-6, BAN-6 to BAN-14, BAN-18; lab steps
+  against 20 words.
+- **Recall debt, unchanged and growing:** say-it answers for lessons 0016 to 0026 are not in the
+  repo. No promotions of glossary terms.
+- Bookkeeping: ROADMAP row 0027 ✅, Phase 4 *complete, 6 of 6*, exit criterion marked met;
+  module graph synced (R27 ✅, gate node, S9 row).
+
+### What the two-axis review caught, and what I did about it
+
+- **Spec, a wrong number:** the baseline is 764 bytes, not 730. The 730 came from a scratch run whose
+  ADR path was shorter. Corrected everywhere.
+- **Both, promotion time:** ADR said 12 s, the rest 20 s. Both are true (in-process vs `pnpm gate`
+  with `tsx` start-up); the ADR now gives both.
+- **Standards, Article V.1:** every correct quiz option was the only one with a comma clause, and
+  Q1's was shortest. Distractors rewritten with comma clauses; lengths 55–64.
+- **Spec, "signed":** the lesson now says "accepted ADR" for the course and explains that the
+  signature is the status line the user set. "Signed" stays only when quoting the Hermes README.
+- **Spec, Phase 6 and "score drops below":** recorded in the ROADMAP row as departures. The baseline
+  names the four tasks a live run must score; the gate refuses a new failure even at the same count.
+- **Standards, III.9:** `promotion.md` said Hermes "promotes … the same way" in the present tense.
+  Now "plans", graded illustrative only. Mission callout now names the boundary-check thread plainly.
+- **Standards, bugs:** an `--adr` path the baseline schema cannot record (e.g. `./docs/...`) crashed
+  on run 1 with a ZodError; `promote` and `pnpm gate` now refuse it first (test added, seen green
+  after the fix; it would have thrown before). A byte mismatch with unchanged baseline fields gave an
+  empty reason; it now says "the scorecard bytes". The task file is admitted before hashing, so a
+  broken file is a usage error. The three hash comparisons share `checkBenchmark`.
+- **README:** stale "no gate: lesson 0027" line replaced.
+- **Judged and kept:** the real promotion ran with no prior baseline, so its clean runs tested
+  same bytes only; the regression half is shown by `drops-the-pack-after-200` and the tests, and the
+  lesson's table says which is which. `{ task, seed, grader }` recurs (possible Data Clump), kept as
+  plain objects to match 0026's `TrialRun`. `pnpm gate` hard-codes `benchmark-v1`; ADR 0003 says a v2
+  adds its name. Phase 4 marked complete because 0027 was its last row.
+- After the fixes: lab 16 67 tests, `tsc` clean, lesson 0 errors and 0 warnings at 1,844 words.
+
 ## Workspace conventions
 
 *(Kept for history and detail; where anything below conflicts with CLAUDE.md — the constitution since 2026-07-25 — CLAUDE.md wins.)*

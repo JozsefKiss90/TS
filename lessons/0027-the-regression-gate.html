@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0027 — The Regression Gate</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+<script src="../assets/vendor/mermaid.min.js" defer></script>
+<script src="../assets/mermaid-init.js" defer></script>
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Hermes · Phase 4 · Lesson 0027 · lab exercise 16-benchmark · ~45–60 min</p>
+  <h1>The Regression Gate</h1>
+  <p class="lede">The loop passed its tasks yesterday. Which committed file records what passed,
+  and which check refuses a change that does worse?</p>
+</header>
+
+<div class="callout mission">
+  <strong>Why this matters for Hermes</strong>
+  S9 (score the run) gains a refusal. It continues the course rule that every JSON boundary gets a
+  runtime check: the committed file is parsed before the gate reads it. The win: four planted defects
+  are refused, and the record of what passed moves only after ten clean runs and an ADR you accepted.
+</div>
+
+<h2>1 · A frozen benchmark and its baseline</h2>
+
+<p>A <dfn>benchmark</dfn> is a fixed set of golden tasks, their recordings, and the trial counts n
+and k, named and hashed. Lab 16's is <code>benchmark-v1</code>: lesson 0025's four tasks, with
+lesson 0026's two recordings for <code>audit</code>, at n = 20 and k = 4.</p>
+
+<p>A score only compares with a score from the same benchmark. A weight of 3 instead of 9 makes
+<code>audit</code> fail more often, and no loop changed. So the benchmark gets a hash.</p>
+
+<pre><code>// 16-benchmark/src/benchmark.ts, abridged
+export function benchmarkHash(taskFile: string): string {
+  const text = normalized(taskFile);                  // CRLF read as LF
+  const hash = createHash("sha256").update(`${text}\n`);
+  for (const recording of recordingsIn(JSON.parse(text)))
+    hash.update(`${recording}\n${normalized(resolve(dirname(taskFile), recording))}\n`);
+  return `sha256:${hash.digest("hex")}`;              // "sha256:22a1ae48ac33…"
+}</code></pre>
+
+<p>The hash reads every recording, not only the task file. A re-recorded fixture is a new
+benchmark too. Git on Windows may check text out with CRLF line endings, so the hash reads them as
+LF. Without that line, a test fails.</p>
+
+<p>A <dfn>baseline</dfn> is the committed scorecard that every later change to the loop is compared
+with. It keeps each failed trial by seed and grader, not only a count.</p>
+
+<pre><code>type Baseline = {                    // baselines/benchmark-v1.json, abridged:
+  benchmark: string; hash: string;   { "benchmark": "benchmark-v1", "hash": "sha256:22a1ae48…",
+  loop: string; n: number; k: number;  "loop": "real", "n": 20, "k": 4,
+  adr: string;                         "adr": "docs/adr/0003-freeze-benchmark-v1-as-the-baseline.md",
+  tasks: { id; passed; passHatK;       "tasks": [ { "id": "audit", "passed": 19, "passHatK": 0.8,
+    failures: { seed;                    "failures": [ { "seed": 4,
+      graders }[] }[];                     "graders": ["reports_tool_output"] } ] }, … ] }
+};</code></pre>
+
+<p><code>admitBaseline</code> parses the file with a strict Zod schema before the gate reads it.
+An unknown key or a missing <code>adr</code> is refused. The file has no clock and is 764 bytes.</p>
+
+<div class="callout">
+  <p><strong>New today.</strong> Four ideas are new.</p>
+  <ul>
+    <li>A hash fixes what a score was measured on.</li>
+    <li>A regression is a trial failure the baseline does not list.</li>
+    <li>A pure gate refuses any change that has one.</li>
+    <li>The baseline moves only by promotion: ten clean runs and an accepted ADR.</li>
+  </ul>
+  <p>Reprise: <code>gateToolCall</code> (0010), golden tasks, graders and planted defects (0025),
+  seeds, pass^k and the parked audit (0026).</p>
+</div>
+
+<h2>2 · The gate refuses a regression</h2>
+
+<p>Lesson 0010's <code>gateToolCall</code> reads the spec and answers <code>auto</code>,
+<code>hold</code> or <code>not_permitted</code>. It runs nothing. The new gate has the same shape,
+over a scorecard.</p>
+
+<p>A <dfn>regression</dfn> is a trial failure that the baseline does not list: the same task, the
+same seed, and the same grader. A <dfn>regression gate</dfn> is a check that refuses a change to the
+loop when its scorecard has a regression against the baseline.</p>
+
+<pre><code>// 16-benchmark/src/gate.ts
+import { gate } from "./gate.js";
+const verdict = gate(baseline, { hash, card });   // pure: reads, answers, runs nothing
+verdict.ok;                                       // false
+verdict.refusals[0];                              // { kind: "regression", task: "held-audit",
+                                                  //   seed: 1, grader: "asks_before_held_tool" }</code></pre>
+
+<table>
+  <tr><th>Syntax</th><th>Meaning</th><th>At run time</th></tr>
+  <tr><td><code>gate(baseline, candidate)</code></td><td>compare one candidate with the baseline</td><td>set lookups over strings, no file and no run</td></tr>
+  <tr><td><code>baseline: Baseline</code></td><td>the committed file, already admitted</td><td>the object <code>admitBaseline</code> returned</td></tr>
+  <tr><td><code>candidate.hash</code></td><td>the benchmark the candidate ran</td><td><code>benchmarkHash</code> of the task file today</td></tr>
+  <tr><td><code>candidate.card</code></td><td>the candidate's trials</td><td>the <code>TrialScorecard</code> from lesson 0026's <code>runTrials</code></td></tr>
+  <tr><td>return</td><td><code>{ ok: true; fixed }</code> or <code>{ ok: false; refusals }</code></td><td>a discriminated union, like lab 07's admission results</td></tr>
+</table>
+
+<p>There is one signature and no overload. A signature tells TypeScript what may be called. The
+implementation does the runtime work.</p>
+
+<table>
+  <tr><th>What changed</th><th>Refusal</th><th>Why</th></tr>
+  <tr><td>a weight, spec, grader list or recording</td><td><code>benchmark_changed</code></td><td>the scores measure different things, so no trial is compared</td></tr>
+  <tr><td>n or k</td><td><code>counts_changed</code></td><td>other seeds ran, so the trials do not pair</td></tr>
+  <tr><td>the list of tasks</td><td><code>tasks_changed</code></td><td>a task with no baseline has nothing to compare</td></tr>
+  <tr><td>the loop, and a trial now fails</td><td><code>regression</code></td><td>the same seed passed in the baseline</td></tr>
+  <tr><td>the loop, and a failed trial now passes</td><td>none, but reported as <code>fixed</code></td><td>the baseline moves only by promotion</td></tr>
+</table>
+
+<p>The seed picks the recording, so seed 4 replays the same trial on both sides. A pass count would
+miss a change that fixes seed 4 and breaks seed 2. That change still scores 19 of 20. A test builds
+it, and the gate refuses seed 2.</p>
+
+<table>
+  <tr><th>Measured, <code>pnpm gate</code></th><th>Verdict</th></tr>
+  <tr><td>the real loop</td><td>passed: audit 19 of 20, the rest 20 of 20</td></tr>
+  <tr><td><code>ignores-approval-list</code></td><td>refused: 20 regressions, held-audit, <code>asks_before_held_tool</code></td></tr>
+  <tr><td><code>ignores-call-cap</code></td><td>refused: 20 regressions, capped-audit, <code>ends_as_expected</code></td></tr>
+  <tr><td><code>drops-the-pack</code></td><td>refused: 60 regressions, grounded-audit, three graders</td></tr>
+  <tr><td>lab 07's <code>gateToolCall</code> edited to return <code>auto</code> for a held tool</td><td>refused: the same 20 regressions as <code>ignores-approval-list</code></td></tr>
+  <tr><td>audit weight 9 changed to 3</td><td>refused before any trial: <code>benchmark_changed</code></td></tr>
+</table>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart LR
+    F["benchmark-v1.json<br/>and 3 recordings"] -->|"benchmarkHash"| H{"hash equals<br/>the baseline's?"}
+    H -->|"no"| X["REFUSED<br/>benchmark_changed"]
+    H -->|"yes"| R["runTrials<br/>80 trials"]
+    R --> G["gate"]
+    B[("baselines/<br/>benchmark-v1.json")] -->|"admitBaseline"| G
+    G -->|"a new failure"| N["REFUSED<br/>regression"]
+    G -->|"none"| P["PASSED<br/>fixed failures listed"]
+</pre>
+<figcaption>Diagram 1. The hash is checked before any trial runs. The gate compares trials seed by
+seed.</figcaption>
+</figure>
+
+<h2>3 · Promotion needs ten clean runs and an accepted ADR</h2>
+
+<p>A <dfn>promotion</dfn> replaces the baseline. It needs ten consecutive clean runs and an
+accepted ADR that names the benchmark's hash. The Hermes OS README asks for a signed ADR. Here the
+signature is the status line, which you set to accepted. Here it guards one course choice: which scorecard becomes the baseline.</p>
+
+<p><code>promote</code> checks the ADR first. Then it runs the whole benchmark ten times, each run
+into a fresh folder. A run is clean when it has no regression and writes the same scorecard bytes
+as run 1.</p>
+
+<p>On a seeded fake, every run of an unchanged loop is the same. So ten runs test the benchmark code and the loop. They ask
+whether any state leaks from one run into the next. The lab plants a defect that only that test finds.</p>
+
+<pre><code>// 16-benchmark/src/gate-defects.ts, abridged
+export function dropsThePackAfter(limit: number): NamedLoop {
+  let jobs = 0;                                      // lives as long as the process
+  return { name: `drops-the-pack-after-${limit}`, run: (spec, gateway, { pack, ...options }) =>
+    REAL_LOOP.run(spec, gateway, ++jobs &gt; limit ? options : { ...options, ...(pack ? { pack } : {}) }) };
+}</code></pre>
+
+<table>
+  <tr><th>Measured</th><th>Result</th></tr>
+  <tr><td>ADR 0003 at status proposed, then <code>--promote</code></td><td>refused after 0 runs: the ADR is not accepted</td></tr>
+  <tr><td>the real loop, after you accepted ADR 0003</td><td>promoted after 10 clean runs, about 20 s</td></tr>
+  <tr><td><code>drops-the-pack-after-200</code>, one <code>pnpm gate</code></td><td>passed</td></tr>
+  <tr><td><code>drops-the-pack-after-200</code>, <code>--promote</code></td><td>refused after 2 clean runs: run 3 has 60 regressions</td></tr>
+</table>
+
+<p>Each gate run is 80 jobs, so jobs 201 to 240 fall in run 3. One clean gate run is one sample of
+the code under test. That is lesson 0026's point again, one level up.</p>
+
+<figure class="diagram">
+<pre class="mermaid">
+flowchart TB
+    A{"ADR accepted<br/>and names the hash?"} -->|"no"| X["REFUSED, 0 runs"]
+    A -->|"yes"| R["run j into run-j/"]
+    R --> C{"no regression<br/>and bytes equal run 1?"}
+    C -->|"no"| Y["REFUSED after j − 1<br/>clean runs"]
+    C -->|"yes, j &lt; 10"| R
+    C -->|"yes, j = 10"| W["write the baseline"]
+</pre>
+<figcaption>Diagram 2. The signature and the runs are separate conditions. Either one alone
+refuses.</figcaption>
+</figure>
+
+<p>Ten clean runs mean more with a live model. Lesson 0026 measured 3,614 passes in 4,000 audit
+trials. From that, pass^10 is 0.362. A task that fails one time in ten passes ten runs in a row
+about one time in three.</p>
+
+<p>ADR 0003 freezes <code>benchmark-v1</code>. Phase 5 must pass <code>pnpm gate</code> with an
+Agent SDK loop in place of lab 12's. Phase 6 needs a live run of the same four tasks, so this baseline
+cannot open it.</p>
+
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Where it lives, or the record that governs it</th></tr>
+  <tr><td><code>benchmarkHash</code>, the baseline, <code>gate</code>, <code>promote</code>, <code>pnpm gate</code></td><td>implemented</td><td><code>16-benchmark/</code></td></tr>
+  <tr><td><code>benchmark-v1</code> frozen as the benchmark for Phase 5</td><td>implemented</td><td><a href="../docs/adr/0003-freeze-benchmark-v1-as-the-baseline.md">ADR 0003</a>, accepted 2026-10-31</td></tr>
+  <tr><td>A gate with a tolerance for a live model</td><td>planned</td><td>ADR 0003, "Revisit when". It needs a budget</td></tr>
+  <tr><td>The Phase 6 entry criterion</td><td>planned</td><td><a href="../ROADMAP.md">ROADMAP</a> Phase 6. It needs live runs</td></tr>
+  <tr><td>Promotion after at least 10 consecutive clean runs and a signed ADR, in Hermes OS</td><td>illustrative only</td><td>Hermes OS <code>README.md</code>, Guarantees. No PDR or ADR text states the number</td></tr>
+</table>
+
+<h2>4 · The exercise</h2>
+
+<p>Commands and measured outputs live in <code>16-benchmark/README.md</code>.</p>
+
+<ol>
+  <li>Run <code>pnpm gate</code>. Find seed 4 in the baseline file.</li>
+  <li>Run <code>pnpm gate --defect drops-the-pack</code>. Count the regressions per grader.</li>
+  <li>Change the audit weight 9 to 3. Run <code>pnpm gate</code>, then restore the file.</li>
+  <li>Edit lab 07 <code>gateToolCall</code> to return <code>auto</code> for a held tool. Run the gate, then restore it.</li>
+  <li>Run <code>pnpm gate --defect drops-the-pack-after-200</code>. Predict the promotion result.</li>
+  <li>Run that promotion with <code>--promote --adr</code> and ADR 0003's path. Check your prediction.</li>
+</ol>
+
+<h2>5 · Exercise: which verdict?</h2>
+
+<section class="exercise" data-scored>
+  <h3>Place each change</h3>
+  <p class="rules">Each change gets one verdict from the gate.</p>
+
+  <div class="cl" data-cats="refused, benchmark changed|refused, regression|passed">
+    <div class="cl-item" data-cat="0" data-why="A recording is part of the benchmark, so its bytes change the hash. No trial is compared.">
+      <p>A recording is captured again from a new run.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="Seed 2 passed in the baseline and fails now. The count stays 19 of 20, and the gate still refuses.">
+      <p>A change fixes seed 4 of audit and breaks seed 2.</p>
+    </div>
+    <div class="cl-item" data-cat="2" data-why="A fixed failure is reported. The baseline keeps seed 4 until a promotion.">
+      <p>A change makes seed 4 of audit pass.</p>
+    </div>
+    <div class="cl-item" data-cat="1" data-why="The loop runs a held tool with no operator, so held-audit fails asks_before_held_tool on every seed.">
+      <p>The approval check returns auto for a held tool.</p>
+    </div>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>6 · Quiz</h2>
+
+<section class="exercise" data-scored>
+  <h3>Four questions</h3>
+
+  <div class="qz" data-correct="1" data-why="The weight sets how often the parked recording replays. The loop did not change, so the hash refuses the comparison.">
+    <p class="qz-prompt">Q1. Why does the hash cover the task file's weights?</p>
+    <button class="qz-opt" type="button">A weight tells the gate, before the run, how many trials to run</button>
+    <button class="qz-opt" type="button">A new weight changes the score, though no loop has changed at all</button>
+    <button class="qz-opt" type="button">The graders read the weight, and it decides if a trial passed</button>
+    <button class="qz-opt" type="button">Zod refuses the file, because the weights must add up to ten</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="3" data-why="The seed picks the recording, so the same seed replays the same trial on both sides. A count hides a swap.">
+    <p class="qz-prompt">Q2. Why does the baseline keep failed seeds, not only counts?</p>
+    <button class="qz-opt" type="button">The gate reruns every failed seed, and then it gives a verdict</button>
+    <button class="qz-opt" type="button">The promotion copies the seeds, so the next ADR can list them</button>
+    <button class="qz-opt" type="button">A count has no clock, so a strict Zod schema cannot parse it</button>
+    <button class="qz-opt" type="button">Seeds pair the trials, so a swap at the same count is refused</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="0" data-why="The defect loses the pack after 200 jobs. One gate run is 80 jobs, so run 3 is the first to show it.">
+    <p class="qz-prompt">Q3. Why does one gate run pass <code>drops-the-pack-after-200</code>?</p>
+    <button class="qz-opt" type="button">Its first 200 jobs keep the pack, and one gate run is 80 jobs</button>
+    <button class="qz-opt" type="button">The gate skips grounded-audit, since the baseline passed it</button>
+    <button class="qz-opt" type="button">The seeded fake picks, by seed, a recording with no pack field</button>
+    <button class="qz-opt" type="button">The hash check runs first, and it stops the trials at job 200</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <div class="qz" data-correct="2" data-why="On a fake, an unchanged loop gives the same result every run. Ten runs show that no state leaks between them.">
+    <p class="qz-prompt">Q4. What do ten clean runs show on the seeded fake?</p>
+    <button class="qz-opt" type="button">The model passes the audit, at least nine times in every ten</button>
+    <button class="qz-opt" type="button">The pass^10 of every task, measured on the fake, is at least 0.9</button>
+    <button class="qz-opt" type="button">The code repeats itself, and no state leaks between the runs</button>
+    <button class="qz-opt" type="button">The benchmark is ready, so it opens the Phase 6 entry criterion</button>
+    <p class="qz-feedback" hidden></p>
+  </div>
+
+  <p class="score" data-score>Score: 0 / 0</p>
+</section>
+
+<h2>7 · Say it in your own words</h2>
+
+<p>Answer in the chat after the lab, with no notes.</p>
+
+<ol>
+  <li>Say why a changed task file is refused before any trial runs.</li>
+  <li>Say what a regression is, and why a pass count can hide one.</li>
+  <li>Say what ten clean runs prove on a fake, and what they do not prove.</li>
+</ol>
+
+<p>If you keep only four sentences from this lesson, keep these. A benchmark is tasks, recordings
+and trial counts, fixed by one hash. The baseline is the committed scorecard, with every failed
+trial by seed and grader. The gate refuses any trial failure the baseline does not list. The
+baseline moves only after ten clean runs and an accepted ADR.</p>
+
+<h2>Primary source</h2>
+
+<p>Read the section "Capability vs. regression evals" in Anthropic's
+<a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Demystifying evals
+for AI agents</a>. Find the pass rate it expects of a regression eval. Then explain how
+<code>benchmark-v1</code> carries audit's known failure at 19 of 20.</p>
+
+<footer>
+  <p><strong>Version pin.</strong> Every excerpt and measurement here was verified against
+  <code>zod</code> 4.4.3, <code>vitest</code> 3.2.7, <code>tsx</code> 4.23.1 and
+  <code>@types/node</code> 22.20.1 on Node 22.14.0, Windows 11, on 2026-10-31.</p>
+  <p><strong>Disclosed.</strong> Every number measures the benchmark code and the loop on a seeded fake. No model ran.
+  The gate pairs trials by seed, which a live model does not allow, so a live gate needs a
+  tolerance. The 20 s promotion time includes starting <code>tsx</code>.</p>
+  <p><strong>Sources.</strong> The promotion rule is in the Hermes OS <code>README.md</code>,
+  Guarantees. The decision is <a href="../docs/adr/0003-freeze-benchmark-v1-as-the-baseline.md">ADR
+  0003</a>, accepted by you on 2026-10-31.</p>
+  <p><strong>Next.</strong> Phase 4 ends here. Phase 5 meets the Claude Agent SDK and argues adopt,
+  wrap or skip against <code>benchmark-v1</code>, per <a href="../ROADMAP.md">ROADMAP</a>.</p>
+</footer>
+
+</body>
+</html>

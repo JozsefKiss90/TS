@@ -1,7 +1,8 @@
-# Exercise 16 — golden tasks, then many trials
+# Exercise 16 — golden tasks, many trials, a regression gate
 
 Lessons: [0025 — Golden Tasks](../../lessons/0025-golden-tasks.html) ·
-[0026 — Many Runs, One Verdict](../../lessons/0026-many-runs-one-verdict.html)
+[0026 — Many Runs, One Verdict](../../lessons/0026-many-runs-one-verdict.html) ·
+[0027 — The Regression Gate](../../lessons/0027-the-regression-gate.html)
 
 Scenario step **S9 (score the run)**. Four golden tasks run offline through a loop. Each run lands
 through lab 14's `runAndLand`, five named graders read the artifact and the trace, and one scorecard
@@ -32,6 +33,14 @@ real loop from a defect. Lab 12 is unchanged.
 | `src/trials.ts` | 0026: `passHatK` (τ-bench), `settlePoint`, `trueRate`, `rerunTrial`, `runSeries`, `runTrials` → strict, clock-free `trials.json` |
 | `src/trials-main.ts` | 0026: `pnpm trials`, `--n`, `--k`, `--rerun <task> --seed <s>`, `--settle` |
 | `tests/trials.test.ts` | 0026: 21 tests. 18 written before the code; 1 added after a mutation check; 2 for `trueRate`, added after review and seen red |
+| `tasks/benchmark-v1.json` | 0027: the frozen benchmark. Lesson 0025's four tasks, audit on 0026's 9 : 1 recordings |
+| `baselines/benchmark-v1.json` | 0027: the committed baseline. Hash, n, k, the ADR, every failed trial by seed and grader. Written only by `--promote` |
+| `src/benchmark.ts` | 0027: `benchmarkHash` (task file + recordings, CRLF read as LF), strict `BaselineSchema`, `baselineFrom` |
+| `src/gate.ts` | 0027: `gate(baseline, { hash, card })`, pure. Refuses `benchmark_changed`, `counts_changed`, `tasks_changed`, `regression` |
+| `src/promote.ts` | 0027: `promote`: an accepted ADR naming the hash, then ten consecutive clean runs with the same bytes |
+| `src/gate-defects.ts` | 0027: `dropsThePackAfter(limit)`, a defect that one gate run cannot see |
+| `src/gate-main.ts` | 0027: `pnpm gate`, `--defect <name>`, `--promote --adr <path>` |
+| `tests/gate.test.ts` | 0027: 19 tests. 18 written before the code and seen red (no `benchmark.ts`); 1 added after review |
 | `tests/golden.test.ts` | 27 tests. 23 written before the code; 4 added after mutation checks, the per-task verdict and review |
 
 ## Commands
@@ -130,6 +139,12 @@ Each made in a copy, run, and restored.
 | 0026: `passHatK` returns the pass rate | 2 |
 | 0026: the seed is ignored (always the first recording) | 2 |
 | 0026: every trial of a task shares one run name | 1 |
+| 0027: the hash keeps CRLF | 1 |
+| 0027: the hash skips the recordings | 3 |
+| 0027: the gate skips the hash check | 1 |
+| 0027: the gate compares pass counts, not seeds | 1 |
+| 0027: `promote` skips the same-bytes check | 1 |
+| 0027: `promote` ignores the ADR's status line | 2 |
 | 0026: a trial reports no failed graders | 1 |
 | 0026: the runner keeps the old trace file | 1 |
 | 0026: `settlePoint` never starts again | 0 at first → 1 after a test was added |
@@ -150,5 +165,44 @@ now replays `audit-atlas.jsonl`, whose answer quotes the tool, and grades `repor
 
 - `pnpm bench` runs one trial per task (seed 1). `pnpm trials` runs many, on the real loop only.
 - The variation comes from two recordings chosen by weight. It is not what a live model does.
-- No committed baseline and no gate: lesson 0027.
+- The gate pairs trials by seed, so it has no tolerance for a live model.
 - Four tasks are a check of the setup, not a benchmark of anything.
+
+## The regression gate, measured 2026-10-31 (lesson 0027)
+
+`benchmark-v1` is `tasks/benchmark-v1.json` plus the three recordings it names, at n = 20 and k = 4.
+Its hash is `sha256:22a1ae48ac33a776a205f705783587144f0284a5eccbb3c6c4b4046020f218a6`. The baseline
+was promoted under [ADR 0003](../../docs/adr/0003-freeze-benchmark-v1-as-the-baseline.md), accepted by
+the user on 2026-10-31.
+
+```bash
+pnpm --filter 16-benchmark gate                                   # the real loop
+pnpm --filter 16-benchmark gate --defect drops-the-pack
+pnpm --filter 16-benchmark gate --defect drops-the-pack-after-200 # passes one run
+pnpm --filter 16-benchmark gate --promote --adr docs/adr/0003-freeze-benchmark-v1-as-the-baseline.md --defect drops-the-pack-after-200
+```
+
+```
+audit           19 of 20  pass^4 0.800
+held-audit      20 of 20  pass^4 1.000
+capped-audit    20 of 20  pass^4 1.000
+grounded-audit  20 of 20  pass^4 1.000
+PASSED real: no trial fails that passed in the baseline
+```
+
+| Candidate | Verdict |
+|---|---|
+| real loop | passed |
+| `ignores-approval-list` | refused, 20 regressions on held-audit (`asks_before_held_tool`) |
+| `ignores-call-cap` | refused, 20 regressions on capped-audit (`ends_as_expected`) |
+| `drops-the-pack` | refused, 60 regressions on grounded-audit (three graders) |
+| hand edit: lab 07 `gateToolCall` returns `"auto"` for a held tool | refused, the same 20 as `ignores-approval-list`. Restored: passed |
+| audit weight 9 → 3 | refused before any trial: `benchmark changed` |
+| `drops-the-pack-after-200`, one gate run | passed |
+| `drops-the-pack-after-200`, `--promote` | refused after 2 clean runs; run 3 has 60 regressions |
+| promotion with ADR 0003 at status proposed | refused after 0 runs |
+| promotion of the real loop, ADR accepted | 10 clean runs, about 20 s with `tsx` start-up; wrote the 764-byte baseline |
+
+- A swap that keeps audit at 19 of 20 (seed 4 fixed, seed 2 broken) is refused; see the test.
+- A fixed failure passes and prints `fixed:`. The baseline moves only by promotion.
+- The gate pairs trials by seed. A live model gives no such pairing, so a live gate needs a tolerance.

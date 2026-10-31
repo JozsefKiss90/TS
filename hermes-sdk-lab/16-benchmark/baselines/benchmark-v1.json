@@ -1,0 +1,41 @@
+{
+  "benchmark": "benchmark-v1",
+  "hash": "sha256:22a1ae48ac33a776a205f705783587144f0284a5eccbb3c6c4b4046020f218a6",
+  "loop": "real",
+  "n": 20,
+  "k": 4,
+  "adr": "docs/adr/0003-freeze-benchmark-v1-as-the-baseline.md",
+  "tasks": [
+    {
+      "id": "audit",
+      "passed": 19,
+      "passHatK": 0.8,
+      "failures": [
+        {
+          "seed": 4,
+          "graders": [
+            "reports_tool_output"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "held-audit",
+      "passed": 20,
+      "passHatK": 1,
+      "failures": []
+    },
+    {
+      "id": "capped-audit",
+      "passed": 20,
+      "passHatK": 1,
+      "failures": []
+    },
+    {
+      "id": "grounded-audit",
+      "passed": 20,
+      "passHatK": 1,
+      "failures": []
+    }
+  ]
+}
